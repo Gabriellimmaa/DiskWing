@@ -235,7 +235,7 @@
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
     "maxActiveWorkers": 3,
-    "phase": "awaiting_exact_head_ci",
+    "phase": "awaiting_cross_version_ci",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -266,7 +266,8 @@
         "evidence": [
           "f704b32 restore-aware recovery; 498f2cf additive source volume identity; cf6260c chunk-bounded legacy hashing",
           "Independent reviews by coordinator and distribution; scoped sample recovery follow-up in progress",
-          "41110c0/5eaaa33: session-scoped recovery rechecks reloaded records and accepts legitimate temporary aliases; independent distribution review"
+          "41110c0/5eaaa33: session-scoped recovery rechecks reloaded records and accepts legitimate temporary aliases; independent distribution review",
+          "d38d674/fdc052a real-default BusyCheck and terminal source/cancel recheck independently reviewed; four late-query regressions reproduced/fixed"
         ],
         "issue": 13,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/13",
@@ -417,7 +418,10 @@
           "Integrated suite: 172 discovered, 157 executed, 15 explicit skips, zero failures; two native query checks enabled",
           "Final category follow-up: 10 focused checks passed; no schema/storage change",
           "Nine bootstrap cases repeated independently; final disposable APFS/ExFAT checks repeated4/4 after recovery alias follow-up",
-          "No newly introduced personal paths/keys in added lines; legacy exact-match shell compatibility literal unchanged"
+          "No newly introduced personal paths/keys in added lines; legacy exact-match shell compatibility literal unchanged",
+          "3008e36 root-path fix passed full macOS15 CI including archive lifecycle; separate macOS26 checkpoint failure identified nonempty busy inspection before the intended boundary",
+          "New controlled checkpoint/context tests: 179 discovered/162 executed/17 skipped/0 failures before terminal follow-up; final focused46/45executed/1worker skip/0fail including four disposable filesystems",
+          "No process on the failed CI runner was identified; a transient reader is a hypothesis. Real inspector/default FD test retained."
         ],
         "issue": 18,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/18"
@@ -439,8 +443,8 @@
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42762937392",
-    "lastIntegratedCommit": "2a8be0d",
-    "nextAction": "Publish reviewed integration PR, require green exact-head CI on macOS15/26, merge and verify main; then build and qualify a clean local 1.0.0 candidate. External production/physical/human gates remain open.",
+    "lastIntegratedCommit": "fdc052a",
+    "nextAction": "Require green exact-head CI for controlled checkpoint fixes, merge PR19, verify main, and qualify the new build6 archive; previous builds remain superseded and private.",
     "lastVerifiedMainCommit": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
     "integrationBranch": "feature/autonomous-delivery"
   }
