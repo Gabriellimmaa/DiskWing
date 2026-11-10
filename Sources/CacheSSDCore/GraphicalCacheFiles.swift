@@ -11,8 +11,9 @@ enum GraphicalCacheFiles {
         try openDirectory(item.deletingLastPathComponent(), under: anchor, create: create)
     }
     private static func openDirectory(_ directory: URL, under anchor: URL, create: Bool) throws -> Int32 {
-        guard Paths.contains(directory, in: anchor), anchor.standardizedFileURL.path == anchor.resolvingSymlinksInPath().path else { throw failure() }
-        let relative = String(directory.standardizedFileURL.path.dropFirst(anchor.standardizedFileURL.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let anchorPath = normalizedSystemPath(anchor.path), directoryPath = normalizedSystemPath(directory.path)
+        guard directoryPath == anchorPath || directoryPath.hasPrefix(anchorPath + "/"), noSymlinkComponents(anchorPath) else { throw failure() }
+        let relative = String(directoryPath.dropFirst(anchorPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let parts = relative.isEmpty ? [] : relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard parts.allSatisfy(Paths.safeComponent) else { throw failure() }
         var descriptor = open(anchor.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -34,26 +35,53 @@ enum GraphicalCacheFiles {
     }
     static func assertParent(_ descriptor: Int32, matches path: URL) throws {
         var opened = stat(), current = stat()
-        guard path.standardizedFileURL.path == path.resolvingSymlinksInPath().path,
+        guard noSymlinkComponents(normalizedSystemPath(path.path)),
               fstat(descriptor, &opened) == 0, lstat(path.path, &current) == 0,
               opened.st_dev == current.st_dev, opened.st_ino == current.st_ino,
               current.st_mode & S_IFMT == S_IFDIR else { throw failure() }
     }
-    static func removeDirectory(_ name: String, parent: Int32) throws {
+    /// Only the system-owned /var and /tmp aliases are normalized, after stat
+    /// proves they name the same object as /private. User redirects stay visible
+    /// to the component-by-component O_NOFOLLOW walk.
+    static func normalizedSystemPath(_ path: String) -> String {
+        for name in ["var", "tmp"] where path == "/" + name || path.hasPrefix("/" + name + "/") {
+            var alias = stat(), target = stat(), link = stat()
+            if lstat("/" + name, &link) == 0, link.st_mode & S_IFMT == S_IFLNK, link.st_uid == 0,
+               stat("/" + name, &alias) == 0, stat("/private/" + name, &target) == 0,
+               alias.st_dev == target.st_dev, alias.st_ino == target.st_ino { return "/private" + path }
+        }
+        return path
+    }
+    private static func noSymlinkComponents(_ path: String) -> Bool {
+        var current = ""
+        for component in path.split(separator: "/", omittingEmptySubsequences: true) {
+            if component == "." || component == ".." { return false }
+            current += "/" + component
+            var metadata = stat()
+            if lstat(current, &metadata) != 0 { return errno == ENOENT }
+            if metadata.st_mode & S_IFMT == S_IFLNK { return false }
+        }
+        return true
+    }
+    static func removeDirectory(_ name: String, parent: Int32, expectedIdentity: FileIdentity, cancellation: CancellationFlag) throws {
         guard Paths.safeComponent(name) else { throw failure() }
         let directory = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard directory >= 0 else { throw failure() }
         defer { close(directory) }
         var metadata = stat()
-        guard fstat(directory, &metadata) == 0, metadata.st_uid == getuid() else { throw failure() }
+        guard fstat(directory, &metadata) == 0, metadata.st_uid == getuid(),
+              Int64(metadata.st_dev) == expectedIdentity.device, UInt64(metadata.st_ino) == expectedIdentity.inode,
+              expectedIdentity.size == nil || expectedIdentity.size == Int64(metadata.st_size),
+              expectedIdentity.modifiedNanoseconds == nil || expectedIdentity.modifiedNanoseconds == Int64(metadata.st_mtimespec.tv_sec) &* 1_000_000_000 &+ Int64(metadata.st_mtimespec.tv_nsec) else { throw failure() }
         var count = 0
-        try removeContents(directory, device: metadata.st_dev, depth: 0, count: &count)
+        try removeContents(directory, device: metadata.st_dev, depth: 0, count: &count, cancellation: cancellation)
         guard unlinkat(parent, name, AT_REMOVEDIR) == 0 else { throw failure() }
     }
-    private static func removeContents(_ descriptor: Int32, device: dev_t, depth: Int, count: inout Int) throws {
+    private static func removeContents(_ descriptor: Int32, device: dev_t, depth: Int, count: inout Int, cancellation: CancellationFlag) throws {
         guard depth <= 80, let stream = fdopendir(dup(descriptor)) else { throw failure() }
         defer { closedir(stream) }
         while let entry = readdir(stream) {
+            guard !cancellation.isCancelled else { throw CacheSSDError.message("Liberação cancelada; a cópia no SSD e a recuperação foram preservadas.") }
             var tuple = entry.pointee.d_name
             let name = withUnsafeBytes(of: &tuple) { bytes in String(cString: bytes.baseAddress!.assumingMemoryBound(to: CChar.self)) }
             if name == "." || name == ".." { continue }
@@ -64,7 +92,7 @@ enum GraphicalCacheFiles {
             if metadata.st_mode & S_IFMT == S_IFDIR {
                 let child = openat(descriptor, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                 guard child >= 0 else { throw failure() }
-                do { try removeContents(child, device: device, depth: depth + 1, count: &count) }
+                do { try removeContents(child, device: device, depth: depth + 1, count: &count, cancellation: cancellation) }
                 catch { close(child); throw error }
                 close(child)
                 guard unlinkat(descriptor, name, AT_REMOVEDIR) == 0 else { throw failure() }

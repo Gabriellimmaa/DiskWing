@@ -54,7 +54,11 @@ public enum GraphicalCacheCatalog {
     public static let chromeBundleID = "com.google.Chrome"
     public static let chromeRelativePath = "Library/Caches/Google/Chrome"
     // Exact versions are added only after generated native application evidence.
-    public static let qualifiedChromeVersions: Set<String> = []
+    public static let qualifiedChromeVersions: Set<String> = ["157.0.8103.39"]
+    static func chromeHasCustomStorage() -> Bool {
+        let preferences = UserDefaults(suiteName: chromeBundleID)
+        return ["DiskCacheDir", "UserDataDir"].contains { preferences?.object(forKey: $0) != nil }
+    }
     public static func candidates(home: URL = FileManager.default.homeDirectoryForCurrentUser,
                                   applications: [URL] = [URL(fileURLWithPath: "/Applications")]) -> [GraphicalCacheCandidate] {
         GenericAppDetector.discover(home: home, applications: applications)
@@ -85,11 +89,12 @@ public enum GenericAppDetector {
             let source = home.appendingPathComponent(definition.relativeCache)
             let size = FileTree.measure(source)
             let qualified = definition.id == GraphicalCacheCatalog.chromeCacheID && version.map { GraphicalCacheCatalog.qualifiedChromeVersions.contains($0) } == true
-            let reason = !matched ? "Aplicativo não localizado; nenhum cache será alterado." : source.standardizedFileURL != source.resolvingSymlinksInPath() ? "Este cache já usa um caminho redirecionado. Revise seu registro antes de alterar." : !size.missing && !size.isComplete ? "A medição deste cache está incompleta; ele será preservado." : !qualified ? definition.exception : nil
+            let customChrome = definition.id == GraphicalCacheCatalog.chromeCacheID && GraphicalCacheCatalog.chromeHasCustomStorage()
+            let reason = !matched ? "Aplicativo não localizado; nenhum cache será alterado." : customChrome ? "O Chrome usa uma configuração de cache ou perfil personalizada. Ela foi preservada." : source.standardizedFileURL != source.resolvingSymlinksInPath() ? "Este cache já usa um caminho redirecionado. Revise seu registro antes de alterar." : !size.missing && !size.isComplete ? "A medição deste cache está incompleta; ele será preservado." : !qualified ? definition.exception : nil
             return GraphicalCacheCandidate(id: definition.id, applicationID: definition.bundleID, applicationName: definition.name,
                                            applicationVersion: version, applicationURL: matched ? bundleURL : nil,
                                            sourceURL: source, scopeLabel: definition.scope, logicalBytes: size.logical,
-                                           allocatedBytes: size.allocated, measurementComplete: size.isComplete || size.missing,
+                                           allocatedBytes: size.allocated, measurementComplete: definition.id != "safari.http-cache" && (size.isComplete || size.missing),
                                            isMissing: size.missing, canTransfer: reason == nil, blockedReason: reason)
         }
     }
