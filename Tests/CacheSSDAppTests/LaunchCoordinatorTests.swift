@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import Darwin
+import Combine
 @testable import CacheSSDApp
 import CacheSSDCore
 
@@ -82,6 +83,30 @@ private final class LaunchPreparationProbe: @unchecked Sendable {
         launch.start(); try await wait(until: { !launch.isLoading })
         XCTAssertEqual(probe.calls, 2); XCTAssertNil(launch.failureMessage)
         XCTAssertTrue(try XCTUnwrap(launch.model).context.isSamples)
+    }
+    func testReadyModelChangesInvalidateSceneForCommandsAndLanguage() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let launch = LaunchCoordinator(arguments: ["DiskWing", "--acceptance-workspace", root.path], bundleIdentifier: "com.cachessd.app.acceptance")
+        launch.start(); try await wait(until: { !launch.isLoading })
+        let model = try XCTUnwrap(launch.model)
+        var changes = 0
+        let observation = launch.objectWillChange.sink { changes += 1 }
+        defer { observation.cancel() }
+        model.operationMessage = "Generated sample operation"
+        XCTAssertTrue(model.busy); XCTAssertGreaterThan(changes, 0)
+        var previous = changes
+        model.operationMessage = nil
+        XCTAssertFalse(model.busy); XCTAssertGreaterThan(changes, previous)
+        previous = changes; model.isScanning = true
+        XCTAssertGreaterThan(changes, previous)
+        previous = changes; model.isScanning = false
+        XCTAssertGreaterThan(changes, previous)
+        for (language, localeIdentifier) in [("en", "en_US"), ("pt-BR", "pt_BR")] {
+            previous = changes; model.setLanguage(language)
+            XCTAssertEqual(model.preferences.language, language)
+            XCTAssertEqual(L10n.locale.identifier, localeIdentifier)
+            XCTAssertGreaterThan(changes, previous)
+        }
     }
     func testInvalidPersistentSessionStaysUntouchedAndDoesNotOpenLiveData() async throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }

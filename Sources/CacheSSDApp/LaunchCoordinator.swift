@@ -26,6 +26,7 @@ enum AppLaunchRequest: Sendable {
     private let bundleIdentifier: String?
     private let prepare: @Sendable (AppLaunchRequest) throws -> PreparedSampleSession
     private var task: Task<Void, Never>?
+    private var modelObservation: AnyCancellable?
     init(arguments: [String] = ProcessInfo.processInfo.arguments, bundleIdentifier: String? = Bundle.main.bundleIdentifier,
          prepare: @escaping @Sendable (AppLaunchRequest) throws -> PreparedSampleSession = { request in
              switch request {
@@ -52,7 +53,9 @@ enum AppLaunchRequest: Sendable {
                     let prepared = try await Task.detached(priority: .userInitiated) { try prepare(request) }.value
                     context = try AppContext.preparedSamples(prepared)
                 }
-                model = AppModel(context: context)
+                let readyModel = AppModel(context: context)
+                modelObservation = readyModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+                model = readyModel
             } catch {
                 // Permission/path details remain private; never substitute live.
                 failureMessage = L10n.text("Não foi possível iniciar o modo de amostras. Escolha uma pasta existente, sem links e com espaço disponível.")
