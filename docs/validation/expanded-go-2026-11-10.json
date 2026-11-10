@@ -1,13 +1,11 @@
 {
   "adapterVersion": 1,
-  "date": "2026-11-10T16:54:01Z",
-  "integrationMechanismUnchangedByQualificationGate": true,
+  "date": "2026-11-10T18:05:24Z",
   "localFallback": true,
   "newWritesOnSSD": true,
   "qualificationType": "native_workflow_with_generated_data",
   "scope": "generated fixtures only; no physical disconnect or human acceptance",
   "sourceRetained": true,
-  "testedCommit": "e661d2fbc54f6d016996de75006963d161a8a477",
   "toolID": "go",
   "versionOutput": "go version go1.27.3 darwin/arm64",
   "workflow": "Generated Go binary compiled and executed through migrated cache; new SSD build entry; local fallback build"

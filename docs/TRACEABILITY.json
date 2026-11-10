@@ -272,7 +272,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "native_and_macos15_followups",
+    "phase": "build8_local_qualification",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -645,7 +645,8 @@
         "status": "approved",
         "evidence": [
           "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed.",
-          "Independent final approval at ecdf1afd6562941741f055f80291b35be230ce41; no open code blockers."
+          "Independent final approval at ecdf1afd6562941741f055f80291b35be230ce41; no open code blockers.",
+          "Independent approval of 3417d2+8aed2c7 and 2927846; native reports distinguish actor and profile evidence."
         ]
       },
       {
@@ -706,9 +707,14 @@
         "dependsOn": [
           "CANDIDATE-02"
         ],
-        "status": "implementing_review_reopened",
+        "status": "complete_local_independently_reviewed",
         "acceptance": "Non-cleaning npm validation must accept real UUID destination paths; distinguish CocoaPods launcher prerequisites",
-        "evidence": []
+        "evidence": [
+          "docs/validation/native-followup-2026-11-10.json",
+          "49 discovered/48 executed/1 explicit ccache skip/zero failures. Npm source-unavailable offline SSD reuse and npx preservation qualify10.9.2; clean/inherited Cocoa environments distinguished; Ruby3.3 explicit profile only."
+        ],
+        "commit": "29278464a81f5840916cfeb184e0775aa1910fed",
+        "reviewer": "independent_scope"
       },
       {
         "id": "COMPAT-03",
@@ -722,10 +728,11 @@
         "dependsOn": [
           "CANDIDATE-02"
         ],
-        "status": "independently_reviewed_ci_pending",
+        "status": "complete_ci_confirmed",
         "acceptance": "Trash missing-source eligibility must ignore Foundation directory hints without allowing links",
         "evidence": [
-          "73 affected cases passed; 23 ManualTrash cases independently repeated, no failures. Directory hints no longer control missing-source policy; same-operation fixture assertions bind captured ID."
+          "73 affected cases passed; 23 ManualTrash cases independently repeated, no failures. Directory hints no longer control missing-source policy; same-operation fixture assertions bind captured ID.",
+          "macOS15/26 plus optional updater passed at e761947: https://github.com/Gabriellimmaa/DiskWing/actions/runs/42870900205"
         ],
         "commit": "8aed2c788d22a0ff92d15a1c39170d5ea5489b68",
         "reviewer": "independent_scope"
@@ -733,7 +740,7 @@
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
     "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Resolve npm UUID-path validation and macOS15 Trash URL-hint compatibility, independently review, rerun isolated/native/CI checks, then create build8. CocoaPods default Ruby3.4/ffi mismatch is an environment prerequisite; only explicit isolated Ruby3.3 profile may qualify the mechanism. Preserve installed6 and immutable7.",
+    "nextAction": "Create/qualify build8 from reviewed native/Trash fixes and npm10.9.2 qualification; run exact final PR CI and serial merge. Repeat visual sample inspection if accessible; preserve installed6 and immutable7. Remaining physical/human/signing gates are external.",
     "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
     "integrationBranch": "codex/scope-expansion",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
@@ -796,6 +803,16 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateStatus": "superseded_pending_build8"
+    "candidateStatus": "build7_superseded_build8_pending",
+    "combinedLocalRegression": {
+      "codeCommit": "07a0aa5",
+      "discovered": 244,
+      "executed": 219,
+      "skipped": 25,
+      "failures": 0,
+      "npmQualificationBindingTargetedCases": 18,
+      "bindingExplicitSkips": 1,
+      "bindingFailures": 0
+    }
   }
 }
