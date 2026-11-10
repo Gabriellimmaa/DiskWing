@@ -23,6 +23,7 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                         .listRowBackground(model.section == section ? Palette.accent.opacity(0.18) : Color.clear)
                         .accessibilityIdentifier("section-" + section.rawValue)
+                        .accessibilityAddTraits(model.section == section ? .isSelected : [])
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 6) {
                     Label(model.selectedVolume?.name ?? L10n.text("SSD desconectado"), systemImage: model.selectedVolume == nil ? "externaldrive.badge.xmark" : "externaldrive.badge.checkmark")
@@ -40,9 +41,21 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    if let state = model.sampleState { SampleModeBanner(state: state) }
+                    if model.pendingRecoveryCount > 0 {
+                        HStack {
+                            Label(L10n.text("Há \(model.pendingRecoveryCount) registros que precisam de revisão."), systemImage: "exclamationmark.circle")
+                            Spacer()
+                            Button(L10n.text("Revisar recuperação")) { model.section = .history }.accessibilityIdentifier("review-pending-recovery")
+                        }.font(.callout).padding(12).background(Palette.orange.opacity(0.12)).accessibilityElement(children: .contain)
+                    }
+                }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let message = model.operationMessage {
-                    HStack(spacing: 12) { ProgressView().controlSize(.small); Text(L10n.message(message)); Spacer(); Text(L10n.text("Mantenha o SSD conectado")).foregroundStyle(.secondary); Button(L10n.text("Cancelar operação")) { model.cancel() } }.font(.callout).padding(14).background(.bar)
+                    HStack(spacing: 12) { ProgressView().controlSize(.small); Text(L10n.message(message)); Spacer(); if let hint = model.operationHint { Text(hint).foregroundStyle(.secondary) }; Button(L10n.text("Cancelar operação")) { model.cancel() } }.font(.callout).padding(14).background(.bar)
                 }
             }
             .toolbar {
@@ -73,9 +86,9 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(L10n.text("Por onde começar")).font(.title3.weight(.semibold))
                     HStack(spacing: 12) {
-                        QuickScan(title: L10n.text("Pasta pessoal"), detail: L10n.text("Uma visão dos seus arquivos"), symbol: "house", url: FileManager.default.homeDirectoryForCurrentUser)
-                        QuickScan(title: L10n.text("Downloads"), detail: L10n.text("Instaladores e arquivos baixados"), symbol: "arrow.down.circle", url: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads"))
-                        QuickScan(title: L10n.text("Caches"), detail: L10n.text("Arquivos que podem ser recriados"), symbol: "shippingbox", url: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches"))
+                        QuickScan(title: L10n.text("Pasta pessoal"), detail: L10n.text("Uma visão dos seus arquivos"), symbol: "house", url: model.home)
+                        QuickScan(title: L10n.text("Downloads"), detail: L10n.text("Instaladores e arquivos baixados"), symbol: "arrow.down.circle", url: model.home.appendingPathComponent("Downloads"))
+                        QuickScan(title: L10n.text("Caches"), detail: L10n.text("Arquivos que podem ser recriados"), symbol: "shippingbox", url: model.home.appendingPathComponent("Library/Caches"))
                     }
                 }
                 Divider()
@@ -138,8 +151,8 @@ struct ExplorerView: View {
                 }
                 if let report = model.report {
                     HStack(spacing: 22) {
-                        Metric(label: L10n.text("Tamanho encontrado"), value: ByteText.format(report.root.logicalBytes))
-                        Metric(label: L10n.text("Blocos alocados apontados"), value: ByteText.format(report.root.allocatedBytes))
+                        Metric(label: L10n.text("Tamanho encontrado"), value: model.sizeText(report.root))
+                        Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true))
                         Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale)))
                         Spacer()
                         Label(report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(report.isPartial ? Palette.orange : Palette.accent)
@@ -158,8 +171,8 @@ struct ExplorerView: View {
                 HSplitView {
                     VStack(spacing: 0) {
                         HStack {
-                            TextField(L10n.text("Buscar em toda a análise"), text: $model.search).textFieldStyle(.roundedBorder)
-                            TextField(L10n.text("Mínimo MiB"), text: $model.minimumMiB).textFieldStyle(.roundedBorder).frame(width: 105)
+                            TextField(L10n.text("Buscar em toda a análise"), text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-search")
+                            TextField(L10n.text("Mínimo MiB"), text: $model.minimumMiB).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-minimum-size").frame(width: 105)
                             Toggle(L10n.text("Ordenar por blocos"), isOn: $model.allocatedOrder).toggleStyle(.checkbox).font(.caption)
                         }.padding(.horizontal, 18).padding(.bottom, 9)
                         HStack {
@@ -173,9 +186,10 @@ struct ExplorerView: View {
                             TableColumn(L10n.text("Nome")) { item in
                                 HStack(spacing: 9) { Image(systemName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc").foregroundStyle(item.isDirectory ? Palette.secondary : .secondary); VStack(alignment: .leading, spacing: 3) { Text(item.name).lineLimit(1); if let issue = item.issue { Text(L10n.message(issue)).font(.caption2).foregroundStyle(.secondary).lineLimit(1) } } }.padding(.vertical, 4).onTapGesture(count: 2) { model.openFolder(item) }.contextMenu { ItemMenu(item: item) }
                             }.width(min: 150, ideal: 300)
-                            TableColumn(L10n.text("Tamanho")) { item in Text(item.issue?.hasPrefix("Sem acesso") == true ? L10n.text("Não lido") : ByteText.format(item.logicalBytes)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(95)
+                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(95)
                             TableColumn(L10n.text("Categoria")) { item in Text(L10n.message(item.category.rawValue)).font(.caption).foregroundStyle(.secondary) }.width(min: 100, ideal: 150)
                         }
+                        .accessibilityIdentifier("explorer-table")
                         .contextMenu(forSelectionType: String.self) { paths in
                             if let path = paths.first, let item = model.visibleItems.first(where: { $0.path == path }) { ItemMenu(item: item) }
                         } primaryAction: { paths in
@@ -208,8 +222,8 @@ struct ItemMenu: View {
         Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }
         if item.isDirectory { Button(L10n.text("Analisar esta pasta")) { model.scan(item.url) }.disabled(model.isScanning || model.busy) }
         Divider()
-        Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(PersonalActionPolicy.reasonPreventing(item.url) != nil || model.busy || model.isScanning)
-        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(PersonalActionPolicy.reasonPreventing(item.url) != nil || model.busy || model.isScanning)
+        Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.cachePolicyReason(item) != nil || model.busy || model.isScanning)
+        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.cachePolicyReason(item) != nil || model.busy || model.isScanning)
     }
 }
 
@@ -222,18 +236,18 @@ struct InspectorView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Image(systemName: item.isDirectory ? "folder" : "doc").font(.system(size: 40, weight: .ultraLight)).foregroundStyle(Palette.accent)
                     Text(item.name).font(.headline).textSelection(.enabled)
-                    Text(ByteText.format(item.logicalBytes)).font(.system(size: 25, weight: .medium, design: .rounded))
+                    Text(model.sizeText(item)).font(.system(size: 25, weight: .medium, design: .rounded))
                     Text(L10n.message(item.category.rawValue)).foregroundStyle(.secondary)
                     Text(item.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Divider()
-                    if let reason = PersonalActionPolicy.reasonPreventing(item.url) { Text(L10n.message(reason)).font(.callout).foregroundStyle(.secondary) }
+                    if let reason = model.cachePolicyReason(item) { Text(L10n.message(reason)).font(.callout).foregroundStyle(.secondary) }
                     else { Text(L10n.text("Revise o conteúdo antes de escolher uma ação. O tamanho não indica se um arquivo é dispensável.")).font(.callout).foregroundStyle(.secondary) }
                     Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }.frame(maxWidth: .infinity, alignment: .leading)
                     if item.isDirectory {
                         Button(L10n.text("Abrir pasta")) { model.openFolder(item) }.disabled(model.isScanning || model.busy)
                         Button(L10n.text("Analisar esta pasta")) { model.scan(item.url) }.disabled(model.isScanning || model.busy)
                     }
-                    if PersonalActionPolicy.reasonPreventing(item.url) == nil {
+                    if model.cachePolicyReason(item) == nil {
                         Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.busy || model.isScanning)
                         Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.busy || model.isScanning)
                     }
@@ -293,7 +307,7 @@ struct CacheRow: View {
         HStack(alignment: .center, spacing: 16) {
             Image(systemName: "shippingbox").font(.title2.weight(.light)).foregroundStyle(Palette.accent).frame(width: 30)
             VStack(alignment: .leading, spacing: 5) {
-                HStack { Text(tool.name).font(.headline); if model.settings.locations[tool.id] != nil { Text(model.settings.shellIntegrationEnabled ? L10n.text("Cópia no SSD") : L10n.text("Migrado; integração pendente")).font(.caption).foregroundStyle(Palette.accent) } }
+                HStack { Text(tool.name).font(.headline); if let status = model.cacheStatus(tool) { Text(status).font(.caption).foregroundStyle(Palette.accent) } }
                 Text(L10n.message(tool.explanation)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let adapter = model.adapterStatuses[tool.id] {
                     Text(L10n.message(adapter.explanation)).font(.caption).foregroundStyle(.secondary)
@@ -306,7 +320,7 @@ struct CacheRow: View {
             Text(model.toolSizes[tool.id].map { $0.missing ? L10n.text("Ausente") : !$0.complete ? L10n.text("Desconhecido") : ByteText.format($0.logical) } ?? L10n.text("—")).font(.callout.weight(.medium)).monospacedDigit().frame(width: 100, alignment: .trailing)
             Menu {
                 Button(L10n.text("Revisar migração…")) { model.review = .migration(tool) }.disabled(model.selectedVolume == nil || model.destinationIssue != nil || (model.toolSizes[tool.id]?.logical ?? 0) == 0 || model.toolSizes[tool.id]?.complete != true || model.adapterStatuses[tool.id]?.state != "native-available")
-                Button(L10n.text("Mostrar cache local")) { NSWorkspace.shared.activateFileViewerSelecting([tool.source]) }
+                Button(L10n.text("Mostrar cache local")) { model.reveal([tool.source]) }
                 if model.settings.locations[tool.id] != nil { Button(L10n.text("Restaurar cópia ao Mac…")) { model.review = .restore(tool) } }
             } label: { Text(L10n.text("Ações")) }.menuStyle(.borderlessButton).frame(width: 75).disabled(model.busy || model.isScanning)
         }.padding(18)
@@ -320,16 +334,16 @@ struct HistoryView: View {
             PageHeader(title: L10n.text("Histórico"), subtitle: L10n.text("Operações realizadas neste Mac, com o resultado e o local de recuperação quando disponível."))
             if !model.store.unreadableOperationRecords().isEmpty || !model.store.pendingConfigurationRecords().isEmpty {
                 Label(L10n.text("Há registros de recuperação ou configuração pendentes. Eles foram preservados; abra os registros locais para revisão."), systemImage: "exclamationmark.triangle").foregroundStyle(Palette.orange)
-                Button(L10n.text("Mostrar registros locais")) { NSWorkspace.shared.open(model.store.base) }
+                Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
             }
             if !model.recoveries.isEmpty {
                 ForEach(model.recoveries) { assessment in
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(assessment.journal.kind).font(.headline)
+                        Text(model.recoveryTitle(assessment)).font(.headline)
                         Text(L10n.message(assessment.explanation)).font(.callout)
                         Text(assessment.journal.source).font(.caption).textSelection(.enabled)
                         HStack {
-                            if assessment.canRestoreSource { Button(L10n.text("Revisar recuperação…")) { model.review = .recover(assessment) } }
+                            if assessment.canRestoreSource { Button(assessment.journal.kind == "restore" ? L10n.text("Concluir restauração…") : L10n.text("Revisar recuperação…")) { model.review = .recover(assessment) } }
                             Button(L10n.text("Revisar encerramento…")) { model.review = .resolve(assessment) }
                         }
                     }.padding(12).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
@@ -341,10 +355,10 @@ struct HistoryView: View {
                     ForEach(model.interrupted.prefix(5)) { journal in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(L10n.text("\(journal.toolID): \(journal.detail)")).font(.callout)
-                            if let path = journal.localQuarantine, FileManager.default.fileExists(atPath: path) { Button(L10n.text("Mostrar origem preservada")) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }.font(.caption) }
+                            if let path = journal.localQuarantine, FileManager.default.fileExists(atPath: path) { Button(L10n.text("Mostrar origem preservada")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
                         }
                     }
-                    Button(L10n.text("Abrir registros de recuperação")) { NSWorkspace.shared.open(model.store.base) }
+                    Button(L10n.text("Abrir registros de recuperação")) { model.openRecords() }
                 }.padding(16).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
             }
             if let comparison = model.growthComparison {
@@ -370,7 +384,7 @@ struct HistoryView: View {
                         HStack { Text(L10n.message(record.title)).font(.headline); Spacer(); Text(record.date, format: .dateTime.day().month().hour().minute()).font(.caption).foregroundStyle(.secondary) }
                         Text(L10n.message(record.detail)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                         if let delta = record.measuredFreeDelta { Text(L10n.text("Variação observada do espaço livre: \(delta >= 0 ? "+" : "−")\(ByteText.format(abs(delta)))")).font(.caption).foregroundStyle(Palette.accent) }
-                        if let path = record.recoveryPath { Button(L10n.text("Mostrar local de recuperação")) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }.font(.caption) }
+                        if let path = record.recoveryPath { Button(L10n.text("Mostrar local de recuperação")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
                     }.padding(.vertical, 10)
                 }.listStyle(.inset)
             }
@@ -421,7 +435,7 @@ struct PreferencesView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(L10n.text("Nomes, tamanhos e histórico ficam neste Mac. Nenhuma análise é enviada a um servidor. Relatórios só são exportados quando você escolhe um destino."))
                         Text(L10n.text("Sem permissão para uma área, o resultado é marcado como parcial. Conceda Acesso Total ao Disco nos ajustes do macOS somente se precisar ampliar a análise.")).foregroundStyle(.secondary)
-                        Button(L10n.text("Abrir Privacidade e Segurança")) { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!) }
+                        Button(L10n.text("Abrir Privacidade e Segurança")) { model.openPrivacy() }
                     }.padding(10)
                 }
                 GroupBox(L10n.text("Arquivos de compilação do Xcode")) {
@@ -433,7 +447,7 @@ struct PreferencesView: View {
                 GroupBox(L10n.text("Registros e recuperação")) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(L10n.text("São mantidas até 150 operações e 50 resumos de análise. O índice local mantém duas árvores por pasta analisada; o acompanhamento contínuo depende de sua escolha.")).foregroundStyle(.secondary)
-                        Button(L10n.text("Mostrar registros locais")) { NSWorkspace.shared.open(model.store.base) }
+                        Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
                         Text(L10n.text("Prévia de desenvolvimento. Distribuição pública, notarização e validação com outras pessoas ainda não foram concluídas.")).font(.caption).foregroundStyle(.secondary)
                     }.padding(10)
                 }
@@ -464,7 +478,9 @@ struct ReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let action: ReviewAction
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(spacing: 0) {
+          ScrollView {
+           VStack(alignment: .leading, spacing: 20) {
             Label(action.title, systemImage: symbol).font(.title2.weight(.semibold))
             Text(description).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             switch action {
@@ -477,7 +493,7 @@ struct ReviewSheet: View {
                 if tool.canReleaseLocal && model.adapterStatuses[tool.id]?.canReleaseSource != true { Text(L10n.text("A versão ou configuração desta ferramenta ainda não permite liberar a origem. Copie mantendo o cache local.")).font(.caption).foregroundStyle(Palette.orange) }
                 if !tool.canReleaseLocal { Text(L10n.text("Nesta versão, a origem de \(tool.name) é mantida porque instalações existentes podem depender de links para esse cache. A cópia no SSD atende novas execuções compatíveis.")).font(.caption).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Feche a ferramenta antes de continuar. Sem SSD, os caches podem ser baixados novamente. Os executáveis locais do npx não são removidos.")).font(.caption).foregroundStyle(.secondary)
-            case .trash(let item): fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), ByteText.format(item.logicalBytes)); Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo.")).font(.caption).foregroundStyle(.secondary)
+            case .trash(let item): fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item)); Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo.")).font(.caption).foregroundStyle(.secondary)
             case .move(let item, let destination): fact(L10n.text("Origem"), item.path); fact(L10n.text("Pasta de destino"), destination.path); Text(L10n.text("A cópia ficará no destino e a origem na Lixeira. Só esvazie a Lixeira depois de revisar a cópia. Se o destino for externo, o arquivo dependerá dele para ser acessado.")).font(.caption).foregroundStyle(.secondary)
             case .integration: fact(L10n.text("Arquivo atualizado"), L10n.text("Configuração do terminal zsh")); Text(L10n.text("Uma cópia da configuração atual ficará nos registros do DiskWing. Uma configuração antiga reconhecida de temporários em disco externo será substituída pelo padrão do macOS. Abra um novo terminal após ativar.")).font(.callout)
             case .disableIntegration: Text(L10n.text("Abra um novo terminal após desativar. Caches existentes e cópias no SSD serão preservados."))
@@ -489,9 +505,11 @@ struct ReviewSheet: View {
                 Text(L10n.text("Restaurar só usa uma cópia conferida e nunca sobrescreve a origem. Encerrar o registro mantém todas as cópias."))
             case .xcodeLocal: Text(L10n.text("Uma cópia das preferências de Derived Data ficará nos registros locais. O Xcode usará a pasta padrão do armazenamento interno. Nada será apagado no SSD."))
             }
+           }.padding(28)
+          }
             Divider()
-            HStack { Button(L10n.text("Cancelar"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(action.title) { model.execute(action) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction) }
-        }.padding(28).frame(width: 560)
+            HStack { Button(L10n.text("Cancelar"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction); Spacer(); Button(action.title) { model.execute(action) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction) }.padding(20)
+        }.frame(width: 560).frame(minHeight: 320, idealHeight: 500, maxHeight: 620)
     }
     private func fact(_ label: String, _ value: String) -> some View { VStack(alignment: .leading, spacing: 5) { Text(label).font(.caption).foregroundStyle(.secondary); Text(value).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) } }
     private var symbol: String { switch action { case .trash: return "trash"; case .eject: return "eject.circle"; case .integration, .disableIntegration: return "terminal"; default: return "externaldrive.badge.checkmark" } }
@@ -508,5 +526,22 @@ struct ReviewSheet: View {
         case .resolve: return L10n.text("Encerre o aviso após revisar as cópias. Nenhum arquivo será removido.")
         case .xcodeLocal: return L10n.text("Restabeleça o destino local dos arquivos recriáveis de compilação do Xcode.")
         }
+    }
+}
+
+
+struct SampleModeBanner: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var state: SampleState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(L10n.text("Modo de amostras — seus dados reais não são usados"), systemImage: "testtube.2").font(.headline)
+            Text(L10n.text("Arquivos, SSD e integrações do sistema são isolados ou simulados. A sessão é preservada para testar reinício e recuperação.")).font(.caption)
+            HStack {
+                Button(L10n.text("Analisar amostras")) { model.chooseFolder() }.disabled(model.busy || model.isScanning).accessibilityIdentifier("sample-scan")
+                Toggle(L10n.text("SSD de amostra conectado"), isOn: $state.volumeConnected).toggleStyle(.checkbox).accessibilityIdentifier("sample-volume-connected")
+                Toggle(L10n.text("Simular pouca energia"), isOn: $state.lowPower).toggleStyle(.checkbox).accessibilityIdentifier("sample-low-power")
+            }
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Palette.accent.opacity(0.1)).accessibilityIdentifier("sample-mode-banner")
     }
 }

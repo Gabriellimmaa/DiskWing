@@ -10,7 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main struct CacheSSDApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model: AppModel
+    init() {
+        do { let context = try AppContext.forLaunch(arguments: ProcessInfo.processInfo.arguments); _model = StateObject(wrappedValue: AppModel(context: context)) }
+        catch { FileHandle.standardError.write(Data("DiskWing could not initialize the requested acceptance context. No live context was opened.\n".utf8)); exit(2) }
+    }
     var body: some Scene {
         WindowGroup("DiskWing", id: "main") {
             ContentView().environmentObject(model).environment(\.locale, L10n.locale).frame(minWidth: 1050, minHeight: 690).tint(Palette.accent).onAppear { delegate.mayTerminate = { model.operationMessage == nil && !model.isScanning } }

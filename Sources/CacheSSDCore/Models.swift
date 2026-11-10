@@ -98,6 +98,10 @@ public struct VolumeInfo: Identifiable, Codable, Sendable {
     public let freeBytes: Int64
     public let isInternal: Bool
     public let isWritable: Bool
+    public init(uuid: String, name: String, path: String, totalBytes: Int64, freeBytes: Int64, isInternal: Bool, isWritable: Bool) {
+        self.uuid = uuid; self.name = name; self.path = path; self.totalBytes = totalBytes; self.freeBytes = freeBytes
+        self.isInternal = isInternal; self.isWritable = isWritable
+    }
 }
 
 public struct OperationRecord: Identifiable, Codable, Sendable {

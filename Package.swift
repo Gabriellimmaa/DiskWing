@@ -18,7 +18,8 @@ let package = Package(
         .target(name: "CacheSSDCore", dependencies: ["CSQLite"], resources: [.process("Resources")]),
         .executableTarget(name: "CacheSSDApp", dependencies: [.target(name: "CacheSSDCore")] + (updaterEnabled ? [.product(name: "Sparkle", package: "Sparkle")] : []), swiftSettings: updaterEnabled ? [.define("DISKWING_UPDATER")] : [], linkerSettings: updaterEnabled ? [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])] : []),
         .executableTarget(name: "CacheSSDHelper", dependencies: ["CacheSSDCore"]),
-        .testTarget(name: "CacheSSDCoreTests", dependencies: ["CacheSSDCore"])
+        .testTarget(name: "CacheSSDCoreTests", dependencies: ["CacheSSDCore"]),
+        .testTarget(name: "CacheSSDAppTests", dependencies: ["CacheSSDApp", "CacheSSDCore"])
     ],
     swiftLanguageModes: [.v5]
 )

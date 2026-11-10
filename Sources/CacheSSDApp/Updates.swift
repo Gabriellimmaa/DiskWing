@@ -11,7 +11,7 @@ import Sparkle
     @Published private(set) var sessionInProgress = false
     @Published var enabled = false
     var operationInProgress: () -> Bool = { true }
-    private let store = Store()
+    private let store: Store
 #if DISKWING_UPDATER
     private var controller: SPUStandardUpdaterController?
     private var observation: AnyCancellable?
@@ -19,8 +19,10 @@ import Sparkle
     private var timer: Timer?
     private var updateLease: OperationLease?
 #endif
-    override init() {
+    init(store: Store, disabled: Bool = false) {
+        self.store = store
         super.init()
+        guard !disabled else { return }
 #if DISKWING_UPDATER
         guard let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
               URL(string: feed)?.scheme == "https",
