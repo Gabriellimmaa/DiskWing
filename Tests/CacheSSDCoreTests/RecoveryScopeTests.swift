@@ -10,8 +10,8 @@ final class RecoveryScopeTests: XCTestCase {
         var name: String { "operation-\(journal.id.uuidString).json" }
         func manager() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: session) }
     }
-    func fixture() throws -> Fixture {
-        let parent = ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
+    func fixture(parent requestedParent: URL? = nil) throws -> Fixture {
+        let parent = requestedParent ?? ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
         let root = Paths.physicalURL(parent).appendingPathComponent("DiskWing-recovery-scope-\(UUID().uuidString)")
         let session = root.appendingPathComponent("session"), home = session.appendingPathComponent("home"), source = home.appendingPathComponent("Downloads/recovered.txt")
         let store = Store(base: session.appendingPathComponent("support")), copy = session.appendingPathComponent("copy.txt"), sibling = root.appendingPathComponent("sibling.txt")
@@ -49,6 +49,28 @@ final class RecoveryScopeTests: XCTestCase {
         XCTAssertEqual(f.store.operations().first?.phase, .resolved)
         XCTAssertEqual(try String(contentsOf: f.sibling), "generated sibling secret")
         XCTAssertTrue(RecoveryManager(store: f.store, home: f.home).pending().isEmpty)
+    }
+    func testScopedRecoveryAcceptsPhysicalAndStandardizedSystemTemporaryPaths() throws {
+        for standardizedSource in [false, true] {
+            let f = try fixture(parent: FileManager.default.temporaryDirectory)
+            if standardizedSource {
+                let file = f.store.base.appendingPathComponent(f.name)
+                var value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+                value["source"] = f.source.deletingLastPathComponent().standardizedFileURL.appendingPathComponent(f.source.lastPathComponent).path
+                try JSONSerialization.data(withJSONObject: value).write(to: file)
+            }
+            let manager = RecoveryManager(store: f.store, home: f.home.standardizedFileURL, permittedRoot: f.session)
+            XCTAssertTrue(try XCTUnwrap(manager.pending().first).canRestoreSource)
+            try manager.restoreSource(id: f.journal.id)
+            XCTAssertEqual(try FileTree.digest(f.source), try FileTree.digest(f.copy))
+            XCTAssertEqual(f.store.operations().first?.phase, .resolved)
+        }
+    }
+    func testLegacyRecoveryAcceptsAbsentPhysicalSourceWithinStandardizedHome() throws {
+        let f = try fixture(parent: FileManager.default.temporaryDirectory)
+        try RecoveryManager(store: f.store, home: f.home.standardizedFileURL).restoreSource(id: f.journal.id)
+        XCTAssertEqual(try FileTree.digest(f.source), try FileTree.digest(f.copy))
+        XCTAssertEqual(f.store.operations().first?.phase, .resolved)
     }
     func testScopedRestoreRecoveryCompletesGeneratedCacheConfiguration() throws {
         let f = try fixture(), tool = try XCTUnwrap(CacheCatalog.find("npm", home: f.home))

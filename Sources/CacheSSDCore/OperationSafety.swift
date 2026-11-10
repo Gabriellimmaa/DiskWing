@@ -115,7 +115,7 @@ public final class RecoveryManager {
     private let supportedKinds: Set<String> = ["migration", "personalMove", "trash", "restore"]
     public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, permittedRoot: URL? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
         self.store = store; self.home = home; self.checkpoint = checkpoint
-        self.permittedRoot = permittedRoot?.standardizedFileURL
+        self.permittedRoot = permittedRoot.map(Paths.physicalURL)
         permittedRootIdentity = permittedRoot.flatMap { try? FileIdentity($0) }
     }
 
@@ -126,8 +126,12 @@ public final class RecoveryManager {
         guard let identity = permittedRootIdentity, lstat(root.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFDIR,
               Int64(metadata.st_dev) == identity.device, UInt64(metadata.st_ino) == identity.inode else { throw scopeFailure() }
         for url in urls {
-            guard url.isFileURL, url.path == root.path || url.path.hasPrefix(root.path + "/") else { throw scopeFailure() }
-            let tail = String(url.path.dropFirst(root.path.count)).split(separator: "/").map(String.init)
+            guard url.isFileURL, url.path.split(separator: "/").allSatisfy({ $0 != "." && $0 != ".." }) else { throw scopeFailure() }
+            // Foundation may abbreviate existing /private/var paths to /var,
+            // while an absent record/source can keep the physical spelling.
+            let prefixes = [root.path, root.standardizedFileURL.path]
+            guard let prefix = prefixes.first(where: { url.path == $0 || url.path.hasPrefix($0 + "/") }) else { throw scopeFailure() }
+            let tail = String(url.path.dropFirst(prefix.count)).split(separator: "/").map(String.init)
             guard tail.allSatisfy({ $0 != "." && $0 != ".." }) else { throw scopeFailure() }
             var current = root
             for (offset, component) in tail.enumerated() {
@@ -397,7 +401,12 @@ public final class RecoveryManager {
         guard source.standardizedFileURL == source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("A origem contém um caminho redirecionado.")) }
         if let toolID = journal.toolID {
             guard CacheCatalog.find(toolID, home: home)?.source == source else { throw CacheSSDError.message(L10n.text("A origem não corresponde ao cache reconhecido.")) }
-        } else if let reason = PersonalActionPolicy.reasonPreventing(source, home: home) { throw CacheSSDError.message(reason) }
+        } else {
+            // The original is absent here. Standardize its existing parent so
+            // /private/var and /var use the same spelling as the home roots.
+            let policySource = source.deletingLastPathComponent().standardizedFileURL.appendingPathComponent(source.lastPathComponent)
+            if let reason = PersonalActionPolicy.reasonPreventing(policySource, home: home.standardizedFileURL) { throw CacheSSDError.message(reason) }
+        }
     }
 }
 
