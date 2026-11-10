@@ -53,12 +53,16 @@ public enum CacheRouter {
         if toolID == "uv", environment["UV_LINK_MODE"] == "symlink" { return true }
         if toolID == "bun", FileManager.default.fileExists(atPath: home.appendingPathComponent(".bun/install/cache/links").path) { return true }
         if ["uv", "pip"].contains(toolID), environment["XDG_CACHE_HOME"] != nil { return true }
+        guard directory.isFileURL else { return true }
         var folders: [URL] = [home]
         var current = directory.standardizedFileURL, reachedRoot = false
         for _ in 0..<40 {
             folders.append(current)
+            // Foundation URL equality at the filesystem root differs across
+            // supported macOS versions. Stop at the actual path, not URL identity.
+            if current.path == "/" { reachedRoot = true; break }
             let parent = current.deletingLastPathComponent()
-            if parent == current { reachedRoot = true; break }; current = parent
+            if parent.path == current.path { break }; current = parent
         }
         guard reachedRoot else { return true } // Never assume unvisited ancestor configuration is absent.
         var files: [URL] = []

@@ -18,6 +18,12 @@ final class CacheConfigurationTests: XCTestCase {
         for key in ["npm_config_userconfig","NPM_CONFIG_GLOBALCONFIG","NPM_CONFIG_PREFIX","NPM_CONFIG_CACHE"] { XCTAssertTrue(custom([key:"/generated/custom"])) }
         XCTAssertFalse(custom())
     }
+    func testFilesystemRootRepresentationsTerminateConfigurationDiscovery() throws {
+        for directory in [URL(fileURLWithPath: "/", isDirectory: true), try XCTUnwrap(URL(string: "file://localhost/"))] {
+            XCTAssertFalse(CacheRouter.hasCustomPreference(toolID: "pip", directory: directory, home: home, processEnvironment: [:], pipGlobalConfigurations: []))
+        }
+        XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "pip", directory: try XCTUnwrap(URL(string: "https://example.invalid/")), home: home, processEnvironment: [:], pipGlobalConfigurations: []))
+    }
     func testUnvisitedDeepAncestorsCannotBeAssumedDefault() throws {
         var directory = root.appendingPathComponent("project")
         for _ in 0..<45 { directory.appendPathComponent("nested") }
