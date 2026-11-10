@@ -76,6 +76,11 @@ class PackagingTests(unittest.TestCase):
 
     def test_local_build_has_no_update_metadata(self):
         self.assertEqual(build.release_settings(build.parse_args([])), {})
+        keys = ['NSDocumentsFolderUsageDescription','NSDownloadsFolderUsageDescription','NSDesktopFolderUsageDescription','NSRemovableVolumesUsageDescription']
+        localized = build.localized_usage_descriptions(dict.fromkeys(keys,'Descrição em português'))
+        self.assertEqual(set(localized['en']),set(localized['pt-BR']))
+        self.assertTrue(all(value == 'Descrição em português' for value in localized['pt-BR'].values()))
+        self.assertTrue(all('português' not in value for value in localized['en'].values()))
 
 
 if __name__ == '__main__':

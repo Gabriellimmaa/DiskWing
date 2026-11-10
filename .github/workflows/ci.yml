@@ -38,6 +38,8 @@ jobs:
           cmp Assets/AppIcon.icns dist/DiskWing.app/Contents/Resources/AppIcon.icns
           cmp design/brand/macos/DiskWing.icns Assets/AppIcon.icns
           dist/DiskWing.app/Contents/MacOS/CacheSSDHelper self-check
+          plutil -lint dist/DiskWing.app/Contents/Resources/en.lproj/InfoPlist.strings
+          plutil -lint dist/DiskWing.app/Contents/Resources/pt-BR.lproj/InfoPlist.strings
 
   updater:
     runs-on: macos-15

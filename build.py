@@ -95,6 +95,16 @@ def notarize(stage, profile):
         archive.unlink(missing_ok=True)
 
 
+def localized_usage_descriptions(info):
+    english = {
+        'NSDocumentsFolderUsageDescription': 'Scan document names and sizes and review actions chosen by you.',
+        'NSDownloadsFolderUsageDescription': 'Find large downloaded files and review available actions.',
+        'NSDesktopFolderUsageDescription': 'Scan Desktop files when you choose this folder.',
+        'NSRemovableVolumesUsageDescription': 'Scan the selected SSD and copy caches after your review.'
+    }
+    return {'en': english, 'pt-BR': {key: info[key] for key in english}}
+
+
 def validate_output(output):
     if output.is_symlink() or output.suffix != '.app':
         raise ValueError('Output must be a regular .app directory, without a symbolic link.')
@@ -166,6 +176,10 @@ def main(argv=None):
             'CFBundleIconFile': 'AppIcon.icns'
         }
         info.update(update_settings)
+        for language, descriptions in localized_usage_descriptions(info).items():
+            directory = resources / (language + '.lproj')
+            directory.mkdir()
+            (directory / 'InfoPlist.strings').write_text('\n'.join(json.dumps(key) + ' = ' + json.dumps(value, ensure_ascii=False) + ';' for key, value in descriptions.items()) + '\n')
         shutil.copyfile(PROJECT / 'Assets/AppIcon.icns', resources / 'AppIcon.icns')
         shutil.copyfile(PROJECT / 'LICENSE', resources / 'LICENSE')
         shutil.copyfile(PROJECT / 'THIRD_PARTY_NOTICES.md', resources / 'THIRD_PARTY_NOTICES.md')
