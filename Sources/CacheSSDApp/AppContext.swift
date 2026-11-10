@@ -223,9 +223,30 @@ final class SampleAvailability: @unchecked Sendable {
     }
     func personalActions() -> PersonalActions {
         guard let root = container else { return PersonalActions(home: home, store: store) }
+        let identity = containerIdentity
         return PersonalActions(home: home, store: store, trashHandler: { source in
             let path = root.appendingPathComponent("sample-trash/\(UUID().uuidString)/\(source.lastPathComponent)")
+            func validate() throws {
+                var info = stat()
+                guard let identity, lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+                      Int64(info.st_dev) == identity.device, UInt64(info.st_ino) == identity.inode,
+                      Paths.contains(source, in: root), Paths.physicalURL(source) == source.standardizedFileURL else {
+                    throw CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste."))
+                }
+                var ancestor = root
+                let components = path.pathComponents.dropFirst(root.pathComponents.count)
+                for component in components {
+                    ancestor.appendPathComponent(component)
+                    if lstat(ancestor.path, &info) != 0 {
+                        if errno == ENOENT { break }
+                        throw CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste."))
+                    }
+                    guard info.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste.")) }
+                }
+            }
+            try validate()
             try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try validate()
             try FileManager.default.moveItem(at: source, to: path); return path
         })
     }
