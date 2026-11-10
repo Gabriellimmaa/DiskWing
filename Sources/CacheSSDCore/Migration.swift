@@ -18,9 +18,13 @@ public final class MigrationEngine {
     private let home: URL
     private let volumeProvider: (String) -> VolumeInfo?
     private let verifyNative: Bool
+    private let busyCheck: BusyCheck
     private let checkpoint: (OperationJournal) throws -> Void
-    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, volumeProvider: @escaping (String) -> VolumeInfo? = { Volumes.find(uuid: $0) }, verifyNative: Bool = true, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, volumeProvider: @escaping (String) -> VolumeInfo? = { Volumes.find(uuid: $0) }, verifyNative: Bool = true,
+                busyCheck: @escaping BusyCheck = { try BusyInspector.inspect(paths: $0, tool: $1) },
+                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
         self.store = store; self.home = home; self.volumeProvider = volumeProvider; self.verifyNative = verifyNative; self.checkpoint = checkpoint
+        self.busyCheck = busyCheck
     }
 
     public func migrate(toolID: String, removeLocal: Bool, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
@@ -33,9 +37,9 @@ public final class MigrationEngine {
         guard let uuid = settings.selectedVolumeUUID, let volume = volumeProvider(uuid), volume.uuid.caseInsensitiveCompare(uuid) == .orderedSame, volume.isWritable, !volume.isInternal else { throw CacheSSDError.message(L10n.text("Conecte o SSD selecionado e confirme que ele permite gravação.")) }
         try FileTree.validateDestination(URL(fileURLWithPath: volume.path))
         guard tool.source.standardizedFileURL == tool.source.resolvingSymlinksInPath(), FileManager.default.fileExists(atPath: tool.source.path) else { throw CacheSSDError.message(L10n.text("O cache local está ausente ou usa um link personalizado. Ele não será alterado.")) }
-        let busy = try BusyInspector.inspect(paths: [tool.source], tool: tool.id)
+        let busy = try busyCheck([tool.source], tool.id)
         guard busy.isEmpty else { throw CacheSSDError.message(L10n.text("Encerre antes: ") + busy.map { "\($0.name) (\($0.pid))" }.joined(separator: ", ")) }
-        let measurement = FileTree.measure(tool.source)
+        let measurement = FileTree.measure(tool.source, cancellation: cancellation, progress: progress)
         guard measurement.isComplete else { throw CacheSSDError.message(L10n.text("A medição ficou incompleta. A origem será preservada.")) }
         guard measurement.logical > 0 else { throw CacheSSDError.message(L10n.text("O cache local está vazio.")) }
         guard volume.freeBytes > max(measurement.logical, measurement.allocated) + 536_870_912 else { throw CacheSSDError.message(L10n.text("O SSD não tem espaço suficiente para a cópia e a margem de segurança.")) }
@@ -89,7 +93,7 @@ public final class MigrationEngine {
             var originRemoved = false
             if removeLocal && tool.canReleaseLocal {
                 try validateVolume()
-                let stillBusy = try BusyInspector.inspect(paths: [tool.source], tool: tool.id)
+                let stillBusy = try busyCheck([tool.source], tool.id)
                 if stillBusy.isEmpty {
                     let latest = try FileTree.digest(tool.source, tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
                     guard latest == original, tool.source.standardizedFileURL == tool.source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("A origem mudou após a verificação; ela foi mantida.")) }
@@ -172,21 +176,21 @@ public final class MigrationEngine {
     public func restore(toolID: String, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         guard let tool = CacheCatalog.find(toolID, home: home) else { throw CacheSSDError.message(L10n.text("Ferramenta desconhecida.")) }
-        var settings = store.settings()
+        let settings = store.settings()
         guard let location = settings.locations[toolID], let volume = volumeProvider(location.volumeUUID) else { throw CacheSSDError.message(L10n.text("Conecte o SSD para restaurar a cópia. O cache local também pode ser recriado normalmente pela ferramenta.")) }
         guard location.relativePath.hasPrefix("MacCaches/CacheSSD/" + settings.installationID + "/" + toolID + "/"), location.relativePath.split(separator: "/").allSatisfy({ Paths.safeComponent(String($0)) }) else { throw CacheSSDError.message(L10n.text("Caminho de recuperação inválido.")) }
         let root = URL(fileURLWithPath: volume.path).appendingPathComponent(location.relativePath)
         let source = tool.payload(at: root)
         guard root.standardizedFileURL == root.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O caminho da cópia foi alterado.")) }
-        guard try BusyInspector.inspect(paths: [source, tool.source], tool: toolID).isEmpty else { throw CacheSSDError.message(L10n.text("Encerre a ferramenta antes da restauração.")) }
+        guard try busyCheck([source, tool.source], toolID).isEmpty else { throw CacheSSDError.message(L10n.text("Encerre a ferramenta antes da restauração.")) }
         guard tool.source.standardizedFileURL == tool.source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O cache local foi redirecionado.")) }
-        let localSize = FileTree.measure(tool.source)
+        let localSize = FileTree.measure(tool.source, cancellation: cancellation, progress: progress)
         guard (localSize.isComplete || localSize.missing), localSize.logical == 0 else { throw CacheSSDError.message(L10n.text("Já existe cache local. Use somente o Mac para preservá-lo; ele não será sobrescrito.")) }
-        let externalSize = FileTree.measure(source)
+        let externalSize = FileTree.measure(source, cancellation: cancellation, progress: progress)
         guard externalSize.isComplete else { throw CacheSSDError.message(L10n.text("A cópia no SSD não pode ser lida completamente.")) }
         guard Volumes.free(at: home) > externalSize.logical + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço suficiente no Mac para restaurar esta cópia.")) }
         let operationID = UUID()
-        let safety = try OperationContext(store: store, kind: "restore", source: source, destination: tool.source, toolID: toolID, id: operationID, checkpoint: checkpoint)
+        let safety = try OperationContext(store: store, kind: "restore", source: source, destination: tool.source, toolID: toolID, id: operationID, sourceVolumeUUID: volume.uuid, checkpoint: checkpoint)
         let temp = tool.source.deletingLastPathComponent().appendingPathComponent(".CacheSSD-restore-\(operationID.uuidString)")
         safety.journal.staging = temp.path
         do {
@@ -199,16 +203,17 @@ public final class MigrationEngine {
                   try FileTree.digest(source, tool: toolID, cancellation: cancellation, workspace: store.base, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A cópia mudou ou a restauração não passou pela conferência.")) }
             safety.journal.destinationDigest = digest
             try safety.advance(.copyVerified)
-            guard try BusyInspector.inspect(paths: [source, tool.source], tool: toolID).isEmpty else { throw CacheSSDError.message(L10n.text("O cache passou a ser utilizado; a troca foi adiada.")) }
+            guard try busyCheck([source, tool.source], toolID).isEmpty else { throw CacheSSDError.message(L10n.text("O cache passou a ser utilizado; a troca foi adiada.")) }
             if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Restauração cancelada; cópias preservadas.")) }
             try safety.advance(.publishing)
-            if FileManager.default.fileExists(atPath: tool.source.path) {
-                guard (try FileManager.default.contentsOfDirectory(atPath: tool.source.path)).isEmpty else { throw CacheSSDError.message(L10n.text("O cache local foi utilizado durante a restauração; a troca foi adiada.")) }
-                try FileManager.default.removeItem(at: tool.source)
-            }
-            try FileManager.default.moveItem(at: temp, to: tool.source)
+            try RestorePublication.publish(temp, to: tool.source, journal: &safety.journal, store: store)
             try safety.advance(.published)
-            settings.locations.removeValue(forKey: toolID); try store.save(settings)
+            var latest = try store.read(AppSettings.self, name: "settings.json")
+            if let active = latest.locations[toolID] {
+                guard latest.installationID == settings.installationID, active.toolID == toolID,
+                      active.volumeUUID == location.volumeUUID, active.relativePath == location.relativePath else { throw CacheSSDError.message(L10n.text("A restauração encontrou conteúdo ou configuração diferente. As cópias foram preservadas para revisão.")) }
+                latest.locations.removeValue(forKey: toolID); try store.save(latest)
+            }
             try store.append(OperationRecord(title: "\(tool.name) restaurado", detail: "Cache novamente no Mac. A cópia do SSD foi preservada.", recoveryPath: root.path))
             try safety.advance(.completed)
         } catch {

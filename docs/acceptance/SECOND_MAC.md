@@ -34,8 +34,14 @@ The default CI runs this temporary-installation suite. Filesystem images and lar
 
 ## Human acceptance on another Mac
 
-Copy REVIEW_TEMPLATE.json to private .local/acceptance/ and record an anonymous machine alias, candidate version/build/helper SHA-256, reviewer alias and timezone-qualified date. The reviewer must attest that this is another physical Mac; automated reports deliberately collect no hardware identifier and cannot establish that fact. Do not publish the private record or raw observations.
+Copy REVIEW_TEMPLATE.json to private .local/acceptance/ and record an anonymous machine alias, candidate commit/version/build/full archive SHA-256 from its manifest, reviewer alias and timezone-qualified date. The reviewer must attest that this is another physical Mac; automated reports deliberately collect no hardware identifier and cannot establish that fact. Do not publish the private record or raw observations.
 
 Use generated sample folders/projects. Record both PT/EN results for explorer, cache review, partial/unavailable states, keyboard focus/cancellation, VoiceOver reading order/labels, source/destination facts and history/recovery. Follow [interface acceptance](../ACCESSIBILITY.md). Record install, restore, disable, restart/new-terminal behavior and reviewed removal under [distribution](../DISTRIBUTION.md). An automated fixture shell file is not an active personal shell session.
 
 Mark each check passed/failed/blocked/not-run with an evidence reference; do not change not-run to passed because the helper passed. Keep critical findings as issues. Actual signing/update checks need their own credentials and acceptance evidence. Physical cable/power tests require a separate disposable device, never the development SSD. Beta participation still requires the [ten-person/seven-day protocol](../beta/PROTOCOL.md); this kit enrolls nobody and sets no release-readiness declaration.
+
+## Exact archive verification
+
+Prefer scripts/qualify_candidate.py for a released or local candidate: supply the manifest, an independently reviewed expected candidate JSON, an existing internal disposable workspace and a new report. It validates the full archive before extraction and includes candidate identity in the lifecycle report. See --help for arguments. A dev/candidate pass is local diagnostic evidence and cannot satisfy production readiness. Keep the original ZIP unchanged throughout external acceptance.
+
+The worksheet is deliberately not a release-readiness claim. After a responsible human verifies underlying observations, create the candidate-bound review JSON and its SHA-256 pointer described in beta/PROTOCOL.md. No worksheet defaults count as successful checks. A different ZIP invalidates approval even if helper bytes are identical.

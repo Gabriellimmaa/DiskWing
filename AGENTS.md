@@ -33,3 +33,7 @@ Talk to the maintainer in Portuguese. Public overview/contribution docs are in E
 .local/ is private, ignored migration material. Never stage it or publish raw conversations, local inventories, UUIDs, personal paths, certificates, or credentials. Keep builds/dependencies out of Git. Public context documents are the durable project memory; original chats remain outside Git.
 
 Do not add telemetry, automatic cleanup, a public release, signing credentials, or updater infrastructure without an explicitly approved scope. Do not overwrite unrelated local work. A successful local build is not notarization or verification on another Mac.
+
+## Authorized autonomous delivery
+
+The maintainer approved docs/AUTONOMOUS-DELIVERY.md: implement/review/test/PR/merge/publish within v1 scope, without purchasing services. Coordinator plus three workers maximum; use separate SSD worktrees and explicit file ownership. Coordinator alone integrates and updates shared docs/translations/traceability. An independent reviewer must examine each implementation; serialize native/filesystem/scale runs and merges. Do not stop after one PR while executable tasks remain. Record task status, evidence, SHA/branch and next action in TRACEABILITY.json before handoff. External signing/physical-Mac/human gates remain pending until actual evidence exists. The authorization does not permit personal cache migrations, activating real integrations for tests, or private participant outreach.

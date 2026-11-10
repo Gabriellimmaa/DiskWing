@@ -1,16 +1,20 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "candidate": null,
   "participants": [],
   "distribution": {
     "developerIDVerified": false,
     "notarizationStapled": false,
     "signedUpdaterVerified": false,
     "secondMacRecoveryVerified": false,
+    "minimumMacOSVerified": false,
     "voiceOverVerified": false,
     "keyboardVerified": false,
-    "bothLanguagesVerified": false
+    "bothLanguagesVerified": false,
+    "physicalFaultRecoveryVerified": false
   },
+  "distributionReviews": {},
   "criticalBlockers": [
-    "Human beta and distribution checks pending"
+    "Candidate-bound human beta, physical and signed distribution evidence pending"
   ]
 }

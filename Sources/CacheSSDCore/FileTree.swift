@@ -16,15 +16,24 @@ public struct FileMeasurement: Sendable {
     public var entries = 0
     public var unreadablePaths: [String] = []
     public var missing = false
-    public var isComplete: Bool { !missing && unreadablePaths.isEmpty }
+    public var isCancelled = false
+    public var reachedLimit = false
+    public var isComplete: Bool { !missing && !isCancelled && !reachedLimit && unreadablePaths.isEmpty }
 }
 
 public enum FileTree {
+    /// Staging and publication are siblings; RENAME_EXCL closes the reappearance race.
+    static func publishWithoutReplacing(_ source: URL, to target: URL) throws {
+        guard renamex_np(source.path, target.path, UInt32(RENAME_EXCL)) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível publicar a cópia sem substituir arquivos. As cópias foram preservadas.")) }
+    }
     public static func validateDestination(_ directory: URL) throws {
         guard (try directory.resourceValues(forKeys: [.volumeSupportsExtendedSecurityKey])).volumeSupportsExtendedSecurity == true else { throw CacheSSDError.message(L10n.text("O destino não oferece as permissões necessárias para preservar os metadados. Escolha um volume compatível, como APFS.")) }
     }
-    public static func measure(_ root: URL) -> FileMeasurement {
+    private enum MeasurementStop: Error { case stopped }
+    public static func measure(_ root: URL, cancellation: CancellationFlag = CancellationFlag(), maxEntries: Int = 1_000_000, progress: (String) -> Void = { _ in }) -> FileMeasurement {
         var result = FileMeasurement(), rootInfo = stat()
+        guard !cancellation.isCancelled else { result.isCancelled = true; return result }
+        guard maxEntries > 0 else { result.reachedLimit = true; return result }
         guard lstat(root.path, &rootInfo) == 0 else {
             if errno == ENOENT { result.missing = true } else { result.unreadablePaths = [root.path] }
             return result
@@ -34,20 +43,24 @@ public enum FileTree {
             return result
         }
         guard rootInfo.st_mode & S_IFMT == S_IFDIR else { result.unreadablePaths = [root.path]; return result }
-        guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { url, _ in result.unreadablePaths.append(url.path); return true }) else {
+        guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { url, _ in if result.unreadablePaths.count < 200 { result.unreadablePaths.append(url.path) }; return true }) else {
             result.unreadablePaths.append(root.path); return result
         }
         var seen = Set<String>()
         try? enumerate(e) { url in
+            if cancellation.isCancelled { result.isCancelled = true; throw MeasurementStop.stopped }
+            if result.entries >= maxEntries { result.reachedLimit = true; throw MeasurementStop.stopped }
             result.entries += 1
             var metadata = stat()
-            guard lstat(url.path, &metadata) == 0 else { result.unreadablePaths.append(url.path); return }
-            if metadata.st_dev != rootInfo.st_dev { result.unreadablePaths.append(url.path); if metadata.st_mode & S_IFMT == S_IFDIR { e.skipDescendants() }; return }
+            guard lstat(url.path, &metadata) == 0 else { if result.unreadablePaths.count < 200 { result.unreadablePaths.append(url.path) }; return }
+            if metadata.st_dev != rootInfo.st_dev { if result.unreadablePaths.count < 200 { result.unreadablePaths.append(url.path) }; if metadata.st_mode & S_IFMT == S_IFDIR { e.skipDescendants() }; return }
             if metadata.st_mode & S_IFMT == S_IFREG {
                 result.logical += Int64(metadata.st_size)
                 if metadata.st_nlink <= 1 || seen.insert("\(metadata.st_dev):\(metadata.st_ino)").inserted { result.allocated += Int64(metadata.st_blocks) * 512 }
             }
+            if result.entries % 200 == 0 { progress("Medindo \(result.entries) itens…") }
         }
+        result.isCancelled = result.isCancelled || cancellation.isCancelled
         return result
     }
 
@@ -109,9 +122,13 @@ public enum FileTree {
         var opened = stat()
         guard fstat(fd, &opened) == 0, opened.st_dev == initial.st_dev, opened.st_ino == initial.st_ino, opened.st_mode & S_IFMT == S_IFREG, opened.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message(L10n.text("O arquivo mudou durante a leitura.")) }
         var hash = SHA256()
-        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
-            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada.")) }
-            hash.update(data: data)
+        var finished = false
+        while !finished {
+            try autoreleasepool {
+                guard let data = try handle.read(upToCount: 1_048_576), !data.isEmpty else { finished = true; return }
+                if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada.")) }
+                hash.update(data: data)
+            }
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }

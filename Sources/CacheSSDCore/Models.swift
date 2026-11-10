@@ -10,6 +10,21 @@ public enum ContentCategory: String, Codable, CaseIterable, Sendable {
     case unknown = "Outros arquivos"
 }
 
+public enum ScanCoverage: String, Codable, Sendable {
+    case complete, partial, unknown
+    var databaseValue: Int64 { self == .complete ? 0 : self == .partial ? 1 : 2 }
+    init(databaseValue: Int64) { self = databaseValue == 0 ? .complete : databaseValue == 1 ? .partial : .unknown }
+    static func legacy(issue: String?, isLink: Bool, children: [ScanItem]) -> ScanCoverage {
+        if isLink { return .unknown }
+        if let issue {
+            if issue.hasPrefix("Blocos ") || issue.hasPrefix("Exibindo os ") { }
+            else if issue.contains("nuvem") || issue.contains("parcial") || issue.contains("limite") { return .partial }
+            else { return .unknown }
+        }
+        return children.contains { !$0.isSymbolicLink && $0.coverage != .complete } ? .partial : .complete
+    }
+}
+
 public struct ScanItem: Identifiable, Codable, Sendable {
     public var id: String { path }
     public let path: String
@@ -23,7 +38,27 @@ public struct ScanItem: Identifiable, Codable, Sendable {
     public let issue: String?
     public let children: [ScanItem]
     public var fileIdentity: FileIdentity? = nil
+    public var coverage: ScanCoverage
     public var url: URL { URL(fileURLWithPath: path) }
+
+    public init(path: String, name: String, isDirectory: Bool, isSymbolicLink: Bool, logicalBytes: Int64, allocatedBytes: Int64, fileCount: Int, category: ContentCategory, issue: String?, children: [ScanItem], fileIdentity: FileIdentity? = nil, coverage: ScanCoverage? = nil) {
+        self.path = path; self.name = name; self.isDirectory = isDirectory; self.isSymbolicLink = isSymbolicLink
+        self.logicalBytes = logicalBytes; self.allocatedBytes = allocatedBytes; self.fileCount = fileCount
+        self.category = category; self.issue = issue; self.children = children; self.fileIdentity = fileIdentity
+        self.coverage = coverage ?? ScanCoverage.legacy(issue: issue, isLink: isSymbolicLink, children: children)
+    }
+    private enum CodingKeys: String, CodingKey { case path, name, isDirectory, isSymbolicLink, logicalBytes, allocatedBytes, fileCount, category, issue, children, fileIdentity, coverage }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        path = try values.decode(String.self, forKey: .path); name = try values.decode(String.self, forKey: .name)
+        isDirectory = try values.decode(Bool.self, forKey: .isDirectory); isSymbolicLink = try values.decode(Bool.self, forKey: .isSymbolicLink)
+        logicalBytes = try values.decode(Int64.self, forKey: .logicalBytes); allocatedBytes = try values.decode(Int64.self, forKey: .allocatedBytes)
+        fileCount = try values.decode(Int.self, forKey: .fileCount); category = try values.decode(ContentCategory.self, forKey: .category)
+        issue = try values.decodeIfPresent(String.self, forKey: .issue); children = try values.decode([ScanItem].self, forKey: .children)
+        fileIdentity = try values.decodeIfPresent(FileIdentity.self, forKey: .fileIdentity)
+        if values.contains(.coverage) { coverage = (try? values.decode(ScanCoverage.self, forKey: .coverage)) ?? .unknown }
+        else { coverage = ScanCoverage.legacy(issue: issue, isLink: isSymbolicLink, children: children) }
+    }
 }
 
 public struct ScanReport: Codable, Sendable {
@@ -37,7 +72,7 @@ public struct ScanReport: Codable, Sendable {
     public let isCancelled: Bool
     public let reachedLimit: Bool
     public let largestFiles: [ScanItem]
-    public var isPartial: Bool { isCancelled || reachedLimit || !unreadablePaths.isEmpty }
+    public var isPartial: Bool { isCancelled || reachedLimit || !unreadablePaths.isEmpty || !skippedMounts.isEmpty || root.coverage != .complete }
 }
 
 public struct ScanProgress: Sendable {
@@ -63,6 +98,10 @@ public struct VolumeInfo: Identifiable, Codable, Sendable {
     public let freeBytes: Int64
     public let isInternal: Bool
     public let isWritable: Bool
+    public init(uuid: String, name: String, path: String, totalBytes: Int64, freeBytes: Int64, isInternal: Bool, isWritable: Bool) {
+        self.uuid = uuid; self.name = name; self.path = path; self.totalBytes = totalBytes; self.freeBytes = freeBytes
+        self.isInternal = isInternal; self.isWritable = isWritable
+    }
 }
 
 public struct OperationRecord: Identifiable, Codable, Sendable {

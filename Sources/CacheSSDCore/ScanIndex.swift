@@ -41,7 +41,8 @@ public final class ScanIndex: @unchecked Sendable {
             throw CacheSSDError.message(L10n.text("Não foi possível abrir o índice local."))
         }
         sqlite3_busy_timeout(db, 1000)
-        guard Self.integer(try execute("PRAGMA user_version").first ?? [:], "user_version") <= 2 else { throw CacheSSDError.message(L10n.text("O índice pertence a uma versão mais recente. Atualize o aplicativo.")) }
+        let previousVersion = Self.integer(try execute("PRAGMA user_version").first ?? [:], "user_version")
+        guard previousVersion <= 3 else { throw CacheSSDError.message(L10n.text("O índice pertence a uma versão mais recente. Atualize o aplicativo.")) }
         try execute("PRAGMA journal_mode=WAL")
         try execute("PRAGMA synchronous=FULL")
         try execute("PRAGMA cache_size=-4096")
@@ -70,9 +71,24 @@ public final class ScanIndex: @unchecked Sendable {
         for name in ["device", "inode", "identitySize", "identityTime"] where !columns.contains(name) {
             try execute("ALTER TABLE entries ADD COLUMN " + name + " INTEGER")
         }
+        if !columns.contains("coverage") {
+            try execute("ALTER TABLE entries ADD COLUMN coverage INTEGER NOT NULL DEFAULT 0")
+        }
+        if previousVersion < 3 {
+            // Historical issues are stored in the original language, independent
+            // of the current interface language. Unknown issues stay conservative.
+            try execute("UPDATE entries SET coverage=CASE WHEN issue LIKE '%nuvem%' OR issue LIKE '%parcial%' OR issue LIKE '%limite%' THEN 1 ELSE 2 END WHERE issue IS NOT NULL AND issue NOT LIKE 'Blocos %' AND issue NOT LIKE 'Exibindo os %'")
+            try execute("UPDATE sessions SET state='partial' WHERE state='complete' AND id IN (SELECT session FROM entries WHERE link=0 AND coverage<>0)")
+            try execute("UPDATE entries SET coverage=1 WHERE directory=1 AND coverage=0 AND session IN (SELECT id FROM sessions WHERE state<>'complete')")
+        }
         try execute("CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,root TEXT NOT NULL,volume TEXT NOT NULL,time REAL NOT NULL,state TEXT NOT NULL,logical INTEGER NOT NULL,allocated INTEGER NOT NULL,folderComplete INTEGER NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS folder_samples(snapshot TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,path TEXT NOT NULL,logical INTEGER NOT NULL,allocated INTEGER NOT NULL,PRIMARY KEY(snapshot,path))")
-        try execute("PRAGMA user_version=2")
+        if previousVersion < 3 {
+            // Old snapshots did not record coverage and their source trees may
+            // have expired. Require fresh comparable samples rather than infer it.
+            try execute("UPDATE snapshots SET state='partial' WHERE state='complete'")
+        }
+        try execute("PRAGMA user_version=3")
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
     deinit { if let db { sqlite3_close_v2(db) } }
@@ -160,20 +176,27 @@ public final class ScanIndex: @unchecked Sendable {
         if case .integer = row["device"] {
             identity = FileIdentity(device: integer(row,"device"), inode: UInt64(bitPattern: integer(row,"inode")), size: integer(row,"identitySize"), modifiedNanoseconds: integer(row,"identityTime"))
         } else { identity = nil }
-        return ScanItem(path: path, name: string(row, "name"), isDirectory: integer(row, "directory") == 1, isSymbolicLink: integer(row, "link") == 1, logicalBytes: integer(row, "logical"), allocatedBytes: integer(row, "allocated"), fileCount: Int(integer(row, "files")), category: ContentCategory(rawValue: string(row, "category")) ?? .unknown, issue: issue.isEmpty ? nil : issue, children: children, fileIdentity: identity)
+        return ScanItem(path: path, name: string(row, "name"), isDirectory: integer(row, "directory") == 1, isSymbolicLink: integer(row, "link") == 1, logicalBytes: integer(row, "logical"), allocatedBytes: integer(row, "allocated"), fileCount: Int(integer(row, "files")), category: ContentCategory(rawValue: string(row, "category")) ?? .unknown, issue: issue.isEmpty ? nil : issue, children: children, fileIdentity: identity, coverage: ScanCoverage(databaseValue: integer(row, "coverage")))
     }
     func begin(root: URL, id: UUID, volume: String, started: Date) throws {
+        // Reuse the oldest tree's pages before allocating a third tree. Waiting
+        // until finish can exhaust a budget that comfortably fits two trees.
+        try execute("DELETE FROM sessions WHERE id IN (SELECT id FROM sessions WHERE root=? ORDER BY started DESC LIMIT -1 OFFSET 1)", [.text(root.path)])
+        try execute("PRAGMA wal_checkpoint(TRUNCATE)")
         try execute("INSERT INTO sessions(id,root,volume,started,state) VALUES(?,?,?,?,?)", [.text(id.uuidString),.text(root.path),.text(volume),.real(started.timeIntervalSince1970),.text("scanning")])
         try execute("BEGIN IMMEDIATE")
     }
     func add(id: UUID, relative: String, item: ScanItem, depth: Int) throws {
         let parent: SQLValue = relative.isEmpty ? .null : .text(relative.contains("/") ? String(relative[..<relative.lastIndex(of: "/")!]) : "")
         let search = relative.folding(options: [.caseInsensitive,.diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-        try execute("INSERT INTO entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        try execute("INSERT INTO entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     [.text(id.uuidString),.text(relative),parent,.text(item.name),.integer(item.isDirectory ? 1 : 0),.integer(item.isSymbolicLink ? 1 : 0),
                      .integer(item.logicalBytes),.integer(item.allocatedBytes),.integer(Int64(item.fileCount)),.text(item.category.rawValue),item.issue.map(SQLValue.text) ?? .null,.integer(Int64(depth)),.text(search),
                      item.fileIdentity.map { .integer($0.device) } ?? .null, item.fileIdentity.map { .integer(Int64(bitPattern: $0.inode)) } ?? .null,
-                     item.fileIdentity?.size.map(SQLValue.integer) ?? .null, item.fileIdentity?.modifiedNanoseconds.map(SQLValue.integer) ?? .null])
+                     item.fileIdentity?.size.map(SQLValue.integer) ?? .null, item.fileIdentity?.modifiedNanoseconds.map(SQLValue.integer) ?? .null, .integer(item.coverage.databaseValue)])
+    }
+    func markCoverage(id: UUID, relative: String, coverage: ScanCoverage, issue: String? = nil) throws {
+        try execute("UPDATE entries SET coverage=MAX(coverage,?),issue=COALESCE(?,issue) WHERE session=? AND path=?", [.integer(coverage.databaseValue), issue.map(SQLValue.text) ?? .null, .text(id.uuidString), .text(relative)])
     }
     func finish(id: UUID, depth: Int, logical: Int64, allocated: Int64, files: Int, entries: Int, partial: Bool, cancelled: Bool) throws {
         for level in stride(from: depth, through: 0, by: -1) {
@@ -181,12 +204,18 @@ public final class ScanIndex: @unchecked Sendable {
             UPDATE entries AS node SET
               logical=COALESCE((SELECT SUM(child.logical) FROM entries child WHERE child.session=node.session AND child.parent=node.path),0),
               allocated=COALESCE((SELECT SUM(child.allocated) FROM entries child WHERE child.session=node.session AND child.parent=node.path),0),
-              files=COALESCE((SELECT SUM(child.files) FROM entries child WHERE child.session=node.session AND child.parent=node.path),0)
-            WHERE node.session=? AND node.depth=? AND node.directory=1 AND node.link=0 AND node.issue IS NULL
+              files=COALESCE((SELECT SUM(child.files) FROM entries child WHERE child.session=node.session AND child.parent=node.path),0),
+              coverage=CASE
+                WHEN node.coverage=2 AND NOT EXISTS(SELECT 1 FROM entries child WHERE child.session=node.session AND child.parent=node.path) THEN 2
+                WHEN node.coverage<>0 OR EXISTS(SELECT 1 FROM entries child WHERE child.session=node.session AND child.parent=node.path AND child.link=0 AND child.coverage<>0) THEN 1
+                ELSE 0 END
+            WHERE node.session=? AND node.depth=? AND node.directory=1 AND node.link=0
             """, [.text(id.uuidString),.integer(Int64(level))])
         }
         try execute("UPDATE entries SET logical=?,allocated=?,files=? WHERE session=? AND path=''", [.integer(logical),.integer(allocated),.integer(Int64(files)),.text(id.uuidString)])
-        try execute("UPDATE sessions SET finished=?,state=?,logical=?,allocated=?,entries=? WHERE id=?", [.real(Date().timeIntervalSince1970),.text(cancelled ? "cancelled" : partial ? "partial" : "complete"),.integer(logical),.integer(allocated),.integer(Int64(entries)),.text(id.uuidString)])
+        if partial || cancelled { try markCoverage(id: id, relative: "", coverage: .partial) }
+        let rootCoverage = Self.integer(try execute("SELECT coverage FROM entries WHERE session=? AND path=''", [.text(id.uuidString)]).first ?? [:], "coverage")
+        try execute("UPDATE sessions SET finished=?,state=?,logical=?,allocated=?,entries=? WHERE id=?", [.real(Date().timeIntervalSince1970),.text(cancelled ? "cancelled" : partial || rootCoverage != 0 ? "partial" : "complete"),.integer(logical),.integer(allocated),.integer(Int64(entries)),.text(id.uuidString)])
         try execute("COMMIT")
         try captureSnapshot(sessionID: id)
         // Keep two full trees per root. Summaries remain independently bounded in Store.
@@ -201,7 +230,7 @@ public final class ScanIndex: @unchecked Sendable {
         guard let session = try session(id: id), let row = try execute("SELECT * FROM entries WHERE session=? AND path=''", [.text(id.uuidString)]).first else { throw CacheSSDError.message(L10n.text("Análise incompleta sem raiz disponível.")) }
         let children = try page(sessionID: id, parent: session.root).items
         let largest = try page(sessionID: id, filesOnly: true, limit: 60).items
-        return ScanReport(id: id, root: Self.item(row, root: session.root, children: children), startedAt: session.startedAt, finishedAt: session.finishedAt ?? Date(), examinedEntries: session.entryCount, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: session.state == "cancelled", reachedLimit: reachedLimit || session.state == "partial", largestFiles: largest)
+        return ScanReport(id: id, root: Self.item(row, root: session.root, children: children), startedAt: session.startedAt, finishedAt: session.finishedAt ?? Date(), examinedEntries: session.entryCount, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: session.state == "cancelled", reachedLimit: reachedLimit, largestFiles: largest)
     }
     public func byteSize() -> Int64 {
         let pages = Self.integer((try? execute("PRAGMA page_count"))?.first ?? [:], "page_count")
@@ -253,41 +282,70 @@ public final class IndexedScanner {
     private let home: URL
     private let maxEntries: Int
     private let maxBytes: Int64
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, maxEntries: Int = 1_000_000, maxIndexBytes: Int64 = 536_870_912) {
-        self.home = home; self.maxEntries = maxEntries; maxBytes = maxIndexBytes
+    private let volumeIdentifier: (URL) -> String
+    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, maxEntries: Int = 1_000_000, maxIndexBytes: Int64 = 536_870_912,
+                volumeIdentifier: @escaping (URL) -> String = { (try? $0.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }) {
+        self.home = home; self.maxEntries = maxEntries; maxBytes = maxIndexBytes; self.volumeIdentifier = volumeIdentifier
+    }
+    static func category(_ path: String, home: URL, cacheSources: [String]) -> ContentCategory {
+        if cacheSources.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cache }
+        if path.contains("/Library/Developer") || path.contains("/Library/Android") || path.contains("/node_modules/") || path.contains("/.gradle/") { return .developer }
+        if path.hasSuffix(".app") || path.contains(".app/") || path.hasSuffix(".photoslibrary") { return .application }
+        if path.contains("/Library/") || path.hasPrefix("/System/") { return .system }
+        if Paths.contains(URL(fileURLWithPath: path), in: home) { return .personal }
+        if path.hasPrefix("/private/") { return .system }
+        return .unknown
     }
     public func scan(_ requested: URL, index: ScanIndex, cancellation: CancellationFlag = CancellationFlag(), progress: (ScanProgress) -> Void = { _ in }) throws -> ScanReport {
         var rootInfo = stat()
         guard lstat(requested.path, &rootInfo) == 0, rootInfo.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("Selecione uma pasta real disponível.")) }
         let root = Paths.physicalURL(requested), id = UUID(), started = Date()
         let rootPrefix = root.path == "/" ? "/" : root.path + "/"
-        let volume = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? ""
+        let volume = volumeIdentifier(root)
         let categories = CacheCatalog.all(home: home).map { $0.source.path }
         func category(_ path: String) -> ContentCategory {
-            if categories.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cache }
-            if path.contains("/Library/Developer") || path.contains("/Library/Android") || path.contains("/node_modules/") || path.contains("/.gradle/") { return .developer }
-            if path.hasSuffix(".app") || path.contains(".app/") || path.hasSuffix(".photoslibrary") { return .application }
-            if path.contains("/Library/") || path.hasPrefix("/System/") || path.hasPrefix("/private/") { return .system }
-            if Paths.contains(URL(fileURLWithPath: path), in: home) { return .personal }; return .unknown
+            Self.category(path, home: home, cacheSources: categories)
         }
         try index.begin(root: root, id: id, volume: volume, started: started)
         var count = 1, logical: Int64 = 0, allocated: Int64 = 0, files = 0, maxDepth = 0, limited = false
         var unreadable: [String] = [], mounts: [String] = [], seen = Set<String>(), last = Date.distantPast
+        var enumerationError: Error?
+        func relativePath(_ url: URL) -> String? {
+            if url.path == root.path { return "" }
+            guard url.path.hasPrefix(rootPrefix) else { return nil }
+            return String(url.path.dropFirst(rootPrefix.count))
+        }
+        func markUnavailable(_ url: URL) {
+            if unreadable.count < 200 { unreadable.append(url.path) }
+            guard let relative = relativePath(url) else { return }
+            do { try index.markCoverage(id: id, relative: relative, coverage: .unknown, issue: "Sem acesso; tamanho desconhecido") }
+            catch { enumerationError = error }
+        }
         do {
             let rootItem = ScanItem(path: root.path, name: root.lastPathComponent.isEmpty ? root.path : root.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: 0, allocatedBytes: 0, fileCount: 0, category: category(root.path), issue: nil, children: [])
             try index.add(id: id, relative: "", item: rootItem, depth: 0)
-            guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { url, _ in if unreadable.count < 200 { unreadable.append(url.path) }; return true }) else { throw CacheSSDError.message(L10n.text("Não foi possível enumerar a pasta.")) }
+            guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { url, _ in markUnavailable(url); return true }) else { throw CacheSSDError.message(L10n.text("Não foi possível enumerar a pasta.")) }
             var enumerationDone = false
             while !enumerationDone {
               try autoreleasepool {
                for _ in 0..<256 {
                 guard let url = e.nextObject() as? URL else { enumerationDone = true; break }
-                if cancellation.isCancelled { enumerationDone = true; break }
+                if cancellation.isCancelled {
+                    if let parent = relativePath(url.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
+                    enumerationDone = true; break
+                }
                 if Paths.contains(url, in: index.url.deletingLastPathComponent()) { if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { e.skipDescendants() }; continue }
-                if count >= maxEntries { limited = true; enumerationDone = true; break }
+                if count >= maxEntries {
+                    if let parent = relativePath(url.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
+                    limited = true; enumerationDone = true; break
+                }
                 guard url.path.hasPrefix(rootPrefix) else { throw CacheSSDError.message(L10n.text("A leitura saiu do escopo selecionado.")) }
                 let relative = String(url.path.dropFirst(rootPrefix.count)), depth = relative.split(separator: "/").count
-                if depth > 80 { limited = true; if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { e.skipDescendants() }; continue }
+                if depth > 80 {
+                    limited = true
+                    if let parent = relativePath(url.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
+                    if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { e.skipDescendants() }; continue
+                }
                 maxDepth = max(maxDepth, depth); count += 1
                 var metadata = stat(), issue: String?, bytes: Int64 = 0, blocks: Int64 = 0
                 let valid = lstat(url.path, &metadata) == 0, type = metadata.st_mode & S_IFMT
@@ -307,10 +365,15 @@ public final class IndexedScanner {
                 let item = ScanItem(path: url.path, name: url.lastPathComponent, isDirectory: folder, isSymbolicLink: link, logicalBytes: bytes, allocatedBytes: blocks, fileCount: type == S_IFREG && issue != "Outro volume; analise separadamente" ? 1 : 0, category: category(url.path), issue: issue, children: [], fileIdentity: identity)
                 try index.add(id: id, relative: relative, item: item, depth: depth)
                 if Date().timeIntervalSince(last) > 0.25 { progress(ScanProgress(entries: count, logicalBytes: logical, currentPath: url.path)); last = Date() }
-                if count % 1024 == 0 && (index.byteSize() > maxBytes || Volumes.free(at: index.url.deletingLastPathComponent()) < 268_435_456) { limited = true; enumerationDone = true; break }
+                if count % 1024 == 0 && (index.byteSize() > maxBytes || Volumes.free(at: index.url.deletingLastPathComponent()) < 268_435_456) {
+                    let incomplete = folder ? relative : relativePath(url.deletingLastPathComponent()) ?? ""
+                    try index.markCoverage(id: id, relative: incomplete, coverage: .partial)
+                    limited = true; enumerationDone = true; break
+                }
                }
               }
             }
+            if let enumerationError { throw enumerationError }
             try index.finish(id: id, depth: maxDepth, logical: logical, allocated: allocated, files: files, entries: count, partial: limited || !unreadable.isEmpty || !mounts.isEmpty, cancelled: cancellation.isCancelled)
             return try index.report(id: id, unreadable: unreadable, mounts: mounts, reachedLimit: limited)
         } catch { index.abandon(id: id); throw error }

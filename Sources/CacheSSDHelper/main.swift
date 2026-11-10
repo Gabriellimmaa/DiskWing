@@ -33,6 +33,7 @@ do {
         var excluded = Set<String>()
         if args.contains("--omit-bun") { excluded.insert("bun") }
         if args.contains("--omit-uv") { excluded.insert("uv") }
+        if args.contains("--omit-npm") { excluded.insert("npm") }
         for (key, value) in CacheRouter.environment(settings: settings, excluding: excluded).sorted(by: { $0.key < $1.key }) {
             if !value.contains("\n"), !value.contains("\t") { print("\(key)\t\(value)") }
         }
@@ -75,9 +76,7 @@ do {
         let path = name.contains("/") ? URL(fileURLWithPath: name) : ToolLocator.locate(name)
         guard let executable = path else { throw CacheSSDError.message("Comando não encontrado.") }
         var environment = ProcessInfo.processInfo.environment
-        var excluded = Set<String>()
-        if values.contains(where: { $0.hasPrefix("--backend") || $0.hasPrefix("--global-store") }) { excluded.insert("bun") }
-        if values.contains(where: { $0.hasPrefix("--link-mode") }) { excluded.insert("uv") }
+        let excluded = CacheRouter.commandExclusions(values)
         for (key,value) in CacheRouter.environment(settings: store.settings(), excluding: excluded) where environment[key] == nil { environment[key] = value }
         let child = Process(); child.executableURL = executable; child.arguments = Array(values.dropFirst()); child.environment = environment
         child.standardInput = FileHandle.standardInput; child.standardOutput = FileHandle.standardOutput; child.standardError = FileHandle.standardError

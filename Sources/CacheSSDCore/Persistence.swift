@@ -60,11 +60,15 @@ public final class Store {
     }
     public func pendingConfigurationRecords() -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: base.path)) ?? []
-        return names.filter { $0.hasPrefix("configuration-") && $0.hasSuffix(".json") && (try? read(ConfigurationChange.self, name: $0).state) != "completed" }.sorted()
+        return names.filter { name in
+            guard name.hasPrefix("configuration-"), name.hasSuffix(".json") else { return false }
+            guard let change = try? read(ConfigurationChange.self, name:name) else { return true }
+            return change.schemaVersion != 1 || change.state != "completed"
+        }.sorted()
     }
     public func pruneCompletedOperations(keeping count: Int = 150) throws {
         // Pending and unreadable records are never discarded by retention.
-        for journal in operations().filter({ !$0.isPending }).dropFirst(max(0,count)) {
+        for journal in operations().filter({ $0.schemaVersion == 1 && !$0.isPending }).dropFirst(max(0,count)) {
             try FileManager.default.removeItem(at: base.appendingPathComponent("operation-\(journal.id.uuidString).json"))
         }
     }

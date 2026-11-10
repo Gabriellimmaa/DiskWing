@@ -12,7 +12,7 @@ final class CrashRecoveryTests: XCTestCase {
             try FileManager.default.moveItem(at:source,to:root.appendingPathComponent("private-trash"))
             if point == "afterTrash" { _exit(86) }
             return root.appendingPathComponent("private-trash")
-        },checkpoint:{ journal in if point == "published" && journal.phase == .published { _exit(86) } })
+        },busyCheck:{ _, _ in [] },checkpoint:{ journal in if point == "published" && journal.phase == .published { _exit(86) } })
         _ = try actions.move(home.appendingPathComponent("Downloads/item.txt"),to:root.appendingPathComponent("destination"))
         XCTFail("Crash boundary was not reached")
     }
@@ -28,10 +28,12 @@ final class CrashRecoveryTests: XCTestCase {
             var env = ProcessInfo.processInfo.environment
             env["DISKWING_CRASH_FIXTURE"] = root.path; env["DISKWING_CRASH_POINT"] = point
             let result = try CommandRunner.run(URL(fileURLWithPath:"/usr/bin/xcrun"),["xctest","-XCTest","CacheSSDCoreTests.CrashRecoveryTests/testCrashWorker",Bundle(for:Self.self).bundleURL.path],environment:env,timeout:30)
-            XCTAssertEqual(result.status,86,result.output)
-            let store = Store(base:root.appendingPathComponent("store")), recovery = RecoveryManager(store:store,home:Paths.physicalURL(home))
+            guard result.status == 86 else { XCTFail("Crash checkpoint \(point) was not reached; status \(result.status): \(result.output)"); continue }
+            let store = Store(base:root.appendingPathComponent("store")), recovery = RecoveryManager(store:store,home:Paths.physicalURL(home),busyCheck:{ _, _ in [] })
             let journal = try XCTUnwrap(store.operations().first)
             XCTAssertTrue(journal.isPending)
+            XCTAssertEqual(journal.phase, point == "published" ? .published : .trashing)
+            XCTAssertNotNil(journal.destinationDigest)
             XCTAssertEqual(try String(contentsOf:root.appendingPathComponent("destination/item.txt")),"verified original")
             if point == "afterTrash" {
                 XCTAssertFalse(FileManager.default.fileExists(atPath:source.path))

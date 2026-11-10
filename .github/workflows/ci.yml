@@ -10,6 +10,10 @@ on:
         description: Run the disposable one-million-entry benchmark
         type: boolean
         default: false
+      run_large_copy:
+        description: Run the disposable 4 GiB written-copy qualification
+        type: boolean
+        default: false
       run_filesystems:
         description: Run disposable APFS/ExFAT images and the copy resource benchmark
         type: boolean
@@ -20,12 +24,19 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Require Apple Silicon
+        run: test "$(uname -m)" = arm64
       - name: Create isolated fixture location
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-tests"
@@ -34,8 +45,8 @@ jobs:
         run: swift test -j 2
       - name: Packaging boundary tests
         run: python3 -m unittest discover -s Tests/Packaging -v
-      - name: Build production bundle
-        run: python3 build.py
+      - name: Build ad-hoc development bundle
+        run: python3 build.py --profile dev --version 0.2.0-dev --build-number 3
       - name: Verify signature and approved icon
         run: |
           codesign --verify --deep --strict dist/DiskWing.app
@@ -44,18 +55,52 @@ jobs:
           dist/DiskWing.app/Contents/MacOS/CacheSSDHelper self-check
           plutil -lint dist/DiskWing.app/Contents/Resources/en.lproj/InfoPlist.strings
           plutil -lint dist/DiskWing.app/Contents/Resources/pt-BR.lproj/InfoPlist.strings
-      - name: Qualify a disposable internal installation and removal
+      - name: Qualify the exact archived candidate with a disposable internal lifecycle
         run: |
-          python3 scripts/qualify_bundle.py dist/DiskWing.app --workspace "$RUNNER_TEMP/diskwing-tests" --output "$RUNNER_TEMP/diskwing-bundle-report.json"
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          from scripts.release_evidence import read_json_file, sha256
+          manifests = list(Path('dist').glob('*.manifest.json'))
+          if len(manifests) != 1: raise SystemExit('Expected exactly one build manifest.')
+          manifest = read_json_file(manifests[0])
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if manifest['candidate']['commit'] != head or manifest.get('sourceDirty') is not False:
+              raise SystemExit('Candidate must come from the clean checked-out commit.')
+          archive = manifests[0].parent / manifest['archive']['fileName']
+          expected = {'commit': head, 'version': '0.2.0-dev', 'buildNumber': '3', 'archiveSHA256': sha256(archive)}
+          private = Path(os.environ['RUNNER_TEMP'])
+          expected_path = private / 'diskwing-expected-candidate.json'
+          fd = os.open(expected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          with os.fdopen(fd, 'w') as file: json.dump(expected, file)
+          subprocess.run([sys.executable, 'scripts/qualify_candidate.py', str(manifests[0]),
+                          '--expected-candidate', str(expected_path), '--workspace', str(private / 'diskwing-tests'),
+                          '--output', str(private / 'diskwing-candidate-report.json')], check=True)
+          PY
+      - name: Preserve sanitized build and qualification reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-${{ matrix.os }}
+          path: |
+            dist/*.manifest.json
+            ${{ runner.temp }}/diskwing-candidate-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   updater:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Compile the separately enabled signed updater
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Compile the optional updater integration
         env:
           DISKWING_ENABLE_UPDATER: '1'
         run: swift build --scratch-path .build-updater -j 2
@@ -68,25 +113,79 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exercise a real one-million-entry fixture
         env:
           DISKWING_RUN_SCALE_TESTS: '1'
+          DISKWING_SCALE_REPORT: ${{ runner.temp }}/diskwing-scale-report.json
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-scale"
           CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter ScaleTests
+          test -s "$DISKWING_SCALE_REPORT"
+      - name: Preserve sanitized explorer scale report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: explorer-scale-qualification
+          path: ${{ runner.temp }}/diskwing-scale-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   filesystems:
-    if: github.event_name == 'workflow_dispatch' && inputs.run_filesystems
+    needs: [scale]
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.run_filesystems
     runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Qualify disposable filesystems and bounded copy verification
         env:
           DISKWING_RUN_FILESYSTEM_TESTS: '1'
           DISKWING_RUN_COPY_SCALE_TESTS: '1'
+          DISKWING_FILESYSTEM_REPORT_DIR: ${{ runner.temp }}/diskwing-filesystem-reports
+          DISKWING_COPY_SCALE_REPORT: ${{ runner.temp }}/diskwing-copy-scale-report.json
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-filesystems"
           CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-filesystems" swift test -j 2 --filter 'FilesystemQualificationTests|CopyScaleTests'
+          test -s "$DISKWING_COPY_SCALE_REPORT"
+      - name: Preserve sanitized filesystem and copy reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: filesystem-qualification
+          path: |
+            ${{ runner.temp }}/diskwing-filesystem-reports/*.json
+            ${{ runner.temp }}/diskwing-copy-scale-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  large-copy:
+    needs: [filesystems]
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.run_large_copy
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exercise a real 4 GiB written file and cancellation
+        env:
+          DISKWING_RUN_LARGE_COPY_TESTS: '1'
+          DISKWING_LARGE_COPY_REPORT: ${{ runner.temp }}/diskwing-large-copy-report.json
+        run: |
+          test -f Tests/CacheSSDCoreTests/LargeFileQualificationTests.swift
+          mkdir -p "$RUNNER_TEMP/diskwing-large-copy"
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-large-copy" swift test -j 2 --filter LargeFileQualificationTests
+          test -s "$DISKWING_LARGE_COPY_REPORT"
+      - name: Preserve sanitized large-copy report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: large-copy-qualification
+          path: ${{ runner.temp }}/diskwing-large-copy-report.json
+          if-no-files-found: ignore
+          retention-days: 14

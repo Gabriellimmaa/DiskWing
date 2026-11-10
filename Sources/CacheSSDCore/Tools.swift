@@ -106,6 +106,10 @@ public struct BusyProcess: Identifiable, Sendable {
     public let name: String
 }
 
+/// Injectable for controlled fixtures; production defaults keep the real
+/// process/open-file inspection at every operation boundary.
+public typealias BusyCheck = ([URL], String?) throws -> [BusyProcess]
+
 public enum BusyInspector {
     public static func inspect(paths: [URL], tool: String? = nil) throws -> [BusyProcess] {
         let result = try CommandRunner.run(URL(fileURLWithPath: "/usr/sbin/lsof"), ["-n", "-P", "-F", "pcn"], timeout: 30, maxOutputBytes: 33_554_432)
