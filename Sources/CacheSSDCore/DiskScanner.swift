@@ -50,7 +50,8 @@ public final class DiskScanner {
                 let duplicate = info.st_nlink > 1 && !hardLinks.insert(identity).inserted
                 let allocated = duplicate ? 0 : Int64(info.st_blocks) * 512
                 bytes += logical
-                let item = ScanItem(path: url.path, name: url.lastPathComponent, isDirectory: false, isSymbolicLink: false, logicalBytes: logical, allocatedBytes: allocated, fileCount: 1, category: category(url), issue: duplicate ? "Blocos já contados em outro hard link" : nil, children: [])
+                let dataless = info.st_flags & UInt32(SF_DATALESS) != 0
+                let item = ScanItem(path: url.path, name: url.lastPathComponent, isDirectory: false, isSymbolicLink: false, logicalBytes: logical, allocatedBytes: allocated, fileCount: 1, category: category(url), issue: dataless ? "Há conteúdo da nuvem ainda não baixado. A origem será preservada." : duplicate ? "Blocos já contados em outro hard link" : nil, children: [], coverage: dataless ? .partial : .complete)
                 if largest.count < 60 || logical > (largest.last?.logicalBytes ?? 0) {
                     largest.append(item); largest.sort { $0.logicalBytes > $1.logicalBytes }
                     if largest.count > 60 { largest.removeLast() }
@@ -60,10 +61,11 @@ public final class DiskScanner {
             var childItems: [ScanItem] = [], total: Int64 = 0, allocated: Int64 = 0, count = 0
             var issue: String?
             var omittedChildren = false
+            var incomplete = false
             do {
                 let children = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [])
                 for child in children {
-                    if cancellation.isCancelled || entries >= maxEntries { if entries >= maxEntries { limited = true }; break }
+                    if cancellation.isCancelled || entries >= maxEntries { if entries >= maxEntries { limited = true }; incomplete = true; break }
                     if let item = visit(child, depth: depth + 1) {
                         total += item.logicalBytes; allocated += item.allocatedBytes; count += item.fileCount
                         childItems.append(item)
@@ -72,7 +74,7 @@ public final class DiskScanner {
                             childItems.sort { $0.logicalBytes > $1.logicalBytes }
                             childItems = Array(childItems.prefix(childrenPerFolder))
                         }
-                    }
+                    } else if limited || cancellation.isCancelled { incomplete = true }
                 }
                 childItems.sort { $0.logicalBytes > $1.logicalBytes }
                 if childItems.count > childrenPerFolder { childItems = Array(childItems.prefix(childrenPerFolder)); omittedChildren = true }
@@ -81,7 +83,8 @@ public final class DiskScanner {
                 if unreadable.count < 200 { unreadable.append(url.path) }
                 issue = "Sem acesso; tamanho desconhecido"
             }
-            return ScanItem(path: url.path, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: total, allocatedBytes: allocated, fileCount: count, category: category(url), issue: issue, children: childItems)
+            let coverage = ScanCoverage.legacy(issue: issue, isLink: false, children: childItems)
+            return ScanItem(path: url.path, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: total, allocatedBytes: allocated, fileCount: count, category: category(url), issue: issue, children: childItems, coverage: incomplete && coverage == .complete ? .partial : coverage)
         }
         guard let item = visit(root.standardizedFileURL, depth: 0) else { throw CacheSSDError.message(L10n.text("Análise cancelada antes de iniciar.")) }
         return ScanReport(id: UUID(), root: item, startedAt: started, finishedAt: Date(), examinedEntries: entries, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: cancellation.isCancelled, reachedLimit: limited, largestFiles: largest)
