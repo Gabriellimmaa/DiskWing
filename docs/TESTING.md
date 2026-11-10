@@ -43,6 +43,23 @@ Actual workflows download small pinned public artifacts into disposable projects
 
 Native --offline proves the tool's offline mode for the tested artifact. It is not a disconnected network or cable test. pip --no-index correctly misses without a wheelhouse. Homebrew/CocoaPods tests establish cache reuse, not offline availability. The matrix in validation/ records exact versions, original retention and local fallback execution. Configuration/version changes require requalification before source release.
 
+## Explicit CocoaPods runtime profiles
+
+Native workflows may use `DISKWING_NATIVE_COCOAPODS_RUBY` and
+`DISKWING_NATIVE_COCOAPODS_LIBEXEC` together to select an already installed
+compatible Ruby executable and CocoaPods libexec directory. The test creates a
+launcher only inside its generated fixture; it does not install gems, replace
+symlinks or alter the application's production default. Reports identify the
+profile and distinguish it from adapter inspection in the test process's
+inherited environment.
+
+`DISKWING_NATIVE_COCOAPODS_UNAVAILABLE_LAUNCHER` can explicitly select an existing
+incompatible launcher for the refusal case. Without an unavailable launcher,
+that case skips rather than inventing a failure. A clean fixture's failure is
+not evidence that the user's application environment is unavailable. Keep
+runtime/profile evidence separate and never repair the user's tools merely to
+make a test pass.
+
 ## Resource benchmark and updater compilation
 
 ~~~sh

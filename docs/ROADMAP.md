@@ -2,7 +2,7 @@
 
 Approved scope: complete disk exploration **and** reviewed cache/SSD management in the first public version. Apple Silicon first, macOS 14+, Portuguese and English, local data, explicit review, preserved browser/project/SDK data. Historical plans remain in plans/.
 
-The maintainer's [2026-11-10 expansion](plans/SCOPE-EXPANSION-2026-11-10.md) adds explicit manual Trash for eligible application caches and additional home content, separate from the stricter Move policy; internal data-volume discovery; future-write setup with an empty/absent cache; and additional per-tool cache adapters. These are active implementation requirements, not capabilities attested by the installed build 6. Graphical applications require their own supported mechanisms and evidence rather than inheriting terminal coverage.
+The maintainer's [2026-11-10 expansion](plans/SCOPE-EXPANSION-2026-11-10.md) adds explicit manual Trash for eligible application caches and additional home content, separate from the stricter Move policy; internal data-volume discovery; future-write setup with an empty/absent cache; and additional per-tool cache adapters. These requirements are implemented in [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22) and qualified in local build 8; the normal installed build 6 remains preserved. See [expanded evidence](validation/EXPANDED-FLOWS-2026-11-10.md). Graphical applications require their own supported mechanisms and evidence rather than inheriting terminal coverage.
 
 The machine-readable source of requirement IDs, issues, acceptance criteria, validation state and external dependencies is [TRACEABILITY.json](TRACEABILITY.json). Implementation, isolated tests, native checks, cross-machine validation and beta are different states. Do not close a milestone solely because code exists.
 
@@ -20,6 +20,10 @@ The machine-readable source of requirement IDs, issues, acceptance criteria, val
 
 ## Implementation status — 2026-11-10
 
+Current engineering delivery is [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22), merged at e3ab12e with [main CI passing on macOS 15/26](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358). Local build 8 passed exact-archive installation/helper/removal qualification and PT/EN sample journeys. npm 10.9.2, Yarn Classic 1.22.22 and Go 1.27.3 have the documented native evidence; ccache remains inactive. The installed build 6 and backup are preserved. [Expanded evidence](validation/EXPANDED-FLOWS-2026-11-10.md) separates local developer results from external release acceptance.
+
+### Previous build 6 engineering baseline
+
 M0–M5 have code and local validation evidence, including actual temporary native workflows and a one-million-entry explorer benchmark. M6 has PT/EN, native keyboard/accessibility-tree smoke and pending full VoiceOver acceptance. M7 has verified local installation/packaging and optional Sparkle compilation; Developer ID/notarization and end-to-end updates remain unverified. M8 has the protocol and readiness validator, with human recruitment and seven-day observation still pending.
 
 PR12/19/20 are merged; engineering handoff main 1947aec passed macOS 15/26 CI. Local candidate 1.0.0 build 6 was subsequently installed and opened on the maintainer's Mac at their explicit request, preserving the previous application. Maintainer interface feedback is pending. See [the consolidated cycle](context/SESSION-2026-11-10.md), [installation record](validation/LOCAL-INSTALLATION-2026-11-10.md), [initial implementation evidence](validation/IMPLEMENTATION-2026-11-10.md) and [all nine GitHub milestones](https://github.com/Gabriellimmaa/DiskWing/milestones). Public v1 readiness is false until the independent gates pass. Historical plans remain unchanged.
@@ -32,8 +36,8 @@ The follow-on portable acceptance kit adds self-contained bundled checks, a real
 
 The next independent gates, in order of prerequisites, are:
 
-1. Collect the maintainer's interface feedback on installed build 6 (M6); preserve the installation and backup while review is in progress. This is not yet a completed human acceptance result.
-2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a larger build number and its own affected qualification; protected signing/update keys remain external prerequisites.
+1. Collect the maintainer's feedback on qualified build 8 (M6), while preserving installed build 6 and its backup; a new installation is a separate reviewed action. This is not yet a completed human acceptance result.
+2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a build number greater than 8 and its own affected qualification; protected signing/update keys remain external prerequisites.
 3. Another Apple Silicon Mac/macOS 14 disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7), plus hands-on keyboard/VoiceOver and both-language acceptance across the two core flows (M6). The packaged helper/lifecycle runner and [manual handoff](acceptance/SECOND_MAC.md) keep generated checks distinct from independent human evidence.
 4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness. Private participant outreach requires specific authorization.
 
@@ -41,7 +45,7 @@ Physical cable/power faults must use a separate disposable test device, never th
 
 ## Baseline
 
-The imported 0.1 alpha passed 26 native-enabled Swift tests and five packaging tests. Public CI runs 24 isolated Swift tests, explicitly skips two installed-tool checks, builds and verifies the app. These checks do not establish actual project installs, physical unplug safety or market validation.
+The imported 0.1 alpha passed 26 native-enabled Swift tests and five packaging tests. At that baseline, public CI ran 24 isolated Swift tests, explicitly skipped two installed-tool checks, and built/verified the app. These checks do not establish actual project installs, physical unplug safety or market validation.
 
 Partial baseline capabilities: bounded explorer/search, personal actions with policy checks, seven cache integrations, per-command zsh routing, migration/restore and operation history. The first implementation work addresses unreadable terminal configuration, concurrent mutations, incomplete measurements and recovery.
 
@@ -49,7 +53,7 @@ Partial baseline capabilities: bounded explorer/search, personal actions with po
 
 GUI and helper share operation planning, execution and recovery. A versioned SQLite index stores paginated metadata locally. Adapters describe effective configuration, eligibility, tested versions and recovery. Existing CacheSSD identifiers, settings paths and integration markers stay compatible.
 
-Source release follows verified copy, source stability and tool qualification. Bun/uv originals remain local. Chrome, credentials, SDKs, emulators and projects are protected. Personal sources go to Trash; the app never empties Trash.
+Source release follows verified copy, source stability and tool qualification. Bun/uv/Yarn/Go originals remain local in the current supported increment. Chrome, credentials, SDKs, emulators and projects are protected. Personal sources go to Trash; the app never empties Trash.
 
 Filesystem events are advisory; dropped events require a rescan. Root scope, permissions and unavailable volumes must be comparable before showing growth or reclaimed-space claims. Public export is always reviewed; no telemetry or automatic cleanup.
 
