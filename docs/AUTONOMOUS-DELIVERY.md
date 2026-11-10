@@ -4,13 +4,15 @@ Approved 2026-11-10. Target: a public, signed/notarized 1.0 with both disk explo
 
 ## Team and ownership
 
-One coordinator integrates changes; up to three workers are active at a time, normally two implementers and one independent reviewer. Specialist roles rotate: data safety/recovery; explorer/performance; cache integrations; macOS UX/accessibility; independent QA; distribution/updater; evidence/beta. An author cannot provide the sole approval of their own implementation.
+One coordinator integrates changes. The 2026-11-10 scope expansion authorizes all available concurrent agent capacity, with specialists rotating as work completes and no fixed ceiling on the total specialist count. The current runtime exposes four simultaneous slots including coordination; this is a technical limit, not a product/team requirement. Specialist roles rotate: data safety/recovery; explorer/performance; cache integrations; macOS UX/accessibility; independent QA; distribution/updater; evidence/beta. An author cannot provide the sole approval of their own implementation.
 
 Every task records requirement M0–M8, priority, classification (confirmed defect, experiment, external dependency), owner, dependencies, writable files, branch/base, acceptance and evidence. Worktrees/builds/fixtures use the development SSD except explicit minimal internal-installation/temporary-alias tests. Shared files have one owner at a time; the coordinator owns public context, translations, traceability and integration. Heavy native/filesystem/scale qualification runs serially. No worker pushes or merges independently.
 
 Workflow: reproduce → implement → targeted tests → independent review → CI for exact head → serial merge → verify main. Repeated failures require independent diagnosis rather than blind retry. Before ending a session, update the execution ledger with integrated SHA, pending branches/tasks, direct checks, limits and the next action. On resumption inspect actual Git/CI state before recreating workers. This is not a persistent external service.
 
 ## Execution waves
+
+The new active increment is [expanded cache/explorer scope](plans/SCOPE-EXPANSION-2026-11-10.md): independent Trash policy including caches, honest internal-data scan coverage, additional qualified adapters and future-write setup for empty caches. Its acceptance gates reopen affected qualification. The numbered waves below retain the earlier delivery history and external release prerequisites.
 
 0. Merge PR #12 and verify main. Maintain this agreement, AGENTS and the execution ledger in TRACEABILITY.json; link findings to existing milestones.
 1. Renew release-source consent for every review; recover interrupted restores according to operation type; preserve explicit/effective cache configuration; bound/cancel all preflight work; distinguish complete/partial/unknown measurements; reproduce repeated-index-budget behavior; resume pending growth scans after Low Power Mode ends.

@@ -25,15 +25,13 @@ do {
         if !report.passed { exit(1) }
     case "self-check":
         L10n.preference = "en"
-        guard !L10n.english.isEmpty, L10n.text("Nome") == "Name", CacheAdapters.qualifiedVersions.count == 7 else { throw CacheSSDError.message("Required application resources are unavailable.") }
-        print("DiskWing resources verified: PT/EN and seven cache qualifications")
+        let qualifications = CacheAdapters.qualifiedVersions
+        guard !L10n.english.isEmpty, L10n.text("Nome") == "Name", CacheAdapters.hasValidBundledQualifications else { throw CacheSSDError.message("Required application resources are unavailable.") }
+        print("DiskWing resources verified: PT/EN and \(qualifications.count) cache qualifications")
     case "shell-env":
         let settings = store.settings()
         guard settings.shellIntegrationEnabled else { exit(0) }
-        var excluded = Set<String>()
-        if args.contains("--omit-bun") { excluded.insert("bun") }
-        if args.contains("--omit-uv") { excluded.insert("uv") }
-        if args.contains("--omit-npm") { excluded.insert("npm") }
+        let excluded = Set(CacheCatalog.all().map(\.id).filter { args.contains("--omit-" + $0) })
         for (key, value) in CacheRouter.environment(settings: settings, excluding: excluded).sorted(by: { $0.key < $1.key }) {
             if !value.contains("\n"), !value.contains("\t") { print("\(key)\t\(value)") }
         }
@@ -70,6 +68,9 @@ do {
     case "restore":
         guard args.count >= 2, args.contains("--apply") else { throw CacheSSDError.message("Use restore TOOL --apply depois de revisar a cópia e o espaço disponível.") }
         try MigrationEngine().restore(toolID: args[1]); print("Cache restaurado.")
+    case "prepare-cache":
+        guard args.count >= 2, args.contains("--apply") else { throw CacheSSDError.message("Use prepare-cache TOOL --apply depois de revisar o destino para novas gravações.") }
+        try printJSON(MigrationEngine().prepareFutureCache(toolID: args[1]))
     case "run":
         var values = Array(args.dropFirst()); if values.first == "--" { values.removeFirst() }
         guard let name = values.first else { throw CacheSSDError.message("Use CacheSSDHelper run -- comando argumentos") }
@@ -99,7 +100,8 @@ do {
           migrate TOOL --apply         Copia e valida um cache selecionado
             --release-local            Libera a origem após validar a cópia
           restore TOOL --apply         Restaura uma cópia quando há espaço local
-        Ferramentas: npm, bun, cocoapods, pip, homebrew, gradle, uv.
+          prepare-cache TOOL --apply   Prepara SSD para um cache vazio ou ausente
+        Ferramentas: \(CacheCatalog.all().map(\.id).joined(separator: ", ")).
         """)
     }
 } catch {

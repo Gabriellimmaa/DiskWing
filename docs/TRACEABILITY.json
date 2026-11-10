@@ -69,7 +69,7 @@
       "priority": "high",
       "issue": 3,
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/3",
-      "acceptance": "A private paginated SQLite index finds items beyond the old display limits; full-scope search and bounded navigation report incomplete coverage honestly.",
+      "acceptance": "Private paginated scoped index, global search, explicit internal APFS data-volume entry and identity-proven alias handling; resource/access/mount limits remain honest.",
       "implementation": "implemented",
       "validation": "pagination_global_search_and_one_million_entry_benchmark_passed",
       "evidence": [
@@ -78,21 +78,24 @@
         "docs/validation/scale.json",
         "docs/validation/AUTONOMOUS-2026-11-10.md",
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
-        "docs/validation/candidate-1.0.0-local.json"
+        "docs/validation/candidate-1.0.0-local.json",
+        "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
       ],
       "externalDependencies": [
         "Resource results need confirmation on additional Macs/filesystems."
       ],
       "milestone": 3,
-      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/3"
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/3",
+      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
     },
     {
       "id": "M3",
-      "title": "Verified personal-file actions",
+      "title": "Reviewed manual Trash and verified file relocation",
       "priority": "high",
       "issue": 4,
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/4",
-      "acceptance": "Disposable files/folders retain data and metadata; conflicts, space, cloud data and interruption are checked; source is recoverable via verified copy or Trash.",
+      "acceptance": "Manual eligible home/cache Trash is separate from conservative Move; protect sensitive roots/records, check source identity/tree/processes, recover new cache paths and refresh results.",
       "implementation": "implemented",
       "validation": "isolated_crash_streamed_copy_and_disposable_apfs_exfat_tests_passed",
       "evidence": [
@@ -106,13 +109,16 @@
         "docs/validation/copy-scale.json",
         "docs/validation/AUTONOMOUS-2026-11-10.md",
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
-        "docs/validation/candidate-1.0.0-local.json"
+        "docs/validation/candidate-1.0.0-local.json",
+        "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
       ],
       "externalDependencies": [
         "Additional Macs/devices/filesystems and physical cable/power faults remain unverified."
       ],
       "milestone": 4,
-      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4"
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4",
+      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
     },
     {
       "id": "M4",
@@ -120,7 +126,7 @@
       "priority": "high",
       "issue": 5,
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/5",
-      "acceptance": "Seven versioned adapters describe effective routing and qualification. Disposable real installs/builds, SSD absent and documented offline scenarios pass. Bun/uv origins stay local.",
+      "acceptance": "Seven legacy adapters plus exactly qualified new Yarn/Go cache routing; empty/absent-cache setup; generated reuse/new SSD writes/local fallback evidence. Yarn/Go/Bun/uv origins retained; ccache inactive until qualified.",
       "implementation": "implemented",
       "validation": "seven_real_native_workflows_and_local_fallback_passed",
       "evidence": [
@@ -129,13 +135,16 @@
         "Sources/CacheSSDCore/Resources/cache-qualification.json",
         "docs/validation/AUTONOMOUS-2026-11-10.md",
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
-        "docs/validation/candidate-1.0.0-local.json"
+        "docs/validation/candidate-1.0.0-local.json",
+        "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
       ],
       "externalDependencies": [
         "pip requires an offline wheelhouse for empty-cache installation; Homebrew/CocoaPods offline network isolation remains unverified."
       ],
       "milestone": 5,
-      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5"
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5",
+      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
     },
     {
       "id": "M5",
@@ -180,13 +189,16 @@
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
         "docs/validation/candidate-1.0.0-local.json",
         "docs/context/SESSION-2026-11-10.md",
-        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md",
+        "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
       ],
       "milestone": 7,
-      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/7"
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/7",
+      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
     },
     {
       "id": "M7",
@@ -251,9 +263,8 @@
   "execution": {
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
-    "baseSHA": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
-    "maxActiveWorkers": 3,
-    "phase": "local_candidate_installed_awaiting_maintainer_feedback_and_external_gates",
+    "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+    "phase": "expanded_core_flows_final_validation",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -484,9 +495,10 @@
           "LOCAL-INSTALL-01"
         ],
         "acceptance": "Record actual feedback with screen/language/window context, separately from public accessibility and beta acceptance",
-        "status": "awaiting_maintainer_feedback",
+        "status": "scope_feedback_received_candidate_review_pending",
         "evidence": [
-          "Installation/launch observed; no maintainer approval or interface results supplied yet."
+          "Installation/launch observed; no maintainer approval or interface results supplied yet.",
+          "Maintainer clarified two core product requirements and authorized expansion. No hands-on acceptance of the new implementation was supplied."
         ]
       },
       {
@@ -503,13 +515,176 @@
         "acceptance": "Signing/updates/physical/human gates; five per cohort, >=80 percent, seven real days",
         "status": "pending_external",
         "evidence": []
+      },
+      {
+        "id": "SCOPE-01",
+        "requirement": "M0",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Expanded product contract and autonomous plan recorded; prior plans/artifact preserved",
+        "owner": "coordinator",
+        "branch": "codex/scope-expansion",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [
+          "AGENTS.md",
+          "docs/"
+        ],
+        "dependsOn": [],
+        "acceptance": "Expanded product contract and autonomous plan recorded; prior plans/artifact preserved",
+        "status": "recorded",
+        "evidence": []
+      },
+      {
+        "id": "TRASH-02",
+        "requirement": "M3",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Independent Trash eligibility, dynamic record protection, final checks and cache-path recovery; Move unchanged",
+        "owner": "explorer_scope",
+        "branch": "codex/manual-trash",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [
+          "Sources/CacheSSDCore/PersonalActions.swift",
+          "Sources/CacheSSDCore/OperationSafety.swift",
+          "Tests/CacheSSDCoreTests/ManualTrashTests.swift"
+        ],
+        "dependsOn": [
+          "SCOPE-01"
+        ],
+        "acceptance": "Independent Trash eligibility, dynamic record protection, final checks and cache-path recovery; Move unchanged",
+        "status": "implemented_independently_reviewed",
+        "evidence": [
+          "20 ManualTrashTests independently repeated; 70 affected tests reported by author; no blocking review findings"
+        ],
+        "commit": "2c9bd8cfce32d915290b57f238e82ddf73547b9e",
+        "reviewer": "independent_scope"
+      },
+      {
+        "id": "CACHE-02",
+        "requirement": "M4",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Yarn Classic retained-origin, Go build and ccache adapters; honest qualification; empty/absent source future-write setup",
+        "owner": "cache_scope",
+        "branch": "codex/cache-expansion",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [
+          "Sources/CacheSSDCore/Tools.swift",
+          "Sources/CacheSSDCore/CacheAdapters.swift",
+          "Sources/CacheSSDCore/CacheRouter.swift",
+          "Sources/CacheSSDCore/ShellIntegration.swift",
+          "Sources/CacheSSDCore/Migration.swift",
+          "Tests/CacheSSDCoreTests/ExpandedCacheTests.swift",
+          "Tests/CacheSSDCoreTests/ExpandedNativeWorkflowTests.swift"
+        ],
+        "dependsOn": [
+          "SCOPE-01"
+        ],
+        "acceptance": "Yarn Classic retained-origin, Go build and ccache adapters; honest qualification; empty/absent source future-write setup",
+        "status": "implemented_independently_reviewed",
+        "evidence": [
+          "35 core/config tests independently repeated; all P1/P2 review findings closed",
+          "docs/validation/expanded-yarn-2026-11-10.json",
+          "docs/validation/expanded-go-2026-11-10.json"
+        ],
+        "commit": "46cf3ac67048741e4f6b363f32f7341f45d4ac91",
+        "reviewer": "independent_scope"
+      },
+      {
+        "id": "UX-02",
+        "requirement": "M6",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Separate Trash/Move UI; warnings; data-volume scan entry; refresh/invalidate post-action; route vs copy status; PT/EN",
+        "owner": "coordinator",
+        "branch": "codex/scope-expansion",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [
+          "Sources/CacheSSDApp/",
+          "Sources/CacheSSDHelper/main.swift",
+          "Sources/CacheSSDCore/Resources/en.json",
+          "Tests/CacheSSDAppTests/ExpandedFlowsTests.swift"
+        ],
+        "dependsOn": [
+          "TRASH-02",
+          "CACHE-02"
+        ],
+        "acceptance": "Separate Trash/Move UI; warnings; data-volume scan entry; refresh/invalidate post-action; route vs copy status; PT/EN",
+        "status": "implemented_reviewed_final_checks_pending",
+        "evidence": [
+          "Initial full suite 223 cases/18 explicit skips/zero failures; subsequent targeted26 cases/1skip/zero failures",
+          "Native APFS positive fixture exposed Foundation firmlink normalization mismatch; fix in progress, not accepted yet.",
+          "APFS alias/DirectoryEnumerator and /private/var regressions fixed; 34 targeted cases passed with real generated APFS fixture, zero skips/failures."
+        ]
+      },
+      {
+        "id": "REVIEW-02",
+        "requirement": "M1",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Different author reviews each implementation and fixes are rechecked",
+        "owner": "independent_scope",
+        "branch": "read_only",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [],
+        "dependsOn": [
+          "TRASH-02",
+          "CACHE-02",
+          "UX-02"
+        ],
+        "acceptance": "Different author reviews each implementation and fixes are rechecked",
+        "status": "approved_pending_exact_head_checks",
+        "evidence": [
+          "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed."
+        ]
+      },
+      {
+        "id": "QUALIFY-02",
+        "requirement": "M4",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Disposable real native evidence separate from policy fixtures; missing tools explicit; no personal integration changes",
+        "owner": "coordinator",
+        "branch": "codex/scope-expansion",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [],
+        "dependsOn": [
+          "CACHE-02",
+          "REVIEW-02"
+        ],
+        "acceptance": "Disposable real native evidence separate from policy fixtures; missing tools explicit; no personal integration changes",
+        "status": "yarn_go_qualified_ccache_inactive",
+        "evidence": [
+          "Yarn 1.22.22 and Go 1.27.3: four generated native workflows passed; source retained, new SSD writes and local fallback. ccache explicitly skipped/unqualified/inactive."
+        ]
+      },
+      {
+        "id": "CANDIDATE-02",
+        "requirement": "M7",
+        "priority": "high",
+        "classification": "authorized_scope_expansion",
+        "title": "Integrated tests, packaging, exact-head CI and independently identified artifact; installed build6 preserved",
+        "owner": "coordinator",
+        "branch": "codex/scope-expansion",
+        "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
+        "writableFiles": [],
+        "dependsOn": [
+          "TRASH-02",
+          "CACHE-02",
+          "UX-02",
+          "REVIEW-02",
+          "QUALIFY-02"
+        ],
+        "acceptance": "Integrated tests, packaging, exact-head CI and independently identified artifact; installed build6 preserved",
+        "status": "pending",
+        "evidence": []
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
     "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Collect maintainer interface feedback on the explicitly installed/opened build 6; preserve installation, prior backup and immutable archive. Inspect real Git/CI state before resuming. External signing/update keys, another Mac/macOS14, human PT/EN accessibility, disposable physical-fault device and ten real participants remain pending. Functional fixes/production rebuild need a new candidate and affected qualification.",
+    "nextAction": "Finish exact-head integrated regression, sample UI and packaging; create independently identified build7 without replacing installed build6, then PR CI/serial integration. ccache inactive until native qualification; physical/human/signing gates remain pending.",
     "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "integrationBranch": "main",
+    "integrationBranch": "codex/scope-expansion",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
     "lastVerifiedCodeCommit": "4db260076b602c309c3493f9b06548b0751f7356",
     "mainCIVerification": "success",
@@ -556,6 +731,13 @@
       "humanAcceptanceAttested": false,
       "personalMigrationsInitiatedByAssistant": false,
       "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+    },
+    "scopeExpansionPlan": "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+    "agentCapacityPolicy": {
+      "organizationalTotalLimit": null,
+      "runtimeConcurrentSlotsIncludingCoordinator": 4,
+      "rotateSpecialists": true,
+      "independentReviewRequired": true
     }
   }
 }

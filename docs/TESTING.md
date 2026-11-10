@@ -12,6 +12,26 @@ The default suite includes safety, abrupt subprocess exit/recovery, metadata/res
 
 ## Separate opt-in native checks
 
+The expanded flows add isolated `ManualTrashTests`, `ExpandedCacheTests` and
+`ExpandedFlowsTests`: application-cache Trash/recovery, distinct Move policy,
+empty/absent-cache routing setup, custom configuration, stale-result refresh
+and APFS alias refusal. The optional
+`ExpandedFlowsTests/testNativeDataAliasWithGeneratedSharedFixtureAndPrivateIndexExclusion`
+uses `DISKWING_RUN_NATIVE_TESTS=1` and creates/removes only a tiny uniquely named
+generated directory under `/Users/Shared`. It checks a real data-volume firmlink,
+personal-file classification and private-index exclusion without reading any
+personal content. Run this and expanded native cache workflows serially under
+the coordinator's native resource slot. It is single-Mac metadata evidence,
+not a full-disk personal scan or another-Mac acceptance.
+
+`DISKWING_RUN_EXPANDED_NATIVE_TESTS=1` enables `ExpandedNativeWorkflowTests`
+for Yarn Classic, Go and ccache in generated homes/projects. Use a prepared
+PATH with the intended runtime; `DISKWING_EXPANDED_NATIVE_REPORT_DIR` writes
+sanitized, non-overwriting reports. A missing runtime is an explicit skip,
+never qualification. Yarn/Go workflow reports are linked from the expanded
+scope evidence. Their originals remain local; ccache cannot activate without
+its own exact-version evidence. Hooks are disabled for generated package installs.
+
 ~~~sh
 DISKWING_RUN_NATIVE_TESTS=1 swift test -j 2
 DISKWING_RUN_INSTALL_TESTS=1 swift test -j 2 --filter NativeWorkflowTests

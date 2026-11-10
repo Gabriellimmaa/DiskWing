@@ -4,6 +4,8 @@
 
 DiskWing helps Mac users understand and recover storage, with developer-cache integrations as an initial specialization. The founding requirement is to use the Mac and Chrome without the external SSD. Moving every system cache is outside the supported approach.
 
+On 2026-11-10 the maintainer clarified the primary promise: preserve eligible existing cache data on SSD and direct future writes there, plus broad explicit manual Trash through the explorer, including application caches. The [expanded contract](../plans/SCOPE-EXPANSION-2026-11-10.md) separates manual deletion from generic relocation, requires honest internal-data coverage and reopens affected acceptance. Compatibility remains per application; a catalog entry or verified copy alone does not establish working routing.
+
 The approved plan uses native per-tool configuration and chooses a destination when a command starts. Existing processes keep their environment. No whole-system cache-directory symlinks or automatic merging of generations. Chrome data and caches, SDKs, emulators, projects, and service executables remain local.
 
 Every data-changing action has a review. Verify copies before releasing eligible caches; record recovery information. Bun and uv sources remain local because installed environments may reference them by links. Do not silently relax this protection.

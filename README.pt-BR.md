@@ -23,9 +23,15 @@ Use python3 scripts/install_local.py dist/DiskWing.app para instalar no disco in
 
 Em **Explorar espaço**, escolha uma pasta, busque itens e navegue pelos maiores consumidores. A análise indica limitações e diferencia tamanho lógico de blocos alocados.
 
+O atalho **Analisar armazenamento interno** abre o volume de dados do macOS, sem confundir a raiz do sistema protegido com todos os arquivos do Mac. Áreas sem acesso, outros volumes e limites continuam explícitos. A exclusão manual permite revisar itens da pasta pessoal, inclusive caches de aplicativos, e enviá-los à Lixeira. Raízes, credenciais/perfis conhecidos, instalações protegidas, registros do DiskWing, links e conteúdo da nuvem não baixado permanecem protegidos. A movimentação genérica tem uma política separada e mais restrita.
+
 O índice local oferece navegação paginada, busca em toda a análise, filtros e exportação completa dos itens indexados. Há limites de um milhão de entradas, profundidade 80 e orçamento de 512 MiB para o índice. Resultados incompletos são identificados. O acompanhamento de pastas e os alertas de crescimento dependem de sua escolha; pastas indisponíveis não são interpretadas como espaço liberado.
 
-Em **Caches e SSD**, revise uma ferramenta por vez. A cópia é conferida antes de permitir a liberação da origem. Bun e uv mantêm as origens para preservar ambientes existentes. O Chrome, SDKs, emuladores, projetos e executáveis locais do npx ficam fora da migração.
+Em **Caches e SSD**, revise uma ferramenta por vez. O catálogo inclui as sete integrações iniciais, Yarn Classic, cache de compilação Go e ccache. A disponibilidade e a qualificação dependem da ferramenta, versão e configuração; presença no catálogo não comprova compatibilidade. A cópia é conferida antes de permitir a liberação da origem. Bun, uv e Yarn Classic mantêm as origens para preservar ambientes e projetos existentes. O Chrome, SDKs, emuladores, projetos e executáveis locais do npx ficam fora da migração.
+
+Um cache vazio ou ausente pode usar **Preparar novos caches no SSD…**. Essa ação cria somente o destino externo; a integração precisa ser revista/atualizada e usada em um novo terminal. A interface distingue destino preparado de cópia de dados existentes.
+
+As novas integrações exigem a versão exata qualificada antes de ativar o SSD. Yarn Classic e Go mantêm os caches locais existentes nesta etapa; novas gravações compatíveis podem usar o SSD. O ccache permanece inativo até sua qualificação nativa.
 
 Depois de migrar, revise a integração do terminal e abra uma nova sessão. Novos comandos usam o destino disponível; sem o SSD, voltam aos padrões locais. Aplicativos abertos pelo Dock mantêm suas próprias configurações. Use **Preparar para ejetar** antes de desconectar. Processos abertos podem impedir a ejeção, e a retirada do cabo pode interrompê-los.
 

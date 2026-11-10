@@ -4,6 +4,8 @@ Read docs/context/PROJECT_CONTEXT.md, docs/context/CURRENT_STATE.md, docs/COMPAT
 
 The approved v1 roadmap and live acceptance/evidence ledger are docs/ROADMAP.md and docs/TRACEABILITY.json. Both primary flows, Apple Silicon, and PT/EN are required. Never mark a beta or notarized release complete using only code/tests.
 
+The maintainer expanded both core flows on 2026-11-10: see docs/plans/SCOPE-EXPANSION-2026-11-10.md. Manual Trash eligibility is distinct from generic Move; broader cache support must prove future writes, not just copies. The historical cache plan is preserved, not mechanically rewritten.
+
 For the completed autonomous engineering cycle and the subsequent maintainer installation, read docs/context/SESSION-2026-11-10.md and docs/validation/LOCAL-INSTALLATION-2026-11-10.md. The normal build 6 application was installed and opened at the maintainer's request; interface feedback is pending. Preserve that installation and its previous-version backup during review. Installation/launch permission does not authorize personal migrations or attest human acceptance.
 
 ## Architecture and commands
@@ -38,4 +40,4 @@ Do not add telemetry, automatic cleanup, a public release, signing credentials, 
 
 ## Authorized autonomous delivery
 
-The maintainer approved docs/AUTONOMOUS-DELIVERY.md: implement/review/test/PR/merge/publish within v1 scope, without purchasing services. Coordinator plus three workers maximum; use separate SSD worktrees and explicit file ownership. Coordinator alone integrates and updates shared docs/translations/traceability. An independent reviewer must examine each implementation; serialize native/filesystem/scale runs and merges. Do not stop after one PR while executable tasks remain. Record task status, evidence, SHA/branch and next action in TRACEABILITY.json before handoff. External signing/physical-Mac/human gates remain pending until actual evidence exists. The authorization does not permit personal cache migrations, activating real integrations for tests, or private participant outreach.
+The maintainer approved docs/AUTONOMOUS-DELIVERY.md and its expanded scope: implement/review/test/PR/merge/publish within v1 scope, without purchasing services. Use available concurrent agent capacity and rotate specialists without an organizational ceiling on total agents; respect actual runtime limits. Use separate SSD worktrees and explicit file ownership. Coordinator alone integrates and updates shared docs/translations/traceability. An independent reviewer must examine each implementation; serialize native/filesystem/scale runs and merges. Do not stop after one PR while executable tasks remain. Record task status, evidence, SHA/branch and next action in TRACEABILITY.json before handoff. External signing/physical-Mac/human gates remain pending until actual evidence exists. The authorization does not permit personal cache migrations, activating real integrations for tests, or private participant outreach.

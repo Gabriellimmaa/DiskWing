@@ -23,6 +23,11 @@ public enum CacheAdapters {
         guard let url = L10n.resourceBundle?.url(forResource:"cache-qualification",withExtension:"json"), let data = try? Data(contentsOf:url) else { return [:] }
         return (try? JSONDecoder().decode([String:String].self,from:data)) ?? [:]
     }()
+    public static var hasValidBundledQualifications: Bool {
+        let baseline: Set<String> = ["npm", "bun", "cocoapods", "pip", "homebrew", "gradle", "uv"]
+        let keys = Set(qualifiedVersions.keys)
+        return baseline.isSubset(of: keys) && keys.isSubset(of: Set(CacheCatalog.all().map(\.id))) && qualifiedVersions.values.allSatisfy { !$0.isEmpty }
+    }
     /// Reading the installed package avoids `yarn cache dir`, which creates cache folders.
     /// Unknown shims (including Corepack) are deliberately not executed for discovery.
     static func yarnClassicVersion(home: URL) -> String? {
