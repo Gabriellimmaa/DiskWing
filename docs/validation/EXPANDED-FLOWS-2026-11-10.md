@@ -94,3 +94,19 @@ was closed, its exit confirmed, and its generated fixture/private record
 retained. Automated PT/EN journeys above do not substitute for this missing
 visual or human accessibility acceptance. Installed build 6 and its previous
 backup were not replaced by build 7.
+
+## Follow-up qualification reopened
+
+Additional checks after build 7 found two code/compatibility follow-ups before
+integration: npm's `config get cache` rejects real UUID-containing destination
+paths as protected values, and macOS15 compares directory hints differently
+when assessing a missing Trash source. The candidate is superseded pending
+these fixes and a new build8; earlier successful archive checks remain valid
+for their stated scope and are not sufficient promotion evidence.
+
+The legacy native run also identified a CocoaPods prerequisite mismatch:
+the default Homebrew launcher selects Ruby3.4 while its installed ffi dependency
+requires an older Ruby. No gems or global launcher were modified. Qualification
+with an explicitly selected existing Ruby3.3 profile, if performed, is separate
+from availability of the default launcher. An unavailable launcher must keep
+the adapter fail-closed and preserve its source.

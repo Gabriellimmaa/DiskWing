@@ -122,7 +122,7 @@
       ],
       "milestone": 4,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4",
-      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
+      "expandedScopeStatus": "followup_qualification_reopened"
     },
     {
       "id": "M4",
@@ -150,7 +150,7 @@
       ],
       "milestone": 5,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5",
-      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
+      "expandedScopeStatus": "followup_qualification_reopened"
     },
     {
       "id": "M5",
@@ -272,7 +272,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "expanded_scope_local_qualified_awaiting_ci",
+    "phase": "native_and_macos15_followups",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -693,11 +693,47 @@
           "Build7 exact archive/signature/internal temporary lifecycle/helper/resources/removal passed; no normal installation replacement",
           "Full239/23skip/0failure; 51 packaging tests passed; nativeAPFS positive+isolated regressions34 passed"
         ]
+      },
+      {
+        "id": "NATIVE-03",
+        "requirement": "M4",
+        "priority": "critical",
+        "classification": "confirmed_followup",
+        "title": "Non-cleaning npm validation must accept real UUID destination paths; distinguish CocoaPods launcher prerequisites",
+        "owner": "cache_scope",
+        "branch": "codex/native-followup",
+        "baseSHA": "a5fe3fbe96b6e60c8475640f8fcad5a685bc92d5",
+        "dependsOn": [
+          "CANDIDATE-02"
+        ],
+        "status": "implementing_review_reopened",
+        "acceptance": "Non-cleaning npm validation must accept real UUID destination paths; distinguish CocoaPods launcher prerequisites",
+        "evidence": []
+      },
+      {
+        "id": "COMPAT-03",
+        "requirement": "M3",
+        "priority": "critical",
+        "classification": "confirmed_followup",
+        "title": "Trash missing-source eligibility must ignore Foundation directory hints without allowing links",
+        "owner": "explorer_scope",
+        "branch": "codex/compat-followup",
+        "baseSHA": "a5fe3fbe96b6e60c8475640f8fcad5a685bc92d5",
+        "dependsOn": [
+          "CANDIDATE-02"
+        ],
+        "status": "independently_reviewed_ci_pending",
+        "acceptance": "Trash missing-source eligibility must ignore Foundation directory hints without allowing links",
+        "evidence": [
+          "73 affected cases passed; 23 ManualTrash cases independently repeated, no failures. Directory hints no longer control missing-source policy; same-operation fixture assertions bind captured ID."
+        ],
+        "commit": "8aed2c788d22a0ff92d15a1c39170d5ea5489b68",
+        "reviewer": "independent_scope"
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
     "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Run exact-head PR CI and serialize integration. Local build7 is independently reviewed and exact-archive qualified; installed build6 and its backup remain preserved. Visual sample QA is pending because the Mac is locked. ccache inactive; physical/human/signing gates remain pending.",
+    "nextAction": "Resolve npm UUID-path validation and macOS15 Trash URL-hint compatibility, independently review, rerun isolated/native/CI checks, then create build8. CocoaPods default Ruby3.4/ffi mismatch is an environment prerequisite; only explicit isolated Ruby3.3 profile may qualify the mechanism. Preserve installed6 and immutable7.",
     "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
     "integrationBranch": "codex/scope-expansion",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
@@ -759,6 +795,7 @@
       "buildNumber": "6",
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
-    }
+    },
+    "candidateStatus": "superseded_pending_build8"
   }
 }
