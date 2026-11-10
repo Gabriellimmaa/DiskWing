@@ -21,12 +21,12 @@ struct VolumeTreemapView: View {
                         RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor))
                         ForEach(tiles) { tile in
                             if tile.id == otherID {
-                                tileView(tile, name: L10n.text("Outros \(model.treemapOtherCount) itens"), bytes: model.treemapOtherBytes, folder: true, selected: false) {
+                                tileView(tile, name: L10n.text("Outros \(model.treemapOtherCount) itens"), bytes: model.treemapOtherBytes, folder: true, selected: model.selectedInTreemapRemainder) {
                                     model.treeScrollRequest = (UUID(), model.treemapItems.count)
                                 }
                             } else if let ordinal = model.treemapItems.firstIndex(where: { $0.path == tile.id }) {
                                 let item = model.treemapItems[ordinal]
-                                tileView(tile, name: item.name, bytes: model.allocatedOrder ? item.allocatedBytes : item.logicalBytes, folder: item.isDirectory, selected: model.selectedPath == item.path) {
+                                tileView(tile, name: model.explorerName(item), bytes: model.allocatedOrder ? item.allocatedBytes : item.logicalBytes, folder: item.isDirectory, selected: model.treemapContainsSelection(item)) {
                                     model.selectExplorerItem(item, ordinal: ordinal)
                                 }
                                 .onTapGesture(count: 2) { if item.isDirectory { model.openFolder(item) } }
@@ -37,6 +37,11 @@ struct VolumeTreemapView: View {
                     }
                 }
                 .accessibilityIdentifier("volume-treemap")
+            }
+            if let container = model.selectedTreemapContainer, let selected = model.selectedPath, selected != container.path {
+                Text(L10n.text("Seleção dentro de \(model.explorerName(container)). Abra a pasta para detalhar o mapa.")).font(.caption).foregroundStyle(Palette.accent)
+            } else if model.selectedInTreemapRemainder {
+                Text(L10n.text("Seleção dentro de Outros. Use a árvore para abrir a pasta e detalhar o mapa.")).font(.caption).foregroundStyle(Palette.accent)
             }
             Text(L10n.text("Selecione um bloco para localizar na árvore. Abra uma pasta para aprofundar. Áreas desconhecidas não representam tamanho zero.")).font(.caption).foregroundStyle(.secondary)
         }.padding(16)

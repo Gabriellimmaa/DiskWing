@@ -31,6 +31,7 @@ final class TreemapTests: XCTestCase {
         XCTAssertEqual(branch.reference(at: 1_999_999), VirtualTreeReference(parent: "/", ordinal: 1_999_999, depth: 0))
         branch.setExpansion(parent: "/", ordinal: 1, branch: VirtualTreeBranch(path: "/folder", childCount: 50_000))
         XCTAssertEqual(branch.rowCount, 2_050_000)
+        XCTAssertEqual(branch.parentReference(of: "/folder"), VirtualTreeReference(parent: "/", ordinal: 1, depth: 0))
         XCTAssertEqual(branch.reference(at: 2), VirtualTreeReference(parent: "/folder", ordinal: 0, depth: 1))
         XCTAssertEqual(branch.reference(at: 50_002), VirtualTreeReference(parent: "/", ordinal: 2, depth: 0))
         branch.setExpansion(parent: "/", ordinal: 1, branch: nil)

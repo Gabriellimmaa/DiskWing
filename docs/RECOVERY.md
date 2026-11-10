@@ -19,3 +19,31 @@ History lists pending operation-UUID.json records, including cancelled/interrupt
 Unreadable or newer records are preserved. configuration-UUID.json contains private before/after shell/Xcode settings; a prepared record requires review after interruption. Do not paste it into public issues or blindly replace a shell that has since changed. The original zshrc-before-cachessd.txt and Xcode backup remain available.
 
 The private SQLite index can be rebuilt by another scan; do not remove recovery journals or settings as an index repair. Stop tracking before moving a monitored root. Unavailable volumes and denied access never imply freed space. See DISTRIBUTION.md for reviewed removal.
+
+
+## Reviewed graphical caches and volume Trash
+
+Graphical transfers are recorded separately in `graphical-caches.json` and
+`graphical-operation-UUID.json`. A prepared destination has not yet proved use.
+The original cache remains in a private local quarantine until the application's
+SSD reads/writes are verified and source release was reviewed. Preserve that
+quarantine and all SSD generations after interruption. History offers a reviewed
+recovery action; unreadable or future formats require manual record review.
+
+Use **Restore to Mac** for a registered graphical cache or **Resume on SSD**
+after reconnecting. Quit the application first. Existing local content is never
+overwritten and cache databases are not merged. When the SSD is absent, the
+provider's documented fallback applies; Chrome may use network/memory rather
+than a persistent local cache. Do not interpret that as temporary disk bytes or
+as proof that a running application has switched back after reconnection.
+
+New `volumeTrash` records bind the item and Trash path to a volume UUID and root
+identity. Recovery finds the currently mounted volume, verifies the same-volume
+Trash original and uses an exclusive rename. A source conflict is preserved for
+review. Unsupported Trash filesystems fail before mutation; no permanent delete
+is offered. Legacy home-only records keep their existing recovery contract.
+
+Volume scan queues are separate from operation journals. Continuing a partial
+scan revalidates changed directories before it can be complete. An unavailable
+index SSD or scanned volume is not a zero-size result. Scan-index repair must
+never remove graphical/operation/configuration recovery records.

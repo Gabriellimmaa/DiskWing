@@ -196,7 +196,7 @@ final class SampleAvailability: @unchecked Sendable {
         if isSamples { return Self.sampleAdapterStatus(tool) }
         return CacheAdapters.inspect(tool, home: home)
     }
-    nonisolated private static func sampleAdapterStatus(_ tool: CacheDescriptor) -> AdapterStatus {
+    nonisolated static func sampleAdapterStatus(_ tool: CacheDescriptor) -> AdapterStatus {
         let version = CacheAdapters.qualifiedVersions[tool.id]
         let qualified = version != nil
         return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: version, effectiveCachePath: tool.source.path,
@@ -263,9 +263,12 @@ final class SampleAvailability: @unchecked Sendable {
         }
         return GraphicalCacheCatalog.candidates(home: home, applications: [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Applications"), home.appendingPathComponent("Applications")])
     }
-    func requestGracefulTermination(applicationIDs: Set<String>) -> [String] {
+    func requestGracefulTermination(applications: [URL]) -> [String] {
         if let samples { samples.record("close-applications"); return [] }
-        return NSWorkspace.shared.runningApplications.filter { applicationIDs.contains($0.bundleIdentifier ?? "") }.compactMap { app in
+        let paths = Set(applications.map { Paths.physicalURL($0).path })
+        return NSWorkspace.shared.runningApplications.filter { app in
+            app.bundleURL.map { paths.contains(Paths.physicalURL($0).path) } == true
+        }.compactMap { app in
             app.terminate() ? nil : (app.localizedName ?? app.bundleIdentifier ?? "")
         }
     }

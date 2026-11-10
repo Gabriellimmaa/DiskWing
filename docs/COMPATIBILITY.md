@@ -31,3 +31,28 @@ Operation/configuration journals remain schema 1. Restore journals add optional 
 The development-only samples bundle uses com.cachessd.app.acceptance (helper com.cachessd.helper.acceptance) and never opens the normal preference domain. The normal bundle rejects sample launch arguments. No persisted production identifier changes.
 
 Release review evidence uses a separate schema 2 and candidate manifests schema 1. Earlier private review files are preserved, rejected for promotion, and must be reviewed against the exact candidate rather than silently upgraded. These schemas do not change user settings.
+
+## Volume and graphical-cache increment
+
+The reviewed [cache/volume experience](plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md)
+adds independent volume tables to the existing index contract. New volume indexes
+use target-derived filenames and a separate version marker. They do not move or
+rewrite the legacy `index.sqlite`. A durable directory queue and source/root
+identities support revalidation on resume. Unsupported target/table formats are
+preserved and refused before retention or schema changes. External index storage
+is optional, APFS-only, with a 1 GiB reserve; internal storage retains the 512 MiB
+budget and 256 MiB floor.
+
+Graphical caches use separate schema-1 `graphical-caches.json` and
+`graphical-operation-UUID.json` records; configuration before/after records retain
+the existing contract. States in these files do not change legacy tool locations.
+Opening DiskWing re-evaluates old settings; integration flags with no locations
+never prove a transfer. Unsupported or unreadable records block changes and
+updater promotion rather than being silently re-created.
+
+Manual volume Trash uses the new `volumeTrash` operation kind with an optional
+versioned `volumeTrashScope`, volume-relative Trash location and item identity.
+Legacy journals still decode. Earlier apps reject this unknown operation kind
+instead of trying to restore it using an obsolete absolute path. Recovery resolves
+the current mount by UUID and revalidates root/item identity; no permanent-delete
+or cross-volume-copy fallback is introduced.

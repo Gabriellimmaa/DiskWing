@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import AppKit
 @testable import CacheSSDApp
 import CacheSSDCore
 
@@ -259,10 +260,12 @@ import CacheSSDCore
             XCTAssertTrue(try XCTUnwrap(model.cacheTransferResults.first { $0.id == chrome }).sourceReleased)
             XCTAssertEqual(try context.graphicalEngine().registrations().first?.evidence?.isSimulated, true, "Generated sample evidence must remain visibly simulated in durable records")
             try XCTUnwrap(context.samples).setVolumeConnected(false)
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .localTemporary, "Absence must update without requiring another analysis")
             model.analyzeCacheWorkflow(); try await wait(until: { !model.cacheAnalyzing })
             XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .localTemporary)
             XCTAssertEqual(model.cacheTransferResults.first { $0.id == "npm" }?.state, .localTemporary)
             try XCTUnwrap(context.samples).setVolumeConnected(true)
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .configuredNeedsReopen)
             try await reviewed(.graphicalResume(chrome), on: model)
             XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .configuredNeedsReopen)
             try await reviewed(.graphicalRestore(chrome), on: model)
@@ -270,6 +273,107 @@ import CacheSSDCore
             XCTAssertTrue(FileManager.default.fileExists(atPath: context.home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path))
         }
     }
+    func testVirtualTreeUnloadedSelectionCannotKeepPreviousTrashTarget() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context); model.chooseFolder()
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        let folder = try XCTUnwrap(model.currentFolder), page = try await model.treePage(parent: folder.path, offset: 0, limit: 128)
+        let target = try await model.treePage(parent: folder.path, offset: 129, limit: 1)
+        let expected = try XCTUnwrap(target.items.first), previous = try XCTUnwrap(page.items.first)
+        let coordinator = VolumeTreeView.Coordinator(model: model), table = NSTableView()
+        coordinator.branch = VirtualTreeBranch(path: folder.path, childCount: page.total)
+        coordinator.pages[.init(parent: folder.path, offset: 0)] = page.items
+        coordinator.table = table; table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")))
+        table.dataSource = coordinator; table.delegate = coordinator; table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        coordinator.synchronizeSelection(); XCTAssertEqual(model.selectedItem?.path, previous.path)
+        table.selectRowIndexes(IndexSet(integer: 129), byExtendingSelection: false)
+        coordinator.synchronizeSelection()
+        XCTAssertNil(model.selectedItem, "A loading row must never leave actions bound to the previous file")
+        try await wait(until: { model.selectedItem?.path == expected.path })
+        XCTAssertEqual(coordinator.selectedReference?.ordinal, 129)
+        XCTAssertEqual(model.selectedItem?.fileIdentity, expected.fileIdentity)
+    }
+    func testEjectClosesExplorerIndexAndReconnectResumesThePreservedSession() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context)
+        try await wait(until: { !model.volumeTargets.isEmpty })
+        let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+        model.scanVolume(target)
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        let session = model.indexedSessionID, volume = try XCTUnwrap(model.selectedVolume)
+        try await reviewed(.eject(volume), on: model)
+        XCTAssertTrue(model.indexSuspended); XCTAssertNil(model.indexedSessionID)
+        XCTAssertFalse(model.currentScopeAvailable); XCTAssertTrue(model.analysisNeedsRefresh)
+        try XCTUnwrap(context.samples).setVolumeConnected(true)
+        model.resumeExplorer(); try await wait(until: { !model.isScanning && !model.indexLoading })
+        XCTAssertNil(model.errorMessage); XCTAssertFalse(model.indexSuspended)
+        XCTAssertEqual(model.indexedSessionID, session); XCTAssertTrue(model.currentScopeAvailable)
+    }
+
+    func testNestedTreeSelectionHighlightsContainingMapBlockWithoutChangingVolume() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context)
+        try await wait(until: { !model.volumeTargets.isEmpty })
+        let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+        model.scanVolume(target)
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading && !model.treemapItems.isEmpty })
+        let downloads = try XCTUnwrap(model.treemapItems.first { $0.name == "Downloads" })
+        let page = try await model.treePage(parent: downloads.path, offset: 0, limit: 128)
+        let nestedFile = try XCTUnwrap(page.items.first { !$0.isDirectory })
+        model.selectExplorerItem(nestedFile)
+        XCTAssertEqual(model.selectedItem?.path, nestedFile.path)
+        XCTAssertTrue(model.treemapContainsSelection(downloads)); XCTAssertEqual(model.selectedTreemapContainer?.path, downloads.path)
+        XCTAssertEqual(model.currentFolder?.path, model.report?.root.path)
+        XCTAssertEqual(model.explorerTarget?.id, target.id)
+        XCTAssertFalse(model.selectedInTreemapRemainder)
+    }
+
+    func testNewScanWithoutSSDUsesBoundedInternalIndexButResumeKeepsItsOriginalStorage() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context)
+        try await wait(until: { !model.volumeTargets.isEmpty })
+        let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+        model.scanVolume(target); try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        XCTAssertTrue(model.indexOnSSD)
+        let session = model.indexedSessionID
+        try XCTUnwrap(context.samples).setVolumeConnected(false)
+        model.resumeExplorer()
+        XCTAssertFalse(model.isScanning); XCTAssertNotNil(model.errorMessage); XCTAssertNil(model.indexedSessionID); XCTAssertEqual(model.report?.id, session); XCTAssertTrue(model.indexSuspended)
+        model.errorMessage = nil
+        model.scanVolume(target); try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        XCTAssertFalse(model.indexOnSSD); XCTAssertNotNil(model.notice)
+        let internalSession = model.indexedSessionID
+        try XCTUnwrap(context.samples).setVolumeConnected(true)
+        model.resumeExplorer(); try await wait(until: { !model.isScanning && !model.indexLoading })
+        XCTAssertFalse(model.indexOnSSD, "Resume must keep the original index even if another destination becomes available")
+        XCTAssertEqual(model.indexedSessionID, internalSession)
+    }
+
+    func testUnknownGraphicalRegistryBlocksCLITransferBeforeAnyConfigurationMutation() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let registry = context.store.base.appendingPathComponent("graphical-caches.json")
+        let future = try JSONSerialization.data(withJSONObject: ["schemaVersion": 99, "installationID": context.store.settings().installationID, "active": [:]])
+        try future.write(to: registry)
+        let rc = context.home.appendingPathComponent(".zshrc"), rcBefore = Data("# Generated configuration that must stay unchanged\n".utf8)
+        try rcBefore.write(to: rc)
+        let settingsBefore = try Data(contentsOf: context.store.base.appendingPathComponent("settings.json"))
+        let npm = try XCTUnwrap(CacheCatalog.find("npm", home: context.home)), cacheBefore = try FileTree.digest(npm.source)
+        let model = AppModel(context: context); model.analyzeCacheWorkflow()
+        try await wait(until: { !model.cacheAnalyzing && !model.cacheEntries.isEmpty })
+        XCTAssertTrue(model.newCacheTransferBlocked)
+        model.cacheSelectedIDs = ["npm"]; model.reviewCacheTransfer(); XCTAssertNil(model.review)
+        // Revalidate at confirmation too, even if an old valid sheet survived.
+        let entry = try XCTUnwrap(model.cacheEntries.first { $0.id == "npm" })
+        let action = ReviewAction.cacheTransfer(CacheTransferPlan(destinationVolume: try XCTUnwrap(model.selectedVolume), entries: [entry]))
+        model.review = action; model.execute(action)
+        XCTAssertFalse(model.busy); XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(try Data(contentsOf: registry), future)
+        XCTAssertEqual(try Data(contentsOf: rc), rcBefore)
+        XCTAssertEqual(try Data(contentsOf: context.store.base.appendingPathComponent("settings.json")), settingsBefore)
+        XCTAssertEqual(try FileTree.digest(npm.source), cacheBefore)
+    }
+
     func testVolumeJourneyKeepsSelectedVolumeAndTrashesThroughReviewedScope() async throws {
         defer { L10n.preference = "system" }
         for language in ["pt-BR", "en"] {

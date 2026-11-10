@@ -42,6 +42,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     @Published var explorerTarget: VolumeScanTarget?
     @Published var choosingVolume = true
     @Published var indexOnSSD = false
+    @Published var explorerRevision = UUID()
+    @Published var indexSuspended = false
+    private var suspendedVolumeSessionID: UUID?
     @Published private(set) var analysisNeedsRefresh = false
     @Published var breadcrumbs: [ScanItem] = []
     @Published var selectedPath: String?
@@ -77,6 +80,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     @Published var cacheTransferResults: [CacheTransferItemResult] = []
     @Published var cacheAnalyzing = false
     @Published var cacheRegisteredIDs = Set<String>()
+    @Published var cacheVerifiedAt: [String: Date] = [:]
+    private var cacheNeedsReopen = Set<String>()
     @Published var cacheStateUnknown = false
     @Published var graphicalPendingTransfers: [GraphicalCacheJournal] = []
     @Published var history: [OperationRecord] = []
@@ -117,6 +122,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var busy: Bool { operationMessage != nil || updates.sessionInProgress }
     var currentFolder: ScanItem? { breadcrumbs.last }
     var currentScopeAvailable: Bool {
+        if indexSuspended { return false }
         if let target = explorerTarget { return target.roots.allSatisfy { context.scopeAvailable($0.url) } }
         return report.map { context.scopeAvailable($0.root.url) } ?? false
     }
@@ -143,6 +149,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var cacheWorkflowHeadline: String {
         if cacheStateUnknown { return L10n.text("Estado dos caches precisa de revisão") }
         if !hasRegisteredCacheDestinations { return L10n.text("Nenhum cache transferido") }
+        if cacheTransferResults.contains(where: { $0.state == .transferring }) { return L10n.text("Transferindo") }
+        let errors = cacheTransferResults.filter { $0.state == .error }.count
+        if errors > 0 { return L10n.text("\(errors) itens precisam de revisão") }
+        let temporary = cacheTransferResults.filter { $0.state == .localTemporary }.count
+        if temporary > 0 { return L10n.text("\(temporary) itens em modo temporário sem SSD") }
         let proven = cacheTransferResults.filter { $0.state == .ssdVerified }.count
         if proven > 0 { return L10n.text("Uso do SSD comprovado em \(proven) itens") }
         return L10n.text("Destinos preparados; uso ainda não comprovado")
@@ -150,6 +161,15 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var cacheWorkflowDetail: String {
         if !hasRegisteredCacheDestinations { return L10n.text("Escolha o SSD e analise os aplicativos para revisar a primeira transferência.") }
         return L10n.text("Reabra os aplicativos ou use um novo terminal. A verificação distingue configuração de gravação real no SSD.")
+    }
+    func cacheSizeKnown(_ entry: CacheTransferEntry) -> Bool {
+        if entry.kind == .graphical { return graphicalCacheCandidates.first { $0.id == entry.id }?.measurementComplete ?? false }
+        guard let size = toolSizes[entry.id] else { return false }; return size.complete || size.missing
+    }
+    func cacheDestination(_ entry: CacheTransferEntry) -> URL? {
+        if let destination = entry.destinationURL { return destination }
+        guard let location = settings.locations[entry.id], let volume = context.volume(location.volumeUUID) else { return nil }
+        return URL(fileURLWithPath: volume.path).appendingPathComponent(location.relativePath)
     }
     func cacheStateText(_ state: CacheUsageState) -> String {
         switch state {
@@ -162,20 +182,43 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         case .error: return L10n.text("Precisa de revisão")
         }
     }
+    private func cacheResult(_ candidate: GraphicalCacheCandidate, status: GraphicalCacheStatus) -> CacheTransferItemResult {
+        if status.state == .localTemporary { cacheNeedsReopen.insert(candidate.id) }
+        cacheVerifiedAt[candidate.id] = status.verifiedAt
+        let reopen = cacheNeedsReopen.contains(candidate.id) && status.state == .ssdVerified
+        return CacheTransferItemResult(id: candidate.id, state: reopen ? .configuredNeedsReopen : status.state,
+            detail: reopen ? "SSD reconectado. Reabra o aplicativo e verifique o uso novamente." : status.detail,
+            recordID: status.recordID, sourceReleased: status.sourceReleased, sourceLogicalBytes: candidate.logicalBytes)
+    }
+    private func refreshRegisteredCacheStates() {
+        guard !busy else { return }
+        let graphical = context.graphicalEngine()
+        for candidate in graphicalCacheCandidates where cacheRegisteredIDs.contains(candidate.id) {
+            let result = cacheResult(candidate, status: graphical.status(candidate: candidate))
+            cacheTransferResults.removeAll { $0.id == candidate.id }; cacheTransferResults.append(result)
+        }
+        for tool in tools {
+            guard let location = settings.locations[tool.id] else { continue }
+            let available = settings.useExternal && context.volume(location.volumeUUID) != nil
+            let result = CacheTransferItemResult(id: tool.id, state: available ? .configuredNeedsReopen : .localTemporary,
+                detail: available ? "Destino configurado. Use um novo terminal; uma configuração não comprova o uso do SSD." : "As próximas execuções usam o cache local temporário. Reabra ferramentas que ainda estejam em uso.", sourceLogicalBytes: toolSizes[tool.id]?.logical ?? 0)
+            cacheTransferResults.removeAll { $0.id == tool.id }; cacheTransferResults.append(result)
+        }
+    }
     func invalidateCacheReview() { cacheSelectedIDs.removeAll(); cacheEntries = []; cacheTransferResults = [] }
     func analyzeCacheWorkflow() {
         guard !busy, !isScanning, !cacheAnalyzing else { return }
         do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
         cacheAnalyzing = true
-        let context = context, tools = tools
+        let context = context, tools = tools, cacheHome = home, sampleMode = isSamples
         Task {
             let graphics = await context.graphicalCandidates()
             let result = await Task.detached(priority: .userInitiated) {
-                tools.map { tool in (tool, FileTree.measure(tool.source)) }
+                tools.map { tool in (tool, FileTree.measure(tool.source), sampleMode ? AppContext.sampleAdapterStatus(tool) : CacheAdapters.inspect(tool, home: cacheHome)) }
             }.value
             var entries: [CacheTransferEntry] = [], selected = Set<String>(), registered = Set(settings.locations.keys)
-            for (tool, size) in result {
-                let status = context.inspect(tool); adapterStatuses[tool.id] = status
+            for (tool, size, status) in result {
+                adapterStatuses[tool.id] = status
                 toolSizes[tool.id] = ToolSize(logical: size.logical, allocated: size.allocated, complete: size.isComplete, missing: size.missing)
                 let empty = size.missing || size.isComplete && size.logical == 0
                 let reason: String?
@@ -205,15 +248,17 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 if entry.blockedReason == nil && !registered.contains(entry.id) { selected.insert(entry.id) }
                 if registered.contains(entry.id) || status.state == .error {
                     results.removeAll { $0.id == entry.id }
-                    results.append(CacheTransferItemResult(id: entry.id, state: status.state, detail: status.detail, recordID: status.recordID, sourceReleased: status.sourceReleased, sourceLogicalBytes: candidate.logicalBytes))
+                    results.append(cacheResult(candidate, status: status))
                 }
             }
             graphicalCacheCandidates = graphics; cacheRegisteredIDs = registered
             cacheEntries = entries; cacheSelectedIDs = selected; cacheTransferResults = results; cacheAnalyzing = false
         }
     }
+    var newCacheTransferBlocked: Bool { cacheStateUnknown || hasUnreadableRecoveryRecords || pendingRecoveryCount > 0 }
     func reviewCacheTransfer() {
         guard let volume = selectedVolume, !busy, !cacheAnalyzing else { return }
+        guard !newCacheTransferBlocked else { errorMessage = L10n.text("Revise os registros de recuperação antes de transferir novos caches."); return }
         let entries = cacheEntries.filter { cacheSelectedIDs.contains($0.id) && $0.blockedReason == nil && !cacheRegisteredIDs.contains($0.id) }
         guard !entries.isEmpty else { return }
         review = .cacheTransfer(CacheTransferPlan(destinationVolume: volume, entries: entries))
@@ -221,8 +266,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     func closeReviewedApplications(_ plan: CacheTransferPlan) {
         guard review?.id == ReviewAction.cacheTransfer(plan).id, !busy else { return }
         let selected = Set(plan.eligibleEntries.map(\.id))
-        let identifiers = Set(graphicalCacheCandidates.filter { selected.contains($0.id) }.map(\.applicationID))
-        let refused = context.requestGracefulTermination(applicationIDs: identifiers)
+        let applications = graphicalCacheCandidates.filter { selected.contains($0.id) }.compactMap(\.applicationURL)
+        let refused = context.requestGracefulTermination(applications: applications)
         notice = refused.isEmpty ? L10n.text("Encerramento solicitado. Salve seu trabalho e conclua os diálogos dos aplicativos antes de transferir.") : L10n.text("Feche manualmente antes de continuar: \(refused.joined(separator: ", "))")
     }
     private func executeCacheTransfer(_ plan: CacheTransferPlan, cancellation: CancellationFlag) async throws {
@@ -234,6 +279,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         for entry in plan.eligibleEntries {
             if cancellation.isCancelled { break }
             operationMessage = L10n.text("Transferindo cache de \(entry.title)…")
+            cacheTransferResults.removeAll { $0.id == entry.id }
+            cacheTransferResults.append(CacheTransferItemResult(id: entry.id, state: .transferring, detail: "Copiando e conferindo antes de ativar o destino."))
             var result: CacheTransferItemResult
             do {
                 try context.requireStorage(); try context.require([entry.sourceURL, URL(fileURLWithPath: plan.destinationVolume.path)])
@@ -248,7 +295,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     guard let candidate = graphicalCacheCandidates.first(where: { $0.id == entry.id }) else { throw CacheSSDError.message(L10n.text("O aplicativo mudou desde a análise. Analise novamente.")) }
                     result = try await Task.detached(priority: .userInitiated) {
                         try graphical.transfer(candidate: candidate, volume: plan.destinationVolume, releaseSource: true, cancellation: cancellation) { progress in
-                            Task { @MainActor in self.operationMessage = L10n.message(progress.detail) }
+                            Task { @MainActor in self.updateOperationProgress(progress.detail, token: cancellation) }
                         }
                     }.value
                 }
@@ -259,21 +306,30 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         notice = failed > 0 ? L10n.text("Transferência parcial. Revise o resultado de cada aplicativo.") : cancellation.isCancelled ? L10n.text("Transferência interrompida. Os resultados concluídos e as cópias foram preservados.") : L10n.text("Destinos preparados. Reabra os aplicativos ou use um novo terminal para verificar o uso.")
     }
     func verifyCacheWorkflowUsage() {
-        guard !busy, !cacheAnalyzing else { return }
-        let engine = context.graphicalEngine(), candidates = graphicalCacheCandidates
-        cacheAnalyzing = true
+        guard !busy, !isScanning, !cacheAnalyzing else { return }
+        let engine = context.graphicalEngine(), candidates = graphicalCacheCandidates, token = CancellationFlag()
+        cacheAnalyzing = true; cancellation = token; operationMessage = L10n.text("Verificando uso e concluindo transferências…")
         Task {
+            defer {
+                operationMessage = nil; cancellation = nil; cacheAnalyzing = false
+                reloadRecords(); refreshVolumes()
+            }
             for candidate in candidates where cacheRegisteredIDs.contains(candidate.id) {
+                if token.isCancelled { break }
                 do {
-                    let status = try await Task.detached(priority: .userInitiated) { try engine.verifyUsage(candidate: candidate) }.value
+                    let status = try await Task.detached(priority: .userInitiated) {
+                        try engine.verifyUsage(candidate: candidate, cancellation: token) { progress in
+                            Task { @MainActor in self.updateOperationProgress(progress.detail, token: token) }
+                        }
+                    }.value
                     cacheTransferResults.removeAll { $0.id == candidate.id }
-                    cacheTransferResults.append(CacheTransferItemResult(id: candidate.id, state: status.state, detail: status.detail, recordID: status.recordID, sourceReleased: status.sourceReleased, sourceLogicalBytes: candidate.logicalBytes))
+                    if status.state == .ssdVerified { cacheNeedsReopen.remove(candidate.id) }
+                    cacheTransferResults.append(cacheResult(candidate, status: status))
                 } catch {
                     cacheTransferResults.removeAll { $0.id == candidate.id }
                     cacheTransferResults.append(CacheTransferItemResult(id: candidate.id, state: .error, detail: error.localizedDescription))
                 }
             }
-            cacheAnalyzing = false; reloadRecords()
         }
     }
 
@@ -304,8 +360,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
         volumes = context.volumes()
         if let scanningRoot, !context.scopeAvailable(scanningRoot) { cancellation?.cancel() }
-        if let uuid = indexStorageVolumeUUID, !volumes.contains(where: { $0.uuid == uuid }) { cancellation?.cancel() }
-        refreshGrowth(); startMonitoring(); refreshVolumeTargets()
+        if let uuid = indexStorageVolumeUUID, !volumes.contains(where: { $0.uuid == uuid }) {
+            cancellation?.cancel()
+            if !isScanning { suspendExplorerIndex() }
+        }
+        refreshGrowth(); startMonitoring(); refreshVolumeTargets(); refreshRegisteredCacheStates()
     }
     func refreshVolumeTargets() {
         let supplied = volumes, sampleMode = isSamples, request = UUID(); volumeTargetRequest = request
@@ -321,7 +380,20 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         guard !busy, !isScanning else { return }
         do { try context.requireStorage(); try context.require(target.roots.map(\.url)) }
         catch { errorMessage = error.localizedDescription; return }
-        let external = selectedVolume.flatMap { destinationIssue == nil ? $0 : nil }
+        let external: VolumeInfo?
+        if resume {
+            if let originalIndexVolume = indexStorageVolumeUUID {
+                guard let volume = context.volume(originalIndexVolume) else {
+                    errorMessage = L10n.text("Reconecte o SSD que guarda esta análise antes de retomá-la. A fila foi preservada."); return
+                }
+                external = volume
+            } else { external = nil }
+        } else {
+            if let issue = destinationIssue { errorMessage = issue; return }
+            external = selectedVolume
+        }
+        let usingInternalWhileSSDAbsent = external == nil && settings.selectedVolumeUUID != nil
+
         let sourceIdentifier = context.volumeIdentityProvider()
         let location: VolumeIndexLocation
         do {
@@ -330,9 +402,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                                                        volumeIdentifier: sourceIdentifier)
             try context.require([location.url])
         } catch { errorMessage = error.localizedDescription; return }
-        let previous = resume ? indexedSessionID : nil, scanHome = home, excluded = [store.base], token = CancellationFlag()
+        let previous = resume ? (indexedSessionID ?? suspendedVolumeSessionID) : nil, scanHome = home, excluded = [store.base], token = CancellationFlag()
         cancellation = token; explorerTarget = target; choosingVolume = false; section = .explorer
-        isScanning = true; scanProgress = nil; scanningRoot = target.displayRoot; indexOnSSD = location.storageVolumeUUID != nil
+        isScanning = true; scanProgress = nil; scanningRoot = target.displayRoot; indexOnSSD = location.storageVolumeUUID != nil; indexSuspended = false
         indexStorageVolumeUUID = location.storageVolumeUUID
         pageRequest = UUID(); indexedItems = []; indexOffset = 0; selectedPath = nil; inspectedItem = nil
         if !resume { report = nil; breadcrumbs = []; indexedSessionID = nil }
@@ -347,12 +419,19 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     }
                     return (database, result)
                 }.value
-                index = pair.0; report = pair.1; indexedSessionID = pair.1.id
-                breadcrumbs = [pair.1.root]; analysisNeedsRefresh = false
+                index = pair.0; report = pair.1; indexedSessionID = pair.1.id; suspendedVolumeSessionID = nil; indexSuspended = false
+                breadcrumbs = [pair.1.root]; analysisNeedsRefresh = false; explorerRevision = UUID()
                 isScanning = false; cancellation = nil; scanningRoot = nil; reloadIndex()
                 if pair.1.isPartial { notice = L10n.text("Análise parcial. Você pode continuar após restabelecer acesso ou espaço.") }
-            } catch { isScanning = false; cancellation = nil; scanningRoot = nil; errorMessage = error.localizedDescription }
+                else if usingInternalWhileSSDAbsent { notice = L10n.text("SSD ausente. Esta nova análise usa o índice limitado no Mac; índices anteriores no SSD foram preservados.") }
+            } catch { isScanning = false; cancellation = nil; scanningRoot = nil; indexSuspended = index == nil && report != nil; errorMessage = error.localizedDescription }
         }
+    }
+    private func suspendExplorerIndex() {
+        if let session = indexedSessionID { suspendedVolumeSessionID = session }
+        index = nil; indexedSessionID = nil; pageRequest = UUID(); explorerRevision = UUID(); indexLoading = false
+        indexedItems = []; treemapItems = []; treemapOtherBytes = 0; treemapOtherCount = 0
+        selectedPath = nil; inspectedItem = nil; indexSuspended = report != nil; analysisNeedsRefresh = report != nil
     }
     func refreshExplorer() {
         if let target = explorerTarget { scanVolume(target) }
@@ -449,6 +528,21 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             try database.page(sessionID: session, parent: parentPath, search: query, filesOnly: files, allocatedOrder: allocated, offset: offset, limit: limit)
         }.value
     }
+    func treemapContainsSelection(_ item: ScanItem) -> Bool {
+        guard let selectedPath else { return false }
+        return selectedPath == item.path || item.isDirectory && selectedPath.hasPrefix(item.path == "/" ? "/" : item.path + "/")
+    }
+    var selectedTreemapContainer: ScanItem? { treemapItems.first { treemapContainsSelection($0) } }
+    var selectedInTreemapRemainder: Bool {
+        guard treemapOtherCount > 0, selectedTreemapContainer == nil, let path = selectedPath, let folder = currentFolder?.path else { return false }
+        return path.hasPrefix(folder == "/" ? "/" : folder + "/")
+    }
+    func explorerName(_ item: ScanItem) -> String {
+        guard let target = explorerTarget, target.isSystemGroup,
+              item.path == target.displayRoot.appendingPathComponent(target.dataNamespace).path else { return item.name }
+        return L10n.text("Outros dados do volume")
+    }
+    func clearExplorerSelection() { selectedPath = nil; inspectedItem = nil }
     func selectExplorerItem(_ item: ScanItem, ordinal: Int? = nil) {
         selectedPath = item.path; inspectedItem = item
         if let ordinal { treeScrollRequest = (UUID(), ordinal) }
@@ -457,14 +551,14 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         guard search.isEmpty, !showLargest, let folder = currentFolder, let session = indexedSessionID, let database = index else {
             treemapItems = []; treemapOtherBytes = 0; treemapOtherCount = 0; return
         }
-        let allocated = allocatedOrder
+        let allocated = allocatedOrder, revision = explorerRevision
         Task {
             do {
                 let summary = try await Task.detached(priority: .userInitiated) {
                     try database.childrenSummary(sessionID: session, parent: folder.path, allocatedOrder: allocated, offset: 0, limit: 200)
                 }.value
                 let page = summary.page
-                guard currentFolder?.path == folder.path, indexedSessionID == session, allocatedOrder == allocated, search.isEmpty else { return }
+                guard currentFolder?.path == folder.path, indexedSessionID == session, explorerRevision == revision, allocatedOrder == allocated, search.isEmpty else { return }
                 treemapItems = page.items
                 treemapOtherBytes = allocated ? summary.omittedAllocatedBytes : summary.omittedLogicalBytes
                 treemapOtherCount = summary.omittedCount
@@ -473,6 +567,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func nextPage() { guard indexOffset + indexedItems.count < indexTotal else { return }; indexOffset += 120; reloadIndex() }
     func previousPage() { indexOffset = max(0, indexOffset - 120); reloadIndex() }
+    private func updateOperationProgress(_ text: String, token: CancellationFlag) {
+        guard cancellation === token else { return }; operationMessage = L10n.message(text)
+    }
     func cancel() { cancellation?.cancel() }
     func openFolder(_ item: ScanItem) {
         do { try context.require([item.url]) } catch { errorMessage = error.localizedDescription; return }
@@ -492,7 +589,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             throw CacheSSDError.message(L10n.text("Esta área agrupa dados do volume. Abra-a e escolha um item específico."))
         }
         try context.require([location.url, location.root.url])
-        return (location.url, location.root.volumeInfo(name: explorerTarget?.name ?? location.root.url.lastPathComponent))
+        guard let volume = context.operationVolumeProvider()(location.volumeUUID),
+              (try FileIdentity(URL(fileURLWithPath: volume.path))).device == location.rootIdentity.device else {
+            throw CacheSSDError.message(L10n.text("O volume ou o item mudou desde a revisão. Analise novamente antes de continuar."))
+        }
+        return (location.url, volume)
     }
     func reviewTrash(_ item: ScanItem) {
         guard !busy, !isScanning else { return }
@@ -519,7 +620,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func trashPolicyReason(_ item: ScanItem) -> String? {
         guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
-        guard !cacheStateUnknown else { return L10n.text("Os registros dos caches precisam de revisão antes de alterar arquivos.") }
+        guard !cacheStateUnknown, !context.graphicalEngine().hasUnsafeRecoveryRecords() else { return L10n.text("Os registros dos caches precisam de revisão antes de alterar arquivos.") }
         guard !analysisNeedsRefresh else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
         if explorerTarget != nil {
             do {
@@ -602,7 +703,13 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private func validateAction(_ action: ReviewAction) throws {
         try context.requireStorage()
         switch action {
+        case .volumeTrash, .trash, .move:
+            guard !cacheStateUnknown, !context.graphicalEngine().hasUnsafeRecoveryRecords() else { throw CacheSSDError.message(L10n.text("Os registros dos caches precisam de revisão antes de alterar arquivos.")) }
+        default: break
+        }
+        switch action {
         case .cacheTransfer(let plan):
+            guard !newCacheTransferBlocked else { throw CacheSSDError.message(L10n.text("Revise os registros de recuperação antes de transferir novos caches.")) }
             guard selectedVolume?.uuid == plan.destinationVolume.uuid, selectedVolume?.path == plan.destinationVolume.path else { throw CacheSSDError.message(L10n.text("O SSD mudou desde a revisão. Analise novamente.")) }
             try context.require([URL(fileURLWithPath: plan.destinationVolume.path)] + plan.eligibleEntries.map(\.sourceURL))
         case .volumeTrash(_, let scope): try context.require([try scope.resolve(volumeProvider: context.operationVolumeProvider())])
@@ -647,21 +754,22 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     try await executeCacheTransfer(plan, cancellation: token)
                 case .volumeTrash(let item, let scope):
                     let scopedPersonal = context.personalActions(scope: scope)
-                    let source = try scope.resolve(volumeProvider: context.operationVolumeProvider())
-                    let record = try await Task.detached { try scopedPersonal.trash(source, expectedIdentity: item.fileIdentity, scope: scope, cancellation: token) }.value
+                    try context.require([try scope.resolve(volumeProvider: context.operationVolumeProvider())])
+                    let reviewedSource = URL(fileURLWithPath: scope.reviewedPath)
+                    let record = try await Task.detached { try scopedPersonal.trash(reviewedSource, expectedIdentity: item.fileIdentity, scope: scope, cancellation: token) }.value
                     notice = record.detail
                 case .migration(let tool):
                     let record = try await Task.detached(priority: .userInitiated) {
-                        try engine.migrate(toolID: tool.id, removeLocal: remove, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } }
+                        try engine.migrate(toolID: tool.id, removeLocal: remove, cancellation: token) { text in Task { @MainActor in self.updateOperationProgress(text, token: token) } }
                     }.value
                     notice = L10n.message(record.detail).trimmingCharacters(in: CharacterSet(charactersIn: ".")) + (integrationIsCurrent ? L10n.text(". Novas execuções em terminais com a integração atualizada podem usar o SSD.") : L10n.text(". Direcionamento pendente: ative a integração e abra um novo terminal."))
                 case .prepareCache(let tool):
                     let record = try await Task.detached(priority: .userInitiated) {
-                        try engine.prepareFutureCache(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } }
+                        try engine.prepareFutureCache(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.updateOperationProgress(text, token: token) } }
                     }.value
                     notice = L10n.message(record.detail).trimmingCharacters(in: CharacterSet(charactersIn: ".")) + (integrationIsCurrent ? L10n.text(". Novas execuções em terminais com a integração atualizada podem usar o SSD.") : L10n.text(". Direcionamento pendente: ative a integração e abra um novo terminal."))
                 case .restore(let tool):
-                    try await Task.detached(priority: .userInitiated) { try engine.restore(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value
+                    try await Task.detached(priority: .userInitiated) { try engine.restore(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.updateOperationProgress(text, token: token) } } }.value
                     notice = L10n.text("Cache restaurado no Mac. A cópia do SSD foi preservada.")
                 case .trash(let item):
                     let source = context.actionURL(item.url)
@@ -670,9 +778,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 case .move(let item, let target):
                     let source = context.actionURL(item.url)
                     try context.require([source])
-                    let record = try await Task.detached { try personal.move(source, to: target, expectedIdentity: item.fileIdentity, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value; notice = record.detail
+                    let record = try await Task.detached { try personal.move(source, to: target, expectedIdentity: item.fileIdentity, cancellation: token) { text in Task { @MainActor in self.updateOperationProgress(text, token: token) } } }.value; notice = record.detail
                 case .recover(let assessment):
-                    try await Task.detached { try recovery.restoreSource(id: assessment.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value
+                    try await Task.detached { try recovery.restoreSource(id: assessment.id, cancellation: token) { text in Task { @MainActor in self.updateOperationProgress(text, token: token) } } }.value
                     notice = L10n.text("Origem recuperada. As demais cópias foram preservadas.")
                 case .resolve(let assessment):
                     try recovery.keepCopiesAndResolve(id: assessment.id)
@@ -684,6 +792,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 case .xcodeLocal:
                     try context.xcodeLocal(); notice = L10n.text("O Xcode usará o local padrão no Mac. Os arquivos anteriores no SSD foram preservados.")
                 case .eject(let volume):
+                    if indexStorageVolumeUUID == volume.uuid { suspendExplorerIndex() }
                     if isSamples { try context.eject(volume); notice = L10n.text("SSD de amostra desconectado. Nenhum disco físico foi ejetado."); break }
                     let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
                     var routingSettings = store.settings()
@@ -691,7 +800,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     do {
                         routingSettings.useExternal = false; try store.save(routingSettings)
                         defer { routingSettings.useExternal = previousMode; try? store.save(routingSettings) }
-                        let locations = routingSettings.locations.values.filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativePath) }
+                        let graphicalLocations = try context.graphicalEngine().registrations().filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativeDestination) }
+                        let locations = routingSettings.locations.values.filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativePath) } + graphicalLocations
                         let processes = try await Task.detached { try BusyInspector.inspect(paths: locations) }.value
                         guard processes.isEmpty else { throw CacheSSDError.message(L10n.text("Ejeção adiada. Encerre antes: ") + processes.map { L10n.text("\($0.name) (\($0.pid))") }.joined(separator: L10n.text(", "))) }
                         try context.eject(volume)

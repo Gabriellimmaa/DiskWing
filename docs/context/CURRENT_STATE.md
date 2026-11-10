@@ -1,5 +1,13 @@
 # Current state
 
+## Active cache/volume increment
+
+The maintainer approved [the simpler cache and whole-volume experience](../plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md). Implementation is under independent review on `codex/cache-volume-ux`; the installed build 8 and its backups remain the baseline, and no personal caches are being migrated. This increment reopens the affected acceptance gates.
+
+The new UI has two primary routes, one reviewed cache batch, explicit no-transfer/configured/verified/fallback states, a virtual native tree and attributed MIT treemap. The volume engine has durable directory work, APFS group/source identity, bounded SQL phases and no fixed entry/depth/row cutoff. Manual Trash is bound to reviewed volumes and relative recovery paths. Targeted PT/EN generated app journeys and independently repeated Trash tests pass. Native disposable APFS Finder Trash, renamed/remounted recovery/conflict preservation and ExFAT refusal pass. Graphical qualification, new >1M-entry scale, final storage hardening, exact candidate and full native UI acceptance are still in progress; do not infer acceptance from the UI or the build-8 evidence below.
+
+## Build 8 baseline
+
 Updated 2026-11-10. The expanded cache/explorer scope is integrated through
 [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22), merge e3ab12e. Its exact
 PR head passed macOS 15/26 tests, packaging/lifecycle checks and both optional
@@ -100,7 +108,4 @@ that disappears before identity proof can still stop a scan explicitly.
    developers, at least 80% independent success per group and seven real days.
    Participant evidence is never simulated by agents.
 
-publicV1Ready remains false. No unintegrated implementation is pending and no
-background agent service is assumed after the active session. Further ccache,
-pnpm stores/metadata, graphical-app adapters, duplicate detection, assisted
-uninstall and Intel support need their own bounded scope and qualification.
+publicV1Ready remains false. The baseline above is historical evidence for build 8; the active cache/volume increment has its own pending implementation and qualification described at the top. No background agent service is assumed after the active session. ccache, broader pnpm stores/metadata, duplicate detection, assisted uninstall and Intel support remain outside the currently qualified set.

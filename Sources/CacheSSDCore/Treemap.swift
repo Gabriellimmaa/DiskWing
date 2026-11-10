@@ -96,6 +96,13 @@ public struct VirtualTreeBranch: Sendable {
         if parent == path { return expanded[ordinal] != nil }
         return expanded.values.contains { $0.isExpanded(parent: parent, ordinal: ordinal) }
     }
+    public func parentReference(of childPath: String, depth: Int = 0) -> VirtualTreeReference? {
+        for (ordinal, child) in expanded {
+            if child.path == childPath { return VirtualTreeReference(parent: path, ordinal: ordinal, depth: depth) }
+            if let nested = child.parentReference(of: childPath, depth: depth + 1) { return nested }
+        }
+        return nil
+    }
     public func rowIndex(parent: String, ordinal: Int) -> Int? {
         if path == parent {
             guard ordinal >= 0, ordinal < childCount else { return nil }

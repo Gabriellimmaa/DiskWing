@@ -8,15 +8,15 @@ struct VolumeTreeView: NSViewRepresentable {
     @ObservedObject var model: AppModel
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
+        let scroll = TreeScrollView(); scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         let table = KeyTable(); table.headerView = NSTableHeaderView(); table.rowHeight = 30
         table.usesAlternatingRowBackgroundColors = true; table.allowsMultipleSelection = false
         table.setAccessibilityIdentifier("volume-tree"); table.setAccessibilityLabel(L10n.text("Árvore do volume"))
         for (id, title, width) in [("name", L10n.text("Nome"), 320.0), ("size", L10n.text("Espaço em disco"), 120.0), ("share", "%", 60.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id)); column.title = title; column.width = width
-            column.minWidth = id == "name" ? 180 : 60; table.addTableColumn(column)
+            column.minWidth = id == "name" ? 170 : 60; table.addTableColumn(column)
         }
-        table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        table.columnAutoresizingStyle = .noColumnAutoresizing
         table.delegate = context.coordinator; table.dataSource = context.coordinator
         table.target = context.coordinator; table.doubleAction = #selector(Coordinator.openSelection)
         table.keyHandler = { [weak coordinator = context.coordinator] event in coordinator?.key(event) ?? false }
@@ -27,6 +27,16 @@ struct VolumeTreeView: NSViewRepresentable {
     }
     func updateNSView(_ nsView: NSScrollView, context: Context) { context.coordinator.update(model) }
 
+    final class TreeScrollView: NSScrollView {
+        override func tile() {
+            super.tile()
+            guard let table = documentView as? NSTableView, table.tableColumns.count == 3 else { return }
+            let width = max(340, contentSize.width)
+            if abs(table.frame.width - width) > 0.5 { table.setFrameSize(NSSize(width: width, height: table.frame.height)) }
+            let widths = [max(170, width - 170), 110.0, 60.0]
+            for (column, value) in zip(table.tableColumns, widths) where abs(column.width - value) > 0.5 { column.width = value }
+        }
+    }
     final class KeyTable: NSTableView {
         var keyHandler: ((NSEvent) -> Bool)?
         override func keyDown(with event: NSEvent) { if keyHandler?(event) != true { super.keyDown(with: event) } }
@@ -37,16 +47,28 @@ struct VolumeTreeView: NSViewRepresentable {
         var model: AppModel
         var branch = VirtualTreeBranch(path: "", childCount: 0)
         var pages: [PageKey: [ScanItem]] = [:], order: [PageKey] = [], pending = Set<PageKey>()
-        var signature = "", generation = UUID()
+        var signature = "", generation = UUID(), language = ""
         var lastScrollRequest: UUID?
+        var selectedReference: VirtualTreeReference?
+        private var synchronizingSelection = false
         let pageSize = 128, pageBudget = 12
         init(model: AppModel) { self.model = model }
         func update(_ model: AppModel) {
             self.model = model
-            let next = [model.indexedSessionID?.uuidString ?? "", model.currentFolder?.path ?? "", model.search, String(model.allocatedOrder), String(model.showLargest), model.minimumMiB].joined(separator: "\u{1f}")
+            let currentLanguage = L10n.isEnglish ? "en" : "pt-BR"
+            if language != currentLanguage {
+                language = currentLanguage
+                table?.setAccessibilityLabel(L10n.text("Árvore do volume"))
+                table?.tableColumns.first(where: { $0.identifier.rawValue == "name" })?.title = L10n.text("Nome")
+                table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
+                table?.reloadData()
+            }
+            let next = [model.explorerRevision.uuidString, model.indexedSessionID?.uuidString ?? "", model.currentFolder?.path ?? "", model.search, String(model.allocatedOrder), String(model.showLargest), model.minimumMiB].joined(separator: "\u{1f}")
+            table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
             if signature != next {
                 signature = next; generation = UUID(); pages.removeAll(); order.removeAll(); pending.removeAll()
                 branch = VirtualTreeBranch(path: model.currentFolder?.path ?? "", childCount: 0)
+                selectedReference = nil
                 table?.reloadData(); request(parent: branch.path, offset: 0, root: true)
             }
             if let request = model.treeScrollRequest, lastScrollRequest != request.id,
@@ -76,7 +98,7 @@ struct VolumeTreeView: NSViewRepresentable {
                     while order.count > pageBudget { pages.removeValue(forKey: order.removeFirst()) }
                     if root { branch.childCount = page.total }
                     if let (parentPath, ordinal) = expand { branch.setExpansion(parent: parentPath, ordinal: ordinal, branch: VirtualTreeBranch(path: parent, childCount: page.total)) }
-                    table?.reloadData()
+                    reloadPreservingSelection()
                 } catch {
                     guard generation == token else { return }; pending.remove(key); model.errorMessage = error.localizedDescription
                 }
@@ -88,14 +110,14 @@ struct VolumeTreeView: NSViewRepresentable {
                 return label(column == "name" ? L10n.text("Carregando…") : "", identifier: column)
             }
             if column == "name" {
-                let cell = TreeNameCell(); cell.leading.constant = CGFloat(ref.depth * 16 + 4)
+                let cell = TreeNameCell(); cell.leading.constant = CGFloat(min(ref.depth, 8) * 12 + 4)
                 let expanded = branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal)
                 cell.disclosure.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: item.isDirectory ? L10n.text("Abrir pasta") : nil)
                 cell.disclosure.isHidden = !item.isDirectory || !model.search.isEmpty || model.showLargest
                 cell.action = { [weak self] in self?.toggle(item, ref: ref) }
-                cell.name.stringValue = item.name; cell.icon.image = NSImage(systemSymbolName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc", accessibilityDescription: nil)
+                cell.name.stringValue = model.explorerName(item); cell.icon.image = NSImage(systemSymbolName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc", accessibilityDescription: nil)
                 cell.icon.contentTintColor = item.isDirectory ? .systemBlue : .secondaryLabelColor
-                cell.setAccessibilityLabel(item.name + ", " + model.sizeText(item, allocated: model.allocatedOrder))
+                cell.setAccessibilityLabel(model.explorerName(item) + ", " + model.sizeText(item, allocated: model.allocatedOrder))
                 cell.name.toolTip = item.path; return cell
             }
             if column == "size" { return label(model.sizeText(item, allocated: model.allocatedOrder), identifier: column) }
@@ -111,21 +133,29 @@ struct VolumeTreeView: NSViewRepresentable {
         func toggle(_ item: ScanItem, ref: VirtualTreeReference) {
             guard item.isDirectory, model.search.isEmpty, !model.showLargest else { return }
             if branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal) {
-                branch.setExpansion(parent: ref.parent, ordinal: ref.ordinal, branch: nil); table?.reloadData()
+                branch.setExpansion(parent: ref.parent, ordinal: ref.ordinal, branch: nil); reloadPreservingSelection()
             } else { request(parent: item.path, offset: 0, expand: (ref.parent, ref.ordinal)) }
         }
-        func tableViewSelectionDidChange(_ notification: Notification) {
-            guard let row = table?.selectedRow, row >= 0, let (item, _) = item(at: row) else { return }
+        func reloadPreservingSelection() {
+            synchronizingSelection = true
+            table?.reloadData()
+            if let ref = selectedReference, let row = branch.rowIndex(parent: ref.parent, ordinal: ref.ordinal) {
+                table?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            } else { table?.deselectAll(nil) }
+            synchronizingSelection = false
+            synchronizeSelection()
+        }
+        func synchronizeSelection() {
+            guard let row = table?.selectedRow, row >= 0, let ref = branch.reference(at: row) else {
+                selectedReference = nil; model.clearExplorerSelection(); return
+            }
+            selectedReference = ref
+            guard let (item, _) = item(at: row) else { model.clearExplorerSelection(); return }
             model.selectExplorerItem(item)
         }
-        func selectCached(_ path: String) {
-            guard let table else { return }
-            // Only inspect rendered rows, not every file in a large volume.
-            let visible = table.rows(in: table.visibleRect)
-            guard visible.location != NSNotFound else { return }
-            for row in visible.location..<min(branch.rowCount, visible.location+visible.length) {
-                if item(at: row)?.0.path == path { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false); return }
-            }
+        func tableViewSelectionDidChange(_ notification: Notification) {
+            guard !synchronizingSelection else { return }
+            synchronizeSelection()
         }
         @objc func openSelection() {
             guard let row = table?.selectedRow, let (item, _) = item(at: row) else { return }
@@ -134,8 +164,12 @@ struct VolumeTreeView: NSViewRepresentable {
         func key(_ event: NSEvent) -> Bool {
             guard let row = table?.selectedRow, row >= 0, let (item, ref) = item(at: row) else { return false }
             switch event.keyCode {
-            case 124: if item.isDirectory { toggle(item, ref: ref); return true }
-            case 123: if branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal) { toggle(item, ref: ref) } else { model.goBack() }; return true
+            case 124: if item.isDirectory { if !branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal) { toggle(item, ref: ref) }; return true }
+            case 123:
+                if branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal) { toggle(item, ref: ref) }
+                else if let parent = branch.parentReference(of: ref.parent), let row = branch.rowIndex(parent: parent.parent, ordinal: parent.ordinal) { table?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false); table?.scrollRowToVisible(row) }
+                else { model.goBack() }
+                return true
             case 36: openSelection(); return true
             case 51, 117: reviewTrash(); return true
             default: break

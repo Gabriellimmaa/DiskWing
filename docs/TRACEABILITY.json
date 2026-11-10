@@ -803,9 +803,15 @@
           "Sources/CacheSSDCore/Volumes.swift",
           "Sources/CacheSSDCore/VolumeScanTarget.swift"
         ],
-        "status": "implementing",
+        "status": "implemented_storage_binding_hardening_and_scale_in_progress",
         "evidence": [],
-        "nextAction": "Implement targeted tests, independent review and integration."
+        "nextAction": "Finish >1M run, add independently reviewed no-follow storage binding and serialized index close, integrate UI call sites.",
+        "implementationCommits": [
+          "fe4364ba8a6d75ec8cec320366acb7a42724c0a4",
+          "5f68cf612907e8952e11eb84309b98944dccb7eb",
+          "11b1e8aa1d6ea11df3e98c5412fb5ff0cfdc6980"
+        ],
+        "validation": "41 targeted isolated tests passed; independent reviewer repeated prior 39 cases. New >1M filesystem benchmark running. Storage root binding/open/close API remains in progress."
       },
       {
         "id": "UX-TRASH-01",
@@ -821,12 +827,12 @@
           "Sources/CacheSSDCore/OperationSafety.swift",
           "Sources/CacheSSDCore/VolumeTrashScope.swift"
         ],
-        "status": "implemented_independently_reviewed_native_qualification_pending",
+        "status": "implemented_independently_reviewed_native_fixtures_passed",
         "evidence": [],
-        "nextAction": "Run disposable APFS Finder Trash/remount/conflict and ExFAT refusal after native lane is available.",
+        "nextAction": "Repeat against final integrated candidate source; preserve physical cable and human gates.",
         "implementationCommit": "d67bb0e21a5bbd4a86a3c1b5baf8657a9743bff1",
         "reviewer": "coordinator",
-        "validation": "93 targeted tests independently repeated; native external Finder Trash/remount tests added but not executed yet"
+        "validation": "93 affected tests independently repeated. Native APFS Finder Trash, volume rename/detach/remount, conflict preservation and exclusive-rename recovery passed; native ExFAT Trash refusal passed. No existing disk was renamed/detached."
       },
       {
         "id": "UX-APP-01",
@@ -844,8 +850,8 @@
         ],
         "status": "implemented_targeted_tests_passed_independent_review_pending",
         "evidence": [],
-        "nextAction": "Independent code/UI review; PT/EN native samples minimum-window and keyboard checks; produce separately identified candidate.",
-        "validation": "20 app/localization/treemap targeted tests passed with generated SSD fixtures; 51 packaging tests passed. New default temporary alias regression being corrected before final suite."
+        "nextAction": "Independent review of final fixes, integrate close/open APIs; full suite and PT/EN native sample checks; build separately identified candidate >8.",
+        "validation": "PT native samples observed with synchronized top-level map/tree, keyboard folder navigation and reviewed batch cancellation. Minimum-column width and temporary aliases corrected after observation. Targeted app regression tests cover unknown registry before mutation, unloaded-row target safety, nested selection, index storage and eject/resume. Full final PT/EN native pass pending."
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",

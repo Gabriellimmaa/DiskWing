@@ -51,7 +51,7 @@ enum SampleWorkspace {
         // for diagnosis, never a reason to clean the supplied parent broadly.
         let physicalHome = root.appendingPathComponent("home")
         try fm.createDirectory(at: physicalHome, withIntermediateDirectories: true)
-        let home = URL(fileURLWithPath: physicalHome.path, isDirectory: true).standardizedFileURL
+        let home = URL(fileURLWithPath: physicalHome.path, isDirectory: true)
         let downloads = home.appendingPathComponent("Downloads")
         try fm.createDirectory(at: downloads.appendingPathComponent("nested"), withIntermediateDirectories: true)
         for number in 0..<150 { try Data(repeating: 65, count: number + 1).write(to: downloads.appendingPathComponent(String(format: "sample-%03d.txt", number))) }
@@ -96,7 +96,7 @@ enum SampleWorkspace {
             }
         } else { throw failure() }
         guard try readRegular(required[0], maximumBytes: 64) == Data("diskwing-gui-samples-v1\n".utf8), FileManager.default.isExecutableFile(atPath: required[3].path) else { throw failure() }
-        let home = URL(fileURLWithPath: required[1].path, isDirectory: true).standardizedFileURL
+        let home = URL(fileURLWithPath: required[1].path, isDirectory: true)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         _ = try decoder.decode(AppSettings.self, from: readRegular(required[2].appendingPathComponent("settings.json"), maximumBytes: 8_388_608))
         let preferences = required[2].appendingPathComponent("preferences.json")

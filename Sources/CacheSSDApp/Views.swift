@@ -418,7 +418,14 @@ struct ReviewSheet: View {
                 fact(L10n.text("Ferramenta"), tool.name)
                 fact(L10n.text("Destino"), model.selectedVolume?.name ?? L10n.text("SSD não conectado"))
                 Text(L10n.text("Prepara uma pasta vazia no SSD para novas gravações. Nenhum cache local será criado ou removido. O direcionamento exige a integração atualizada em um novo terminal.")).font(.callout)
-            case .volumeTrash(let item, _), .trash(let item):
+            case .volumeTrash(let item, let scope):
+                fact(L10n.text("Volume"), model.context.operationVolumeProvider()(scope.volumeUUID)?.name ?? L10n.text("Volume indisponível"))
+                fact(L10n.text("Item"), (try? scope.resolve(volumeProvider: model.context.operationVolumeProvider()))?.path ?? scope.reviewedPath)
+                fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
+                if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
+                Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)
+            case .trash(let item):
                 fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
                 if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)

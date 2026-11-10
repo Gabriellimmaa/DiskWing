@@ -51,7 +51,7 @@ struct VolumeExplorerContent: View {
                             HStack(spacing: 5) {
                                 ForEach(Array(model.breadcrumbs.enumerated()), id: \.offset) { position, folder in
                                     if position > 0 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
-                                    Button(position == 0 ? model.explorerTarget?.name ?? folder.name : folder.name) { model.navigateToBreadcrumb(position) }.buttonStyle(.plain)
+                                    Button(position == 0 ? model.explorerTarget?.name ?? model.explorerName(folder) : model.explorerName(folder)) { model.navigateToBreadcrumb(position) }.buttonStyle(.plain)
                                 }
                             }
                         }
@@ -62,6 +62,15 @@ struct VolumeExplorerContent: View {
                         Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.accessibilityLabel(L10n.text("Exportar relatório"))
                             .disabled(model.busy || model.isScanning)
                     }.padding(.horizontal, 20).padding(.vertical, 12)
+                    if model.indexSuspended {
+                        ContentUnavailableView {
+                            Label(L10n.text("Análise guardada no SSD"), systemImage: "externaldrive")
+                        } description: {
+                            Text(L10n.text("Reconecte o SSD e retome a análise. O índice e a fila foram preservados; ausência não é tamanho zero."))
+                        } actions: {
+                            Button(L10n.text("Retomar análise")) { model.resumeExplorer() }.disabled(model.busy || model.isScanning)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
                     HSplitView {
                         VStack(spacing: 0) {
                             TextField(L10n.text("Buscar em todo o volume"), text: $model.search).textFieldStyle(.roundedBorder).padding(12).accessibilityIdentifier("explorer-search")
@@ -70,6 +79,7 @@ struct VolumeExplorerContent: View {
                         VolumeTreemapView().frame(minWidth: 220, idealWidth: 320)
                         if inspector { InspectorView(item: model.selectedItem).frame(minWidth: 210, idealWidth: 230, maxWidth: 280) }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                     if let item = model.selectedItem {
                         HStack {
                             Text(item.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)

@@ -26,7 +26,7 @@ struct CacheWorkflowContent: View {
                     Label(model.cacheWorkflowHeadline, systemImage: model.cacheTransferResults.contains { $0.state == .ssdVerified } ? "externaldrive.badge.checkmark" : "shippingbox").font(.title3.weight(.semibold))
                     Text(model.cacheWorkflowDetail).font(.callout).foregroundStyle(.secondary)
                     if !model.cacheTransferResults.isEmpty {
-                        Button(L10n.text("Verificar uso dos caches")) { model.verifyCacheWorkflowUsage() }.disabled(model.busy || model.cacheAnalyzing)
+                        Button(L10n.text("Verificar uso e concluir transferência")) { model.verifyCacheWorkflowUsage() }.disabled(model.busy || model.cacheAnalyzing)
                     }
                 }
                 HStack {
@@ -35,7 +35,7 @@ struct CacheWorkflowContent: View {
                     Spacer()
                     if !model.cacheEntries.isEmpty {
                         Button(L10n.text("Revisar transferência…")) { model.reviewCacheTransfer() }.buttonStyle(.borderedProminent)
-                            .disabled(model.busy || model.cacheAnalyzing || model.cacheSelectedIDs.isEmpty || model.selectedVolume == nil || model.destinationIssue != nil)
+                            .disabled(model.busy || model.cacheAnalyzing || model.newCacheTransferBlocked || model.cacheSelectedIDs.isEmpty || model.selectedVolume == nil || model.destinationIssue != nil)
                     }
                 }
                 if !model.cacheEntries.isEmpty {
@@ -58,7 +58,10 @@ struct CacheWorkflowContent: View {
                         Divider()
                         VStack(alignment: .leading, spacing: 5) {
                             Text(L10n.text("Continuam no Mac")).font(.headline)
-                            Text(L10n.text("\(ByteText.format(exceptions.reduce(0) { $0 + $1.logicalBytes })) conhecidos. Estes itens não contam como transferidos.")).font(.caption).foregroundStyle(.secondary)
+                            Text(L10n.text("\(ByteText.format(exceptions.filter { model.cacheSizeKnown($0) }.reduce(0) { $0 + $1.logicalBytes })) conhecidos. Estes itens não contam como transferidos.")).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if exceptions.contains(where: { !model.cacheSizeKnown($0) }) {
+                            Text(L10n.text("\(exceptions.filter { !model.cacheSizeKnown($0) }.count) itens com tamanho desconhecido, preservados no Mac.")).font(.caption).foregroundStyle(.secondary)
                         }
                         ForEach(exceptions) { entry in CacheWorkflowRow(entry: entry, selectable: false) }
                     }
@@ -97,10 +100,11 @@ private struct CacheWorkflowRow: View {
                     if let result = model.cacheTransferResults.first(where: { $0.id == entry.id }) {
                         Text(model.cacheStateText(result.state)).font(.callout.weight(.medium)).foregroundStyle(result.state == .error || result.state == .exception ? Palette.orange : Palette.accent)
                         Text(L10n.message(result.detail)).font(.caption).foregroundStyle(.secondary)
+                        if let date = model.cacheVerifiedAt[entry.id] { Text(L10n.text("Último uso comprovado: \(date.formatted(.dateTime.day().month(.abbreviated).year().hour().minute().locale(L10n.locale)))")).font(.caption).foregroundStyle(.secondary) }
                     } else if let reason = entry.blockedReason { Text(L10n.message(reason)).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 8)
-                Text(ByteText.format(entry.logicalBytes)).font(.callout).monospacedDigit()
+                Text(model.cacheSizeKnown(entry) ? ByteText.format(entry.logicalBytes) : L10n.text("Desconhecido")).font(.callout).monospacedDigit()
             }
             if entry.kind == .commandLine, model.cacheRegisteredIDs.contains(entry.id), let tool = model.tools.first(where: { $0.id == entry.id }) {
                 Button(L10n.text("Restaurar no Mac…")) { model.review = .restore(tool) }.font(.caption)
@@ -111,7 +115,13 @@ private struct CacheWorkflowRow: View {
                     if model.cacheTransferResults.first(where: { $0.id == entry.id })?.state == .localTemporary { Button(L10n.text("Retomar no SSD…")) { model.review = .graphicalResume(entry.id) } }
                 }.font(.caption)
             }
-            DisclosureGroup(L10n.text("Ver detalhes")) { Text(entry.sourceURL.path).font(.caption).textSelection(.enabled).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }.font(.caption).padding(.leading, selectable ? 30 : 0)
+            DisclosureGroup(L10n.text("Ver detalhes")) {
+                VStack(alignment: .leading, spacing: 5) {
+                    if let version = model.graphicalCacheCandidates.first(where: { $0.id == entry.id })?.applicationVersion { Text(L10n.text("Versão: \(version)")) }
+                    Text(entry.sourceURL.path).textSelection(.enabled)
+                    if let destination = model.cacheDestination(entry) { Text(destination.path).textSelection(.enabled) }
+                }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }.font(.caption).padding(.leading, selectable ? 30 : 0)
         }.padding(15).frame(maxWidth: .infinity, alignment: .leading).background(Palette.panel.opacity(selectable ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 7))
         .disabled(model.busy)
     }
