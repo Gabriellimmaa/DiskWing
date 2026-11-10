@@ -44,6 +44,7 @@ public struct OperationJournal: Codable, Identifiable, Sendable {
     public let id: UUID
     public let kind: String
     public let toolID: String?
+    public let sourceVolumeUUID: String?
     public let source: String
     public var destination: String?
     public var staging: String?
@@ -57,8 +58,9 @@ public struct OperationJournal: Codable, Identifiable, Sendable {
     public let startedAt: Date
     public var updatedAt: Date
     public var isPending: Bool { phase != .completed && phase != .resolved }
-    public init(kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID()) throws {
+    public init(kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil) throws {
         schemaVersion = 1; self.id = id; self.kind = kind; self.toolID = toolID
+        self.sourceVolumeUUID = sourceVolumeUUID
         self.source = source.path; self.destination = destination?.path
         sourceIdentity = try FileIdentity(source)
         phase = .preparing; detail = "Origem preservada"
@@ -70,9 +72,9 @@ public final class OperationContext {
     public let store: Store
     public var journal: OperationJournal
     private let checkpoint: (OperationJournal) throws -> Void
-    public init(store: Store, kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) throws {
+    public init(store: Store, kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) throws {
         self.store = store; self.checkpoint = checkpoint
-        journal = try OperationJournal(kind: kind, source: source, destination: destination, toolID: toolID, id: id)
+        journal = try OperationJournal(kind: kind, source: source, destination: destination, toolID: toolID, id: id, sourceVolumeUUID: sourceVolumeUUID)
         try advance(.preparing)
     }
     public func advance(_ phase: OperationPhase, detail: String? = nil) throws {
@@ -143,7 +145,9 @@ public final class RecoveryManager {
         guard var journal = store.operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("O registro de recuperação não está disponível.")) }
         if journal.kind == "restore" {
             if !journal.isPending { return }
-            _ = try restoreTarget(journal) // Invalid records remain byte-for-byte untouched.
+            let (tool, _) = try restoreTarget(journal)
+            let settings = try restoreSettings()
+            if let location = settings.locations[tool.id], !locationMatches(location, journal: journal, tool: tool, settings: settings) { throw restoreConflict() }
             do { try finishRestore(&journal, cancellation: cancellation, progress: progress) }
             catch {
                 journal.phase = cancellation.isCancelled ? .cancelled : .interrupted
@@ -207,7 +211,10 @@ public final class RecoveryManager {
     }
     private func locationMatches(_ location: CacheLocation, journal: OperationJournal, tool: CacheDescriptor, settings: AppSettings) -> Bool {
         let relative = location.relativePath
-        guard location.toolID == tool.id, Paths.safeComponent(settings.installationID),
+        guard let recordedVolume = journal.sourceVolumeUUID,
+              !recordedVolume.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              recordedVolume.caseInsensitiveCompare(location.volumeUUID) == .orderedSame,
+              location.toolID == tool.id, Paths.safeComponent(settings.installationID),
               relative.hasPrefix("MacCaches/CacheSSD/" + settings.installationID + "/" + tool.id + "/"),
               relative.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ Paths.safeComponent(String($0)) }) else { return false }
         let suffix = relative + (tool.destinationChild.isEmpty ? "" : "/" + tool.destinationChild)

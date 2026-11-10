@@ -139,6 +139,40 @@ final class RestoreRecoveryTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: other.store.base.appendingPathComponent("settings.json")), before)
         XCTAssertEqual(try FileTree.digest(other.tool.source, workspace: root), other.expected)
     }
+    func testDifferentVolumeWithTheSameRelativePathIsNotReconciled() throws {
+        for phase in [OperationPhase.copying, .published] {
+            let f = try fixture(), record = try interrupted(f, at: phase)
+            XCTAssertEqual(record.sourceVolumeUUID, f.volume.uuid)
+            var settings = f.store.settings(); settings.locations["npm"]?.volumeUUID = "OTHER-GENERATED-VOLUME"
+            try f.store.save(settings)
+            let configPath = f.store.base.appendingPathComponent("settings.json")
+            let recordPath = f.store.base.appendingPathComponent("operation-\(record.id.uuidString).json")
+            let before = try Data(contentsOf: configPath), journalBytes = try Data(contentsOf: recordPath)
+            let manager = RecoveryManager(store: f.store, home: f.home)
+            XCTAssertFalse(try XCTUnwrap(manager.pending().first(where: { $0.id == record.id })).canRestoreSource)
+            XCTAssertThrowsError(try manager.recover(id: record.id))
+            XCTAssertEqual(try Data(contentsOf: configPath), before)
+            XCTAssertEqual(try Data(contentsOf: recordPath), journalBytes)
+            XCTAssertEqual(try FileTree.digest(f.external, workspace: root), f.expected)
+        }
+    }
+    func testLegacyRestoreWithoutVolumeProofIsReadableButCannotClearConfiguredRoute() throws {
+        let f = try fixture(), record = try interrupted(f, at: .published)
+        let path = f.store.base.appendingPathComponent("operation-\(record.id.uuidString).json")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String:Any])
+        json.removeValue(forKey: "sourceVolumeUUID")
+        let legacy = try JSONSerialization.data(withJSONObject: json); try legacy.write(to: path)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(OperationJournal.self, from: legacy)
+        XCTAssertNil(decoded.sourceVolumeUUID); XCTAssertEqual(decoded.sourceDigest, record.sourceDigest)
+        let configPath = f.store.base.appendingPathComponent("settings.json"), settings = try Data(contentsOf: configPath)
+        let manager = RecoveryManager(store: f.store, home: f.home)
+        XCTAssertFalse(try XCTUnwrap(manager.pending().first(where: { $0.id == record.id })).canRestoreSource)
+        XCTAssertThrowsError(try manager.recover(id: record.id))
+        XCTAssertEqual(try Data(contentsOf: path), legacy)
+        XCTAssertEqual(try Data(contentsOf: configPath), settings)
+        XCTAssertEqual(try FileTree.digest(f.tool.source, workspace: root), f.expected)
+    }
     func testRecoveryCanBeInterruptedAfterPublicationOrConfigurationAndRetried() throws {
         for phase in [OperationPhase.published, .resolved] {
             let f = try fixture(), record = try interrupted(f, at: .copying)

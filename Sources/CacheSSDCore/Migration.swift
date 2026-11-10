@@ -186,7 +186,7 @@ public final class MigrationEngine {
         guard externalSize.isComplete else { throw CacheSSDError.message(L10n.text("A cópia no SSD não pode ser lida completamente.")) }
         guard Volumes.free(at: home) > externalSize.logical + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço suficiente no Mac para restaurar esta cópia.")) }
         let operationID = UUID()
-        let safety = try OperationContext(store: store, kind: "restore", source: source, destination: tool.source, toolID: toolID, id: operationID, checkpoint: checkpoint)
+        let safety = try OperationContext(store: store, kind: "restore", source: source, destination: tool.source, toolID: toolID, id: operationID, sourceVolumeUUID: volume.uuid, checkpoint: checkpoint)
         let temp = tool.source.deletingLastPathComponent().appendingPathComponent(".CacheSSD-restore-\(operationID.uuidString)")
         safety.journal.staging = temp.path
         do {
