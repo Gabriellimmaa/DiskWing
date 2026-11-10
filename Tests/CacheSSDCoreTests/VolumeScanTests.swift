@@ -147,7 +147,12 @@ final class VolumeScanTests: XCTestCase {
         XCTAssertThrowsError(try IndexStoragePolicy.location(internalDirectory: root, externalVolume: volume, installationID: "generated", targetID: "target", filesystemType: { _ in "exfat" }))
         XCTAssertThrowsError(try IndexStoragePolicy.location(internalDirectory: root, externalVolume: volume, installationID: "generated", targetID: "target", filesystemType: { _ in "apfs" }, volumeIdentifier: { _ in "different" }))
         let external = try IndexStoragePolicy.location(internalDirectory: root, externalVolume: volume, installationID: "generated", targetID: "target", filesystemType: { _ in "apfs" })
-        XCTAssertEqual(external.policy, .externalSSD); XCTAssertTrue(Paths.contains(external.url, in: source)); XCTAssertNil(external.policy.maximumBytes)
+        XCTAssertEqual(external.policy, .externalSSD); XCTAssertTrue(external.url.path.hasPrefix(source.path + "/")); XCTAssertNil(external.policy.maximumBytes)
+        let sourceIdentity = try FileIdentity(source)
+        XCTAssertEqual(external.storageRoot.url.path, source.path)
+        XCTAssertEqual(external.canonicalRootIdentity.device, sourceIdentity.device)
+        XCTAssertEqual(external.canonicalRootIdentity.inode, sourceIdentity.inode)
+        XCTAssertEqual(external.canonicalRootIdentity.volumeUUID, uuid)
         XCTAssertFalse(FileManager.default.fileExists(atPath: external.url.path), "Choosing storage does not migrate or create an index")
         XCTAssertThrowsError(try IndexStoragePolicy.location(internalDirectory: root, externalVolume: volume, installationID: "generated", targetID: "target", filesystemType: { _ in "apfs" }, freeBytes: { _ in 0 }))
     }
