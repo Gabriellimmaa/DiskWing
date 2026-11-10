@@ -92,15 +92,16 @@ public final class DiskScanner {
         return ScanReport(id: UUID(), root: item, startedAt: started, finishedAt: Date(), examinedEntries: entries, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: cancellation.isCancelled, reachedLimit: limited, largestFiles: largest)
     }
 
-    private func category(_ url: URL) -> ContentCategory {
+    func category(_ url: URL) -> ContentCategory {
         let path = url.path
         if path.contains("/Library/Caches/") || path.contains("/.npm/_cacache") || path.contains("/.gradle/caches") || path.contains("/.bun/install/cache") { return .cache }
         if path.contains("/Library/Developer") || path.contains("/Library/Android") || path.contains("/.android") || path.contains("/.gradle") || path.contains("/node_modules/") { return .developer }
         if path.hasSuffix(".app") || path.contains(".app/") || path.hasSuffix(".photoslibrary") { return .application }
-        if path.contains("/Library/") || path.hasPrefix("/System/") || path.hasPrefix("/private/") { return .system }
+        if path.contains("/Library/") || path.hasPrefix("/System/") { return .system }
         for name in ["Downloads", "Documents", "Desktop", "Movies", "Pictures", "Music"] {
             if Paths.contains(url, in: home.appendingPathComponent(name)) { return .personal }
         }
+        if path.hasPrefix("/private/") { return .system }
         return .unknown
     }
 }

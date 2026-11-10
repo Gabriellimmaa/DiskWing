@@ -287,6 +287,15 @@ public final class IndexedScanner {
                 volumeIdentifier: @escaping (URL) -> String = { (try? $0.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }) {
         self.home = home; self.maxEntries = maxEntries; maxBytes = maxIndexBytes; self.volumeIdentifier = volumeIdentifier
     }
+    static func category(_ path: String, home: URL, cacheSources: [String]) -> ContentCategory {
+        if cacheSources.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cache }
+        if path.contains("/Library/Developer") || path.contains("/Library/Android") || path.contains("/node_modules/") || path.contains("/.gradle/") { return .developer }
+        if path.hasSuffix(".app") || path.contains(".app/") || path.hasSuffix(".photoslibrary") { return .application }
+        if path.contains("/Library/") || path.hasPrefix("/System/") { return .system }
+        if Paths.contains(URL(fileURLWithPath: path), in: home) { return .personal }
+        if path.hasPrefix("/private/") { return .system }
+        return .unknown
+    }
     public func scan(_ requested: URL, index: ScanIndex, cancellation: CancellationFlag = CancellationFlag(), progress: (ScanProgress) -> Void = { _ in }) throws -> ScanReport {
         var rootInfo = stat()
         guard lstat(requested.path, &rootInfo) == 0, rootInfo.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("Selecione uma pasta real disponível.")) }
@@ -295,11 +304,7 @@ public final class IndexedScanner {
         let volume = volumeIdentifier(root)
         let categories = CacheCatalog.all(home: home).map { $0.source.path }
         func category(_ path: String) -> ContentCategory {
-            if categories.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cache }
-            if path.contains("/Library/Developer") || path.contains("/Library/Android") || path.contains("/node_modules/") || path.contains("/.gradle/") { return .developer }
-            if path.hasSuffix(".app") || path.contains(".app/") || path.hasSuffix(".photoslibrary") { return .application }
-            if path.contains("/Library/") || path.hasPrefix("/System/") || path.hasPrefix("/private/") { return .system }
-            if Paths.contains(URL(fileURLWithPath: path), in: home) { return .personal }; return .unknown
+            Self.category(path, home: home, cacheSources: categories)
         }
         try index.begin(root: root, id: id, volume: volume, started: started)
         var count = 1, logical: Int64 = 0, allocated: Int64 = 0, files = 0, maxDepth = 0, limited = false
