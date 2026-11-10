@@ -64,4 +64,32 @@ final class UpdatePolicyTests: XCTestCase {
         change.state = "completed"; try store.writeDurably(change, name: name)
         let session = try UpdateSessionLease(store: store, isBusy: { false }); try session.revalidate()
     }
+    func testFutureCompletedRecordsNeverQualifyAsIdle() throws {
+        let source = root.appendingPathComponent("sample"); try Data("keep".utf8).write(to: source)
+        let operation = try OperationContext(store: store, kind: "trash", source: source)
+        try operation.advance(.completed)
+        let path = store.base.appendingPathComponent("operation-\(operation.journal.id.uuidString).json")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String:Any])
+        json["schemaVersion"] = 2
+        let future = try JSONSerialization.data(withJSONObject: json); try future.write(to: path)
+        XCTAssertThrowsError(try UpdateSessionLease(store: store, isBusy: { false }))
+        XCTAssertEqual(try Data(contentsOf: path), future)
+        try FileManager.default.removeItem(at: path)
+        var change = ConfigurationChange(source: "generated", before: "before", after: "after"); change.state = "completed"
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        var value = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(change)) as? [String:Any])
+        value["schemaVersion"] = 2
+        let file = store.base.appendingPathComponent("configuration-future.json"), bytes = try JSONSerialization.data(withJSONObject: value)
+        try bytes.write(to: file)
+        XCTAssertThrowsError(try UpdateSessionLease(store: store, isBusy: { false }))
+        XCTAssertEqual(try Data(contentsOf: file), bytes)
+    }
+    func testListingFailureIsNotTreatedAsNoRecords() throws {
+        let session = try UpdateSessionLease(store: store, isBusy: { false })
+        try FileManager.default.moveItem(at: store.base, to: root.appendingPathComponent("retained-store"))
+        try Data("not a directory".utf8).write(to: store.base)
+        XCTAssertThrowsError(try session.revalidate())
+        XCTAssertEqual(try String(contentsOf: store.base), "not a directory")
+    }
+
 }

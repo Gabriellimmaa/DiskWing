@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public struct UpdateSafetyState: Equatable, Sendable {
     public var workInProgress: Bool
@@ -35,11 +36,45 @@ public final class UpdateSessionLease {
     public func revalidate() throws {
         // Store's historical convenience readers return [] on a listing error.
         // An updater must not mistake that error for verified idle state.
-        _ = try FileManager.default.contentsOfDirectory(atPath: store.base.path)
-        let state = UpdateSafetyState(workInProgress: isBusy(), pendingRecovery: store.operations().contains(where: \.isPending),
-                                      unreadableRecords: !store.unreadableOperationRecords().isEmpty,
-                                      pendingConfiguration: !store.pendingConfigurationRecords().isEmpty)
+        let names = try FileManager.default.contentsOfDirectory(atPath: store.base.path)
+        var pending = false, unreadable = false, configuration = false
+        for name in names where name.hasSuffix(".json") {
+            if name.hasPrefix("operation-") {
+                do {
+                    let record: OperationJournal = try readRecord(name)
+                    if record.schemaVersion != 1 { unreadable = true }
+                    else { pending = pending || record.isPending }
+                } catch { unreadable = true }
+            } else if name.hasPrefix("configuration-") {
+                do {
+                    let record: ConfigurationChange = try readRecord(name)
+                    if record.schemaVersion != 1 { unreadable = true }
+                    else { configuration = configuration || record.state != "completed" }
+                } catch { unreadable = true }
+            }
+        }
+        let state = UpdateSafetyState(workInProgress: isBusy(), pendingRecovery: pending,
+                                      unreadableRecords: unreadable, pendingConfiguration: configuration)
         guard UpdatePolicy.canInstall(state: state) else { throw CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
         withExtendedLifetime(lease) {}
     }
+    private func readRecord<T: Decodable>(_ name: String) throws -> T {
+        let path = store.base.appendingPathComponent(name).path
+        var before = stat()
+        guard lstat(path, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              before.st_flags & UInt32(SF_DATALESS) == 0, before.st_size <= 8_388_608 else { throw blocked() }
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw blocked() }
+        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true); defer { try? file.close() }
+        var opened = stat()
+        guard fstat(fd, &opened) == 0, opened.st_dev == before.st_dev, opened.st_ino == before.st_ino,
+              opened.st_mode & S_IFMT == S_IFREG, opened.st_flags & UInt32(SF_DATALESS) == 0,
+              opened.st_size <= 8_388_608 else { throw blocked() }
+        let bytes = try file.read(upToCount: 8_388_609) ?? Data()
+        guard bytes.count <= 8_388_608 else { throw blocked() }
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(T.self, from: bytes)
+    }
+    private func blocked() -> Error { CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
+
 }
