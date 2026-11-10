@@ -281,7 +281,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "expanded_scope_final_ci",
+    "phase": "expanded_scope_engineering_complete_external_gates_pending",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -548,8 +548,12 @@
         ],
         "dependsOn": [],
         "acceptance": "Expanded product contract and autonomous plan recorded; prior plans/artifact preserved",
-        "status": "recorded",
-        "evidence": []
+        "status": "integrated_independently_reviewed",
+        "evidence": [
+          "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
+          "https://github.com/Gabriellimmaa/DiskWing/pull/22",
+          "Merged e3ab12e; exact candidate8 plus final PR/main macOS15/26 checks passed."
+        ]
       },
       {
         "id": "TRASH-02",
@@ -569,7 +573,7 @@
           "SCOPE-01"
         ],
         "acceptance": "Independent Trash eligibility, dynamic record protection, final checks and cache-path recovery; Move unchanged",
-        "status": "implemented_independently_reviewed",
+        "status": "integrated_independently_reviewed",
         "evidence": [
           "20 ManualTrashTests independently repeated; 70 affected tests reported by author; no blocking review findings"
         ],
@@ -598,7 +602,7 @@
           "SCOPE-01"
         ],
         "acceptance": "Yarn Classic retained-origin, Go build and ccache adapters; honest qualification; empty/absent source future-write setup",
-        "status": "implemented_independently_reviewed",
+        "status": "integrated_independently_reviewed",
         "evidence": [
           "35 core/config tests independently repeated; all P1/P2 review findings closed",
           "docs/validation/expanded-yarn-2026-11-10.json",
@@ -627,10 +631,10 @@
           "CACHE-02"
         ],
         "acceptance": "Separate Trash/Move UI; warnings; data-volume scan entry; refresh/invalidate post-action; route vs copy status; PT/EN",
-        "status": "complete_developer_sample_validation",
+        "status": "integrated_developer_pt_en_visual_and_keyboard_passed",
         "evidence": [
           "Initial full suite 223 cases/18 explicit skips/zero failures; subsequent targeted26 cases/1skip/zero failures",
-          "Native APFS positive fixture exposed Foundation firmlink normalization mismatch; fix in progress, not accepted yet.",
+          "Historical intermediate failure: native APFS fixture exposed Foundation firmlink normalization mismatch; subsequently corrected, independently reviewed and qualified before build8.",
           "APFS alias/DirectoryEnumerator and /private/var regressions fixed; 34 targeted cases passed with real generated APFS fixture, zero skips/failures.",
           "ecdf1af full suite:239 discovered,216 executed,23 explicit skips,zero failures. PT/EN expanded AppModel journeys passed. Native visual CUA blocked before any window observation by locked Mac; sample process closed and fixture retained privately.",
           "Samples8 native UI observed PT/EN minimum window, Trash/cancel/confirm/refreshed analysis, future preparation/source absent, fixture integration, keyboard and qualified-state controls. First build7 locked-Mac attempt superseded; no human acceptance claim."
@@ -652,12 +656,14 @@
           "UX-02"
         ],
         "acceptance": "Different author reviews each implementation and fixes are rechecked",
-        "status": "approved",
+        "status": "integrated_independently_reviewed",
         "evidence": [
           "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed.",
           "Independent final approval at ecdf1afd6562941741f055f80291b35be230ce41; no open code blockers.",
           "Independent approval of 3417d2+8aed2c7 and 2927846; native reports distinguish actor and profile evidence.",
-          "Follow-up 2927846 and3417d2+8aed2c7 independently approved; npm10.9.2 qualification requires source-unavailable offline SSD proof and npx preservation, now passed."
+          "Follow-up 2927846 and3417d2+8aed2c7 independently approved; npm10.9.2 qualification requires source-unavailable offline SSD proof and npx preservation, now passed.",
+          "PR22 merged e3ab12e; final PR9a06d7d and post-merge main macOS15/26/updater checks passed",
+          "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358"
         ]
       },
       {
@@ -675,7 +681,7 @@
           "REVIEW-02"
         ],
         "acceptance": "Disposable real native evidence separate from policy fixtures; missing tools explicit; no personal integration changes",
-        "status": "yarn_go_qualified_ccache_inactive",
+        "status": "qualified_supported_versions_ccache_inactive",
         "evidence": [
           "Yarn 1.22.22 and Go 1.27.3: four generated native workflows passed; source retained, new SSD writes and local fallback. ccache explicitly skipped/unqualified/inactive."
         ]
@@ -698,12 +704,14 @@
           "QUALIFY-02"
         ],
         "acceptance": "Integrated tests, packaging, exact-head CI and independently identified artifact; installed build6 preserved",
-        "status": "build8_local_qualified_final_ci_pending",
+        "status": "build8_qualified_integrated_ci_passed",
         "evidence": [
           "docs/validation/candidate-1.0.0-build8-local.json",
           "docs/validation/expanded-build8-qualification.json",
           "Build8 exact ZIP passed identity/extraction/temporary internal installation/helper/resources/removal; installed6 and backup preserved.",
-          "Combined244discovered/219executed/25skip/0fail; npmqualification binding18cases/1skip/0fail; native49/48executed/1ccacheskip/0fail; packaging51passed."
+          "Combined244discovered/219executed/25skip/0fail; npmqualification binding18cases/1skip/0fail; native49/48executed/1ccacheskip/0fail; packaging51passed.",
+          "PR22 merged e3ab12e; final PR9a06d7d and post-merge main macOS15/26/updater checks passed",
+          "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358"
         ]
       },
       {
@@ -718,7 +726,7 @@
         "dependsOn": [
           "CANDIDATE-02"
         ],
-        "status": "complete_local_independently_reviewed",
+        "status": "integrated_independently_reviewed",
         "acceptance": "Non-cleaning npm validation must accept real UUID destination paths; distinguish CocoaPods launcher prerequisites",
         "evidence": [
           "docs/validation/native-followup-2026-11-10.json",
@@ -739,7 +747,7 @@
         "dependsOn": [
           "CANDIDATE-02"
         ],
-        "status": "complete_ci_confirmed",
+        "status": "integrated_independently_reviewed",
         "acceptance": "Trash missing-source eligibility must ignore Foundation directory hints without allowing links",
         "evidence": [
           "73 affected cases passed; 23 ManualTrash cases independently repeated, no failures. Directory hints no longer control missing-source policy; same-operation fixture assertions bind captured ID.",
@@ -749,15 +757,15 @@
         "reviewer": "independent_scope"
       }
     ],
-    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
-    "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Finish final exact-head PR CI, merge serially and verify main. Build8 is independently reviewed, native/isolated/sample-GUI qualified and exact-archive/internal-lifecycle qualified; installed6 and backup preserved. Then collect maintainer feedback and remaining physical/human/signing evidence; ccache stays inactive.",
-    "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "integrationBranch": "codex/scope-expansion",
-    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
+    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
+    "lastIntegratedCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "nextAction": "Collect maintainer feedback on qualified local build8 while preserving installed6/backup and the exact archive. Any installation/personal cache operation needs its actual reviewed selection. Remaining gates: another physical Apple Silicon Mac/macOS14, disposable physical faults, human PT/EN/VoiceOver, five general+five developer participants and seven real days, DeveloperID/notarization/signed updates. ccache stays inactive until native qualification. No background agent service continues after this active session.",
+    "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "integrationBranch": "main",
+    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/22",
     "lastVerifiedCodeCommit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
     "mainCIVerification": "success",
-    "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42778884800",
+    "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876303951",
     "candidate": {
       "archiveSHA256": "b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7",
       "buildNumber": "8",
@@ -765,10 +773,8 @@
       "version": "1.0.0"
     },
     "candidateEvidence": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
-    "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
-    "handoffPR": "https://github.com/Gabriellimmaa/DiskWing/pull/20",
-    "handoffExactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
-    "sessionContext": "docs/context/SESSION-2026-11-10.md",
+    "implementationMerge": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "sessionContext": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
     "localInstallation": {
       "date": "2026-11-10",
       "status": "installed_and_launched",
@@ -814,7 +820,7 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateStatus": "local_qualified_final_ci_pending",
+    "candidateStatus": "local_qualified_integrated",
     "combinedLocalRegression": {
       "codeCommit": "07a0aa5",
       "discovered": 244,
@@ -838,6 +844,16 @@
       "status": "developer_observed_pass",
       "scope": "PT/EN minimum1050x690, reviewed Trash/cancel/confirm/rescan, missing-cache preparation, fixture integration, Yarn/Go retention, ccache refusal and basic keyboard; not human VoiceOver/beta acceptance",
       "normalInstallationChanged": false
-    }
+    },
+    "previousEngineeringHandoff": {
+      "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
+      "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
+      "handoffPR": "https://github.com/Gabriellimmaa/DiskWing/pull/20",
+      "handoffExactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
+      "sessionContext": "docs/context/SESSION-2026-11-10.md"
+    },
+    "lastIntegratedCodeCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "handoffBranch": "codex/expanded-handoff",
+    "candidateRuntimeSourceMatchesMain": "e3ab12e1c201273882b1a2e2616f0e7c9930362f"
   }
 }
