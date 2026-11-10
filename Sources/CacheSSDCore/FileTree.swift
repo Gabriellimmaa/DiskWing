@@ -122,9 +122,13 @@ public enum FileTree {
         var opened = stat()
         guard fstat(fd, &opened) == 0, opened.st_dev == initial.st_dev, opened.st_ino == initial.st_ino, opened.st_mode & S_IFMT == S_IFREG, opened.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message(L10n.text("O arquivo mudou durante a leitura.")) }
         var hash = SHA256()
-        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
-            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada.")) }
-            hash.update(data: data)
+        var finished = false
+        while !finished {
+            try autoreleasepool {
+                guard let data = try handle.read(upToCount: 1_048_576), !data.isEmpty else { finished = true; return }
+                if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada.")) }
+                hash.update(data: data)
+            }
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
