@@ -57,11 +57,11 @@ public final class PersonalActions {
             if let expectedIdentity, operation.journal.sourceIdentity != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
             try operation.advance(.verifying)
             progress("Conferindo a origem…")
-            let digest = try FileTree.digest(source, cancellation: cancellation)
+            let digest = try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress)
             operation.journal.sourceDigest = digest
             try operation.advance(.trashing)
             try operation.assertSourceIdentity()
-            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation) == digest,
+            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress) == digest,
                   try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("A origem mudou ou a operação foi cancelada.")) }
             let result = try trashHandler(source)
             operation.journal.trashPath = result?.path
@@ -77,6 +77,7 @@ public final class PersonalActions {
         if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
         try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation)
         guard directory.standardizedFileURL == directory.resolvingSymlinksInPath(), !Paths.contains(directory, in: source) else { throw CacheSSDError.message(L10n.text("Escolha uma pasta independente e sem links.")) }
+        try FileTree.validateDestination(directory)
         let final = directory.appendingPathComponent(source.lastPathComponent)
         guard !FileManager.default.fileExists(atPath: final.path) else { throw CacheSSDError.message(L10n.text("Já existe um item com esse nome. Nada foi sobrescrito.")) }
         guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
@@ -89,12 +90,12 @@ public final class PersonalActions {
         do {
             if let expectedIdentity, operation.journal.sourceIdentity != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
             try operation.advance(.verifying)
-            let digest = try FileTree.digest(source, cancellation: cancellation)
+            let digest = try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress)
             operation.journal.sourceDigest = digest
             try operation.advance(.copying)
             try FileTree.copyItem(source, to: staging, cancellation: cancellation, progress: progress)
-            guard try FileTree.digest(staging, cancellation: cancellation) == digest,
-                  try FileTree.digest(source, cancellation: cancellation) == digest else { throw CacheSSDError.message(L10n.text("A cópia ou os metadados mudaram; origem preservada.")) }
+            guard try FileTree.digest(staging, cancellation: cancellation, workspace: directory, progress: progress) == digest,
+                  try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A cópia ou os metadados mudaram; origem preservada.")) }
             operation.journal.destinationDigest = digest
             try operation.advance(.copyVerified)
             try operation.assertSourceIdentity()
@@ -104,7 +105,7 @@ public final class PersonalActions {
             try FileManager.default.moveItem(at: staging, to: final)
             try operation.advance(.published)
             try operation.assertSourceIdentity()
-            guard try FileTree.digest(source, cancellation: cancellation) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
+            guard try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
             try operation.advance(.trashing)
             try operation.assertSourceIdentity()
             operation.journal.trashPath = try trashHandler(source)?.path

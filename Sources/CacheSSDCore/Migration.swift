@@ -31,6 +31,7 @@ public final class MigrationEngine {
         }
         var settings = store.settings()
         guard let uuid = settings.selectedVolumeUUID, let volume = volumeProvider(uuid), volume.uuid.caseInsensitiveCompare(uuid) == .orderedSame, volume.isWritable, !volume.isInternal else { throw CacheSSDError.message(L10n.text("Conecte o SSD selecionado e confirme que ele permite gravação.")) }
+        try FileTree.validateDestination(URL(fileURLWithPath: volume.path))
         guard tool.source.standardizedFileURL == tool.source.resolvingSymlinksInPath(), FileManager.default.fileExists(atPath: tool.source.path) else { throw CacheSSDError.message(L10n.text("O cache local está ausente ou usa um link personalizado. Ele não será alterado.")) }
         let busy = try BusyInspector.inspect(paths: [tool.source], tool: tool.id)
         guard busy.isEmpty else { throw CacheSSDError.message(L10n.text("Encerre antes: ") + busy.map { "\($0.name) (\($0.pid))" }.joined(separator: ", ")) }
@@ -60,15 +61,15 @@ public final class MigrationEngine {
         try saveJournal()
         do {
             try safety.advance(.verifying)
-            safety.journal.sourceDigest = try FileTree.digest(tool.source, tool: tool.id, cancellation: cancellation)
             progress("Conferindo a origem…")
-            let original = try FileTree.manifest(tool.source, tool: tool.id, cancellation: cancellation, progress: progress)
+            let original = try FileTree.digest(tool.source, tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
+            safety.journal.sourceDigest = original
             try validateVolume()
             journal.state = "copying"; try saveJournal(); try safety.advance(.copying)
             try FileTree.copy(tool.source, to: tool.payload(at: data), tool: tool.id, cancellation: cancellation, progress: progress)
-            let copied = try FileTree.manifest(tool.payload(at: data), tool: tool.id, cancellation: cancellation, progress: progress)
+            let copied = try FileTree.digest(tool.payload(at: data), tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
             guard original == copied else { throw CacheSSDError.message(L10n.text("A cópia não corresponde à origem. Nenhum arquivo local foi removido.")) }
-            let current = try FileTree.manifest(tool.source, tool: tool.id, cancellation: cancellation, progress: progress)
+            let current = try FileTree.digest(tool.source, tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
             guard current == original else { throw CacheSSDError.message(L10n.text("O cache mudou durante a cópia. Feche a ferramenta e tente novamente.")) }
             try validateVolume()
             journal.state = "verified"; try saveJournal(); try safety.advance(.copyVerified)
@@ -76,7 +77,7 @@ public final class MigrationEngine {
             if verifyNative { progress("Verificando com \(tool.name)…"); try nativeValidation(tool, root: data) }
             if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
             try validateVolume()
-            safety.journal.destinationDigest = try FileTree.digest(tool.payload(at: data), tool: tool.id, cancellation: cancellation)
+            safety.journal.destinationDigest = try FileTree.digest(tool.payload(at: data), tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
             try safety.advance(.publishing)
             try FileManager.default.moveItem(at: staging, to: final)
             try safety.advance(.published)
@@ -90,7 +91,7 @@ public final class MigrationEngine {
                 try validateVolume()
                 let stillBusy = try BusyInspector.inspect(paths: [tool.source], tool: tool.id)
                 if stillBusy.isEmpty {
-                    let latest = try FileTree.manifest(tool.source, tool: tool.id, cancellation: cancellation)
+                    let latest = try FileTree.digest(tool.source, tool: tool.id, cancellation: cancellation, workspace: parent, progress: progress)
                     guard latest == original, tool.source.standardizedFileURL == tool.source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("A origem mudou após a verificação; ela foi mantida.")) }
                     // Rename first, then recheck identity. The private copy on the SSD remains available.
                     try safety.assertSourceIdentity()
@@ -100,7 +101,7 @@ public final class MigrationEngine {
                     journal.localQuarantine = quarantine.path; journal.state = "releasing"; try saveJournal()
                     try FileManager.default.moveItem(at: tool.source, to: quarantine)
                     do {
-                        let finalManifest = try FileTree.manifest(quarantine, tool: tool.id)
+                        let finalManifest = try FileTree.digest(quarantine, tool: tool.id, workspace: parent, progress: progress)
                         guard finalManifest == original else { throw CacheSSDError.message(L10n.text("A origem mudou antes da liberação.")) }
                         try FileManager.default.removeItem(at: quarantine)
                         try FileManager.default.createDirectory(at: tool.source, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -190,12 +191,12 @@ public final class MigrationEngine {
         safety.journal.staging = temp.path
         do {
             try safety.advance(.verifying)
-            let digest = try FileTree.digest(source, tool: toolID, cancellation: cancellation)
+            let digest = try FileTree.digest(source, tool: toolID, cancellation: cancellation, workspace: store.base, progress: progress)
             safety.journal.sourceDigest = digest
             try safety.advance(.copying)
             try FileTree.copy(source, to: temp, tool: toolID, cancellation: cancellation, progress: progress)
-            guard try FileTree.digest(temp, tool: toolID, cancellation: cancellation) == digest,
-                  try FileTree.digest(source, tool: toolID, cancellation: cancellation) == digest else { throw CacheSSDError.message(L10n.text("A cópia mudou ou a restauração não passou pela conferência.")) }
+            guard try FileTree.digest(temp, tool: toolID, cancellation: cancellation, workspace: store.base, progress: progress) == digest,
+                  try FileTree.digest(source, tool: toolID, cancellation: cancellation, workspace: store.base, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A cópia mudou ou a restauração não passou pela conferência.")) }
             safety.journal.destinationDigest = digest
             try safety.advance(.copyVerified)
             guard try BusyInspector.inspect(paths: [source, tool.source], tool: toolID).isEmpty else { throw CacheSSDError.message(L10n.text("O cache passou a ser utilizado; a troca foi adiada.")) }

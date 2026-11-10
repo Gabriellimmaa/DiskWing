@@ -1,10 +1,11 @@
 # Current state
 
-Updated 2026-11-10. Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
+Updated 2026-11-10. [PR #10](https://github.com/Gabriellimmaa/DiskWing/pull/10) merged to main at 6e95e499; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42755083061). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
 
 ## Implemented
 
 - One cross-process operation lease for cache migration/restore, personal actions, shell/Xcode configuration and recovery; durable operation/configuration checkpoints; preserved unreadable records.
+- Streamed single-file copies with in-transfer cancellation and disk-backed tree verification preserving historical recovery digests. Disposable APFS cross-volume recovery/metadata, low-space/read-only refusal and ExFAT refusal have local evidence.
 - Verified bytes, permissions, timestamps, extended attributes/resource forks and ACLs; source identity/stability checks, cancellation, staging, conflict/space protection and guided recovery without overwrite.
 - SQLite index with paginated navigation, full-scope accent-insensitive search, size filters, logical/allocated ordering and streamed cancellable export.
 - Metadata-only scan with progress, partial coverage, hard-link allocation accounting, no traversal into links/other mounts, no intentional cloud download. Limits: one million entries, depth 80, index budget 512 MiB and 256 MiB free-space floor.
@@ -14,15 +15,22 @@ Updated 2026-11-10. Development preview 0.2.0-dev on Apple Silicon, macOS 14+. P
 - Portuguese/English selection, native keyboard navigation, review/recovery screens and optional notification permission requested only from the alert control.
 - Internal-disk installer preserving the previous application; portable ad-hoc build and optional pinned Sparkle 2 build. HTTPS/public-key/Developer-ID checks, nested signing and notarization tooling exist; actual public signing remains unverified.
 
-The current validation record is [implementation evidence](../validation/IMPLEMENTATION-2026-11-10.md), linked to [requirements](../TRACEABILITY.json) and nine GitHub issues/milestones. Original import hashes in the migration manifest describe the historical import, not subsequent source revisions.
+The current validation records are [initial implementation evidence](../validation/IMPLEMENTATION-2026-11-10.md) and [subsequent filesystem/copy qualification](../validation/FILESYSTEMS-2026-11-10.md), linked to [requirements](../TRACEABILITY.json) and nine GitHub issues/milestones. Original import hashes in the migration manifest describe the historical import, not subsequent source revisions.
 
 ## Remaining release gates
 
 Developer ID Application certificate and notarization credentials; hosted signed appcast and end-to-end valid/invalid update checks; second Mac install/restore/disable/removal; hands-on VoiceOver, both languages and keyboard acceptance; five general users plus five developers with immediate and seven-day observations. See [distribution](../DISTRIBUTION.md) and [beta protocol](../beta/PROTOCOL.md).
 
-Events currently schedule full scoped rescans; subtree-only incremental reconciliation is future optimization. Resource limits can produce partial scans, including when retained trees consume the index budget. Large personal-copy throughput, physical unplug/power-loss behavior and cross-filesystem metadata compatibility need further device testing. Do not infer these results from synthetic fault injection.
+Events currently schedule full scoped rescans; subtree-only incremental reconciliation is future optimization. Resource limits can produce partial scans, including when retained trees consume the index budget. The 20,001-file copy resource benchmark and disposable-image APFS/ExFAT checks are single-Mac evidence. Multi-gigabyte throughput, more filesystems/devices and physical unplug/power-loss behavior need further qualification. Do not infer these results from synthetic fault injection.
 
 No personal cache migration, terminal activation, Xcode preference change, login registration, notification activation, disk ejection, Chrome operation or public binary release is performed by implementing these features. No storage-saving claim is made.
+
+## Next execution order
+
+1. Review the filesystem/copy increment and its CI; keep the installed application on the merged base until intentionally updated.
+2. Repeat disposable filesystem and install/restore/disable/removal checks on another Apple Silicon Mac; complete hands-on VoiceOver, keyboard and PT/EN acceptance with generated samples.
+3. Provide a Developer ID Application identity and notarization profile, then qualify a hosted signed update with both valid and invalid signatures, consent and interrupted-operation behavior. No release feed or credentials are created implicitly.
+4. Recruit five general users and five developers under docs/beta/PROTOCOL.md, record independent success and actual seven-day follow-up, resolve critical findings and run the readiness validator.
 
 ## Beyond v1
 

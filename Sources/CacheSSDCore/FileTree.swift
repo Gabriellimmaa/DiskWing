@@ -20,6 +20,9 @@ public struct FileMeasurement: Sendable {
 }
 
 public enum FileTree {
+    public static func validateDestination(_ directory: URL) throws {
+        guard (try directory.resourceValues(forKeys: [.volumeSupportsExtendedSecurityKey])).volumeSupportsExtendedSecurity == true else { throw CacheSSDError.message(L10n.text("O destino não oferece as permissões necessárias para preservar os metadados. Escolha um volume compatível, como APFS.")) }
+    }
     public static func measure(_ root: URL) -> FileMeasurement {
         var result = FileMeasurement(), rootInfo = stat()
         guard lstat(root.path, &rootInfo) == 0 else {
@@ -35,52 +38,66 @@ public enum FileTree {
             result.unreadablePaths.append(root.path); return result
         }
         var seen = Set<String>()
-        for case let url as URL in e {
+        try? enumerate(e) { url in
             result.entries += 1
-            var s = stat()
-            guard lstat(url.path, &s) == 0 else { result.unreadablePaths.append(url.path); continue }
-            if s.st_dev != rootInfo.st_dev { result.unreadablePaths.append(url.path); e.skipDescendants(); continue }
-            if (s.st_mode & S_IFMT) == S_IFLNK { continue }
-            if (s.st_mode & S_IFMT) == S_IFREG {
-                result.logical += Int64(s.st_size)
-                if seen.insert("\(s.st_dev):\(s.st_ino)").inserted { result.allocated += Int64(s.st_blocks) * 512 }
+            var metadata = stat()
+            guard lstat(url.path, &metadata) == 0 else { result.unreadablePaths.append(url.path); return }
+            if metadata.st_dev != rootInfo.st_dev { result.unreadablePaths.append(url.path); if metadata.st_mode & S_IFMT == S_IFDIR { e.skipDescendants() }; return }
+            if metadata.st_mode & S_IFMT == S_IFREG {
+                result.logical += Int64(metadata.st_size)
+                if metadata.st_nlink <= 1 || seen.insert("\(metadata.st_dev):\(metadata.st_ino)").inserted { result.allocated += Int64(metadata.st_blocks) * 512 }
             }
         }
         return result
     }
 
-    public static func manifest(_ root: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag(), progress: (String) -> Void = { _ in }) throws -> [ManifestEntry] {
-        let root = Paths.physicalURL(root)
-        var directory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &directory), directory.boolValue else { throw CacheSSDError.message(L10n.text("A origem não é uma pasta disponível.")) }
-        var enumerationFailed = false
-        guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in enumerationFailed = true; return false }) else { throw CacheSSDError.message(L10n.text("Não foi possível enumerar o cache.")) }
-        var rootInfo = stat()
-        guard lstat(root.path, &rootInfo) == 0 else { throw CacheSSDError.message(L10n.text("A origem está indisponível.")) }
-        var entries: [ManifestEntry] = []
-        for case let url as URL in e {
-            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada. A origem foi preservada.")) }
-            guard url.path.hasPrefix(root.path + "/") else { throw CacheSSDError.message(L10n.text("O caminho enumerado não pertence à origem.")) }
-            let rel = String(url.path.dropFirst(root.path.count + 1))
-            if tool == "gradle" && (url.lastPathComponent.hasSuffix(".lock") || url.lastPathComponent == "gc.properties") { continue }
-            var s = stat()
-            guard lstat(url.path, &s) == 0 else { throw CacheSSDError.message(L10n.text("Um arquivo mudou durante a leitura. Tente novamente com a ferramenta fechada.")) }
-            guard s.st_dev == rootInfo.st_dev else { throw CacheSSDError.message(L10n.text("A origem contém outro volume montado e foi preservada.")) }
-            switch s.st_mode & S_IFMT {
-            case S_IFDIR: entries.append(ManifestEntry(path: rel, kind: "directory", size: 0, digest: "", metadata: try metadataDigest(url)))
-            case S_IFLNK:
-                let target = try linkTarget(url, root: root, tool: tool)
-                entries.append(ManifestEntry(path: rel, kind: "link", size: 0, digest: target))
-            case S_IFREG:
-                let cloud = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
-                if cloud?.isUbiquitousItem == true && cloud?.ubiquitousItemDownloadingStatus != .current { throw CacheSSDError.message(L10n.text("Há conteúdo da nuvem ainda não baixado. A origem será preservada.")) }
-                if entries.count % 200 == 0 { progress("Conferindo \(entries.count) itens…") }
-                entries.append(ManifestEntry(path: rel, kind: "file", size: Int64(s.st_size), digest: try hash(url, cancellation: cancellation), metadata: try metadataDigest(url)))
-            default: throw CacheSSDError.message(L10n.text("O cache contém um arquivo especial em uso; a migração foi adiada."))
+    private static func enumerate(_ enumerator: FileManager.DirectoryEnumerator, visit: (URL) throws -> Void) throws {
+        var finished = false
+        while !finished {
+            try autoreleasepool {
+                for _ in 0..<256 {
+                    guard let url = enumerator.nextObject() as? URL else { finished = true; break }
+                    try visit(url)
+                }
             }
         }
-        if enumerationFailed { throw CacheSSDError.message(L10n.text("A leitura ficou incompleta por falta de acesso. Nenhum conteúdo será liberado.")) }
+    }
+
+    public static func manifest(_ root: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag(), progress: (String) -> Void = { _ in }) throws -> [ManifestEntry] {
+        var entries: [ManifestEntry] = []
+        try visitManifest(root, tool: tool, cancellation: cancellation, progress: progress) { entries.append($0) }
         return entries.sorted { $0.path < $1.path }
+    }
+
+    private static func visitManifest(_ requested: URL, tool: String, cancellation: CancellationFlag, progress: (String) -> Void, visit: (ManifestEntry) throws -> Void) throws {
+        let root = Paths.physicalURL(requested)
+        var info = stat()
+        guard lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("A origem não é uma pasta disponível.")) }
+        var failed = false, count = 0
+        guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in failed = true; return false }) else { throw CacheSSDError.message(L10n.text("Não foi possível enumerar o cache.")) }
+        let prefix = root.path == "/" ? "/" : root.path + "/"
+        try enumerate(e) { url in
+            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada. A origem foi preservada.")) }
+            guard url.path.hasPrefix(prefix) else { throw CacheSSDError.message(L10n.text("O caminho enumerado não pertence à origem.")) }
+            let rel = String(url.path.dropFirst(prefix.count))
+            if tool == "gradle" && (url.lastPathComponent.hasSuffix(".lock") || url.lastPathComponent == "gc.properties") { return }
+            var metadata = stat()
+            guard lstat(url.path, &metadata) == 0 else { throw CacheSSDError.message(L10n.text("Um arquivo mudou durante a leitura. Tente novamente com a ferramenta fechada.")) }
+            guard metadata.st_dev == info.st_dev else { throw CacheSSDError.message(L10n.text("A origem contém outro volume montado e foi preservada.")) }
+            let entry: ManifestEntry
+            switch metadata.st_mode & S_IFMT {
+            case S_IFDIR: entry = ManifestEntry(path: rel, kind: "directory", size: 0, digest: "", metadata: try metadataDigest(url))
+            case S_IFLNK: entry = ManifestEntry(path: rel, kind: "link", size: 0, digest: try linkTarget(url, root: root, tool: tool))
+            case S_IFREG:
+                let cloud = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+                guard cloud.isUbiquitousItem != true || cloud.ubiquitousItemDownloadingStatus == .current else { throw CacheSSDError.message(L10n.text("Há conteúdo da nuvem ainda não baixado. A origem será preservada.")) }
+                entry = ManifestEntry(path: rel, kind: "file", size: Int64(metadata.st_size), digest: try hash(url, cancellation: cancellation), metadata: try metadataDigest(url))
+            default: throw CacheSSDError.message(L10n.text("O cache contém um arquivo especial em uso; a migração foi adiada."))
+            }
+            try visit(entry); count += 1
+            if count % 200 == 0 { progress("Conferindo \(count) itens…") }
+        }
+        if failed { throw CacheSSDError.message(L10n.text("A leitura ficou incompleta por falta de acesso. Nenhum conteúdo será liberado.")) }
     }
 
     public static func hash(_ url: URL, cancellation: CancellationFlag = CancellationFlag()) throws -> String {
@@ -100,69 +117,122 @@ public enum FileTree {
     }
 
     public static func copy(_ source: URL, to target: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag(), progress: (String) -> Void = { _ in }) throws {
-        let source = Paths.physicalURL(source)
-        let fm = FileManager.default
+        let source = Paths.physicalURL(source), fm = FileManager.default
+        guard !Paths.contains(target.resolvingSymlinksInPath(), in: source) else { throw CacheSSDError.message(L10n.text("Escolha uma pasta independente e sem links.")) }
         guard !fm.fileExists(atPath: target.path) else { throw CacheSSDError.message(L10n.text("O destino já existe. Nenhum arquivo foi sobrescrito.")) }
-        try fm.createDirectory(at: target, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        var enumerationFailed = false
-        guard let e = fm.enumerator(at: source, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in enumerationFailed = true; return false }) else { throw CacheSSDError.message(L10n.text("Não foi possível ler a origem.")) }
         var rootInfo = stat()
-        guard lstat(source.path, &rootInfo) == 0 else { throw CacheSSDError.message(L10n.text("A origem está indisponível.")) }
-        var count = 0
-        var directories: [(URL, URL)] = [(source, target)]
-        for case let url as URL in e {
+        guard lstat(source.path, &rootInfo) == 0, rootInfo.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("A origem está indisponível.")) }
+        // Check the nearest existing parent before writing even an empty stage.
+        var parent = target.deletingLastPathComponent()
+        while !fm.fileExists(atPath: parent.path), parent.path != "/" { parent.deleteLastPathComponent() }
+        try validateDestination(parent)
+        try fm.createDirectory(at: target, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let directories = try VerificationStore(workspace: target.deletingLastPathComponent())
+        try directories.add(ManifestEntry(path: "", kind: "directory", size: 0, digest: ""))
+        var failed = false, count = 0
+        guard let e = fm.enumerator(at: source, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in failed = true; return false }) else { throw CacheSSDError.message(L10n.text("Não foi possível ler a origem.")) }
+        let prefix = source.path == "/" ? "/" : source.path + "/"
+        try enumerate(e) { url in
             if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Cópia cancelada; origem preservada.")) }
-            if tool == "gradle" && (url.lastPathComponent.hasSuffix(".lock") || url.lastPathComponent == "gc.properties") { continue }
-            guard url.path.hasPrefix(source.path + "/") else { throw CacheSSDError.message(L10n.text("O caminho de cópia não pertence à origem.")) }
-            let rel = String(url.path.dropFirst(source.path.count + 1)), dest = target.appendingPathComponent(rel)
-            var s = stat()
-            guard lstat(url.path, &s) == 0 else { throw CacheSSDError.message(L10n.text("A origem mudou durante a cópia.")) }
-            guard s.st_dev == rootInfo.st_dev else { throw CacheSSDError.message(L10n.text("A origem contém outro volume montado.")) }
-            if (s.st_mode & S_IFMT) == S_IFDIR {
+            if tool == "gradle" && (url.lastPathComponent.hasSuffix(".lock") || url.lastPathComponent == "gc.properties") { return }
+            guard url.path.hasPrefix(prefix) else { throw CacheSSDError.message(L10n.text("O caminho de cópia não pertence à origem.")) }
+            let rel = String(url.path.dropFirst(prefix.count)), dest = target.appendingPathComponent(rel)
+            var metadata = stat()
+            guard lstat(url.path, &metadata) == 0 else { throw CacheSSDError.message(L10n.text("A origem mudou durante a cópia.")) }
+            guard metadata.st_dev == rootInfo.st_dev else { throw CacheSSDError.message(L10n.text("A origem contém outro volume montado.")) }
+            switch metadata.st_mode & S_IFMT {
+            case S_IFDIR:
                 try fm.createDirectory(at: dest, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-                directories.append((url, dest))
-            } else if s.st_mode & S_IFMT == S_IFLNK {
-                try fm.createSymbolicLink(atPath: dest.path, withDestinationPath: linkTarget(url, root: source, tool: tool))
-            } else {
-                guard s.st_mode & S_IFMT == S_IFREG || s.st_mode & S_IFMT == S_IFLNK else { throw CacheSSDError.message(L10n.text("Arquivos especiais não são copiados.")) }
-                try fm.copyItem(at: url, to: dest)
+                try directories.add(ManifestEntry(path: rel, kind: "directory", size: 0, digest: ""))
+            case S_IFLNK: try fm.createSymbolicLink(atPath: dest.path, withDestinationPath: linkTarget(url, root: source, tool: tool))
+            case S_IFREG: try copyRegular(url, to: dest, cancellation: cancellation, progress: progress)
+            default: throw CacheSSDError.message(L10n.text("Arquivos especiais não são copiados."))
             }
             count += 1
             if count % 200 == 0 { progress("Copiando \(count) itens…") }
         }
-        if enumerationFailed { throw CacheSSDError.message(L10n.text("A cópia ficou incompleta por falta de acesso. A origem foi preservada.")) }
-        for (from, to) in directories.reversed() {
-            guard copyfile(from.path, to.path, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW_SRC | COPYFILE_NOFOLLOW_DST)) == 0 else {
-                throw CacheSSDError.message(L10n.text("Não foi possível preservar os metadados da pasta. A origem foi mantida."))
-            }
+        if failed { throw CacheSSDError.message(L10n.text("A cópia ficou incompleta por falta de acesso. A origem foi preservada.")) }
+        try directories.forEach(deepestFirst: true) { entry, _ in
+            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Cópia cancelada; origem preservada.")) }
+            let from = entry.path.isEmpty ? source : source.appendingPathComponent(entry.path)
+            let to = entry.path.isEmpty ? target : target.appendingPathComponent(entry.path)
+            guard copyfile(from.path, to.path, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW_SRC | COPYFILE_NOFOLLOW_DST)) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível preservar os metadados da pasta. A origem foi mantida.")) }
         }
+    }
+
+    private static func copyRegular(_ source: URL, to target: URL, cancellation: CancellationFlag, progress: (String) -> Void) throws {
+        try validateDestination(target.deletingLastPathComponent())
+        var initial = stat()
+        guard lstat(source.path, &initial) == 0, initial.st_mode & S_IFMT == S_IFREG, initial.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message(L10n.text("O arquivo não está disponível localmente.")) }
+        let cloud = try source.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+        guard cloud.isUbiquitousItem != true || cloud.ubiquitousItemDownloadingStatus == .current else { throw CacheSSDError.message(L10n.text("Baixe o arquivo no Finder antes de movê-lo.")) }
+        let input = open(source.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard input >= 0 else { throw CacheSSDError.message(L10n.text("O arquivo mudou ou não permite leitura.")) }
+        defer { close(input) }
+        var opened = stat()
+        guard fstat(input, &opened) == 0, opened.st_dev == initial.st_dev, opened.st_ino == initial.st_ino, opened.st_mode & S_IFMT == S_IFREG, opened.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message(L10n.text("O arquivo mudou durante a leitura.")) }
+        guard !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("Cópia cancelada; origem preservada.")) }
+        let output = open(target.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard output >= 0 else { throw CacheSSDError.message(L10n.text("Não foi possível gravar a cópia. A origem foi preservada.")) }
+        defer { close(output) }
+        var buffer = [UInt8](repeating: 0, count: Int(min(1_048_576, max(1, opened.st_size)))), total: Int64 = 0
+        while true {
+            guard !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("Cópia cancelada; origem preservada.")) }
+            let count = buffer.withUnsafeMutableBytes { Darwin.read(input, $0.baseAddress, $0.count) }
+            if count < 0 && errno == EINTR { continue }
+            guard count >= 0 else { throw CacheSSDError.message(L10n.text("Não foi possível ler a origem.")) }
+            if count == 0 { break }
+            total += Int64(count)
+            guard total <= Int64(opened.st_size) else { throw CacheSSDError.message(L10n.text("A origem mudou durante a cópia.")) }
+            try buffer.withUnsafeBytes { bytes in
+                var offset = 0
+                while offset < count {
+                    guard !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("Cópia cancelada; origem preservada.")) }
+                    let written = Darwin.write(output, bytes.baseAddress!.advanced(by: offset), count - offset)
+                    if written < 0 && errno == EINTR { continue }
+                    guard written > 0 else { throw CacheSSDError.message(L10n.text("Não foi possível gravar a cópia. A origem foi preservada.")) }
+                    offset += written
+                }
+            }
+            if total % 16_777_216 == 0 { progress("Copiando \(ByteText.format(total))…") }
+        }
+        var finished = stat()
+        guard fstat(input, &finished) == 0, total == Int64(opened.st_size), finished.st_size == opened.st_size,
+              finished.st_mtimespec.tv_sec == opened.st_mtimespec.tv_sec, finished.st_mtimespec.tv_nsec == opened.st_mtimespec.tv_nsec else { throw CacheSSDError.message(L10n.text("A origem mudou durante a cópia.")) }
+        guard fcopyfile(input, output, nil, copyfile_flags_t(COPYFILE_METADATA)) == 0, fsync(output) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível preservar os metadados da cópia. A origem foi mantida.")) }
     }
 
     public static func copyItem(_ source: URL, to target: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag(), progress: (String) -> Void = { _ in }) throws {
         var info = stat()
         guard lstat(source.path, &info) == 0 else { throw CacheSSDError.message(L10n.text("A origem está indisponível.")) }
         if info.st_mode & S_IFMT == S_IFDIR { try copy(source, to: target, tool: tool, cancellation: cancellation, progress: progress) }
-        else {
-            if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
-            _ = try digest(source, tool: tool, cancellation: cancellation)
-            guard !FileManager.default.fileExists(atPath: target.path) else { throw CacheSSDError.message(L10n.text("O destino já existe.")) }
-            try FileManager.default.copyItem(at: source, to: target)
-        }
+        else if info.st_mode & S_IFMT == S_IFREG { try copyRegular(source, to: target, cancellation: cancellation, progress: progress) }
+        else { throw CacheSSDError.message(L10n.text("Arquivos especiais não são copiados.")) }
     }
 
-    public static func digest(_ root: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag()) throws -> String {
+    public static func digest(_ root: URL, tool: String = "", cancellation: CancellationFlag = CancellationFlag(), workspace: URL? = nil, progress: (String) -> Void = { _ in }) throws -> String {
         var info = stat()
         guard lstat(root.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK else { throw CacheSSDError.message(L10n.text("A origem está indisponível ou foi redirecionada.")) }
-        var data = Data((try metadataDigest(root)).utf8)
+        var digest = SHA256()
+        digest.update(data: Data(try metadataDigest(root).utf8))
         if info.st_mode & S_IFMT == S_IFDIR {
-            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-            data.append(try encoder.encode(manifest(root, tool: tool, cancellation: cancellation)))
+            if let workspace, Paths.contains(workspace.resolvingSymlinksInPath(), in: Paths.physicalURL(root)) { throw CacheSSDError.message(L10n.text("Escolha uma pasta independente e sem links.")) }
+            let entries = try VerificationStore(workspace: workspace)
+            try visitManifest(root, tool: tool, cancellation: cancellation, progress: progress) { try entries.add($0) }
+            digest.update(data: Data("[".utf8))
+            var first = true
+            try entries.forEach { _, json in
+                guard !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
+                if !first { digest.update(data: Data(",".utf8)) }; first = false
+                digest.update(data: json)
+            }
+            digest.update(data: Data("]".utf8))
         } else if info.st_mode & S_IFMT == S_IFREG {
             let cloud = try root.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
             guard cloud.isUbiquitousItem != true || cloud.ubiquitousItemDownloadingStatus == .current else { throw CacheSSDError.message(L10n.text("Baixe o arquivo no Finder antes de movê-lo.")) }
-            data.append(Data(try hash(root, cancellation: cancellation).utf8))
+            digest.update(data: Data(try hash(root, cancellation: cancellation).utf8))
         } else { throw CacheSSDError.message(L10n.text("Arquivos especiais não podem receber esta operação.")) }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return digest.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// Copy-relevant metadata; access times and filesystem compression are not content.

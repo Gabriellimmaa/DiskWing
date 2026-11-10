@@ -74,6 +74,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var busy: Bool { operationMessage != nil || updates.sessionInProgress }
     var currentFolder: ScanItem? { breadcrumbs.last }
     var selectedVolume: VolumeInfo? { volumes.first { $0.uuid == settings.selectedVolumeUUID } }
+    var destinationIssue: String? {
+        guard let volume = selectedVolume else { return nil }
+        do { try FileTree.validateDestination(URL(fileURLWithPath:volume.path)); return nil }
+        catch { return error.localizedDescription }
+    }
     var internalVolume: VolumeInfo? { volumes.first { $0.isInternal } }
     var visibleItems: [ScanItem] {
         if indexedSessionID != nil { return indexedItems }

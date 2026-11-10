@@ -130,7 +130,7 @@ public final class RecoveryManager {
         if let quarantine, FileManager.default.fileExists(atPath: quarantine.path) {
             guard quarantine.deletingLastPathComponent() == source.deletingLastPathComponent(),
                   quarantine.lastPathComponent == ".CacheSSD-\(journal.id.uuidString)" else { throw CacheSSDError.message(L10n.text("O caminho de recuperação não corresponde a esta operação.")) }
-            guard let digest = journal.sourceDigest, try FileTree.digest(quarantine, tool: journal.toolID ?? "", cancellation: cancellation) == digest else {
+            guard let digest = journal.sourceDigest, try FileTree.digest(quarantine, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == digest else {
                 throw CacheSSDError.message(L10n.text("A origem em recuperação está incompleta. Preserve-a e revise a cópia no SSD."))
             }
             try FileManager.default.moveItem(at: quarantine, to: source)
@@ -142,7 +142,7 @@ public final class RecoveryManager {
             let copy = URL(fileURLWithPath: path)
             guard copy.standardizedFileURL == copy.resolvingSymlinksInPath(),
                   try BusyInspector.inspect(paths: [copy]).isEmpty else { throw CacheSSDError.message(L10n.text("A cópia está indisponível, redirecionada ou em uso.")) }
-            guard try FileTree.digest(copy, tool: journal.toolID ?? "", cancellation: cancellation) == expected else { throw CacheSSDError.message(L10n.text("A cópia mudou. Ela foi preservada para revisão manual.")) }
+            guard try FileTree.digest(copy, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw CacheSSDError.message(L10n.text("A cópia mudou. Ela foi preservada para revisão manual.")) }
             let size = FileTree.measure(copy)
             guard size.isComplete, Volumes.free(at: source.deletingLastPathComponent()) > size.logical + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço confirmado para restaurar a cópia.")) }
             let temp = source.deletingLastPathComponent().appendingPathComponent(".CacheSSD-recovery-\(journal.id.uuidString)")
@@ -150,7 +150,7 @@ public final class RecoveryManager {
             journal.staging = temp.path
             try store.writeDurably(journal, name: "operation-\(id.uuidString).json")
             try FileTree.copyItem(copy, to: temp, tool: journal.toolID ?? "", cancellation: cancellation, progress: progress)
-            guard try FileTree.digest(temp, tool: journal.toolID ?? "", cancellation: cancellation) == expected,
+            guard try FileTree.digest(temp, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == expected,
                   !FileManager.default.fileExists(atPath: source.path) else { throw CacheSSDError.message(L10n.text("A restauração mudou ou a origem reapareceu. As cópias foram mantidas.")) }
             try FileManager.default.moveItem(at: temp, to: source)
         }
