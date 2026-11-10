@@ -282,15 +282,17 @@ public final class IndexedScanner {
     private let home: URL
     private let maxEntries: Int
     private let maxBytes: Int64
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, maxEntries: Int = 1_000_000, maxIndexBytes: Int64 = 536_870_912) {
-        self.home = home; self.maxEntries = maxEntries; maxBytes = maxIndexBytes
+    private let volumeIdentifier: (URL) -> String
+    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, maxEntries: Int = 1_000_000, maxIndexBytes: Int64 = 536_870_912,
+                volumeIdentifier: @escaping (URL) -> String = { (try? $0.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }) {
+        self.home = home; self.maxEntries = maxEntries; maxBytes = maxIndexBytes; self.volumeIdentifier = volumeIdentifier
     }
     public func scan(_ requested: URL, index: ScanIndex, cancellation: CancellationFlag = CancellationFlag(), progress: (ScanProgress) -> Void = { _ in }) throws -> ScanReport {
         var rootInfo = stat()
         guard lstat(requested.path, &rootInfo) == 0, rootInfo.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message(L10n.text("Selecione uma pasta real disponível.")) }
         let root = Paths.physicalURL(requested), id = UUID(), started = Date()
         let rootPrefix = root.path == "/" ? "/" : root.path + "/"
-        let volume = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? ""
+        let volume = volumeIdentifier(root)
         let categories = CacheCatalog.all(home: home).map { $0.source.path }
         func category(_ path: String) -> ContentCategory {
             if categories.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cache }

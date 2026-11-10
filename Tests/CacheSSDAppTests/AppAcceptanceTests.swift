@@ -47,6 +47,7 @@ import CacheSSDCore
         model.exportReport(to: output); try await wait(until: { !model.busy })
         let document = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [String:Any])
         XCTAssertEqual(document["schemaVersion"] as? Int, 2)
+        XCTAssertEqual((document["session"] as? [String:Any])?["volumeUUID"] as? String, "DISKWING-SAMPLE-FILESYSTEM")
         XCTAssertNotNil((document["entries"] as? [[String:Any]])?.first?["coverage"])
         let outside = root.appendingPathComponent("outside.json")
         model.exportReport(to: outside); XCTAssertNotNil(model.errorMessage); XCTAssertFalse(FileManager.default.fileExists(atPath: outside.path))
@@ -116,5 +117,24 @@ import CacheSSDCore
         state.lowPower = false
         try await wait(until: { model.report?.id != previous && !model.isScanning })
         XCTAssertNil(model.errorMessage)
+    }
+    func testSimulatedExternalScopeBecomesUnavailableWithoutFalseGrowth() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let scope = try XCTUnwrap(context.container).appendingPathComponent("sample-ssd"), state = try XCTUnwrap(context.samples)
+        try Data("generated".utf8).write(to: scope.appendingPathComponent("file"))
+        let model = AppModel(context: context); model.scan(scope)
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        let first = model.report?.id
+        model.scan(scope)
+        try await wait(until: { model.report?.id != first && !model.isScanning && model.growthComparison?.state == "comparable" })
+        model.watchCurrentRoot(true)
+        XCTAssertEqual(model.preferences.watchedFolders.first?.volumeUUID, "DISKWING-SAMPLE-EXTERNAL-FILESYSTEM")
+        let previous = model.report?.id; state.volumeConnected = false
+        XCTAssertFalse(model.currentScopeAvailable); XCTAssertNil(model.growthComparison)
+        XCTAssertTrue(context.scanVolumeIdentifier()(scope).isEmpty)
+        model.scan(scope); XCTAssertFalse(model.isScanning); XCTAssertEqual(model.report?.id, previous)
+        state.volumeConnected = true
+        try await wait(until: { model.growthComparison?.state == "comparable" })
+        XCTAssertTrue(model.currentScopeAvailable)
     }
 }

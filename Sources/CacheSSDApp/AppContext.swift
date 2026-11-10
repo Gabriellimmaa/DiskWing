@@ -145,6 +145,22 @@ final class SampleAvailability: @unchecked Sendable {
         return values
     }
     func volume(_ uuid: String) -> VolumeInfo? { volumes().first { $0.uuid == uuid } }
+    func scanVolumeIdentifier() -> (URL) -> String {
+        if let container, let availability = samples?.availability {
+            let external = container.appendingPathComponent("sample-ssd")
+            let prefixes = [external.path, external.standardizedFileURL.path]
+            return { url in
+                if prefixes.contains(where: { url.path == $0 || url.path.hasPrefix($0 + "/") }) { return availability.connected ? "DISKWING-SAMPLE-EXTERNAL-FILESYSTEM" : "" }
+                return "DISKWING-SAMPLE-FILESYSTEM"
+            }
+        }
+        return { (try? $0.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }
+    }
+    func scopeAvailable(_ url: URL) -> Bool {
+        // Permission/coverage errors belong to the scanner's partial result;
+        // an unavailable simulated device or absent root is a different state.
+        allows(url) && (!isSamples || !scanVolumeIdentifier()(url).isEmpty) && FileManager.default.fileExists(atPath: url.path)
+    }
     func inspect(_ tool: CacheDescriptor) -> AdapterStatus {
         if isSamples { return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: CacheAdapters.qualifiedVersions[tool.id], effectiveCachePath: tool.source.path, state: "native-available", explanation: "Cache gerado para teste. Nenhuma ferramenta instalada será executada.", canReleaseSource: tool.canReleaseLocal) }
         return CacheAdapters.inspect(tool, home: home)

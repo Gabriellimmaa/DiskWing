@@ -155,7 +155,7 @@ struct ExplorerView: View {
                         Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true))
                         Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale)))
                         Spacer()
-                        Label(report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(report.isPartial ? Palette.orange : Palette.accent)
+                        Label(!model.currentScopeAvailable ? L10n.text("Análise indisponível") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: !model.currentScopeAvailable || report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(!model.currentScopeAvailable || report.isPartial ? Palette.orange : Palette.accent)
                     }
                 }
             }.padding(28)
@@ -186,7 +186,7 @@ struct ExplorerView: View {
                             TableColumn(L10n.text("Nome")) { item in
                                 HStack(spacing: 9) { Image(systemName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc").foregroundStyle(item.isDirectory ? Palette.secondary : .secondary); VStack(alignment: .leading, spacing: 3) { Text(item.name).lineLimit(1); if let issue = item.issue { Text(L10n.message(issue)).font(.caption2).foregroundStyle(.secondary).lineLimit(1) } } }.padding(.vertical, 4).onTapGesture(count: 2) { model.openFolder(item) }.contextMenu { ItemMenu(item: item) }
                             }.width(min: 150, ideal: 300)
-                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(95)
+                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(min: 110, ideal: 150)
                             TableColumn(L10n.text("Categoria")) { item in Text(L10n.message(item.category.rawValue)).font(.caption).foregroundStyle(.secondary) }.width(min: 100, ideal: 150)
                         }
                         .accessibilityIdentifier("explorer-table")

@@ -84,10 +84,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         }
     }
     private var cancellation: CancellationFlag?
+    private var scanningRoot: URL?
     private var observers: [NSObjectProtocol] = []
     private var updateObservation: AnyCancellable?
     var busy: Bool { operationMessage != nil || updates.sessionInProgress }
     var currentFolder: ScanItem? { breadcrumbs.last }
+    var currentScopeAvailable: Bool { report.map { context.scopeAvailable($0.root.url) } ?? false }
     var selectedVolume: VolumeInfo? { volumes.first { $0.uuid == settings.selectedVolumeUUID } }
     var destinationIssue: String? {
         guard let volume = selectedVolume else { return nil }
@@ -125,7 +127,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         }
         observers.append(NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.powerStateDidChange() } })
     }
-    func refreshVolumes() { volumes = context.volumes(); refreshGrowth(); startMonitoring() }
+    func refreshVolumes() {
+        volumes = context.volumes()
+        if let scanningRoot, !context.scopeAvailable(scanningRoot) { cancellation?.cancel() }
+        refreshGrowth(); startMonitoring()
+    }
     func saveSettings() {
         do {
             let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
@@ -144,8 +150,10 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     func scan(_ url: URL, focus: Bool = true) {
         guard !isScanning && !busy else { return }
         do { try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
+        guard context.scopeAvailable(url) else { errorMessage = L10n.text("A pasta ou o SSD está indisponível. Ausência não é espaço liberado."); return }
         let scanHome = home
-        let token = CancellationFlag(); cancellation = token; isScanning = true; scanProgress = nil
+        let volumeIdentifier = context.scanVolumeIdentifier()
+        let token = CancellationFlag(); cancellation = token; scanningRoot = url; isScanning = true; scanProgress = nil
         let previousPaths = breadcrumbs.map(\.path)
         if focus {
             pageRequest = UUID(); indexedSessionID = nil; indexOffset = 0; indexedItems = []; indexTotal = 0
@@ -156,7 +164,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             do {
                 let pair = try await Task.detached(priority: .userInitiated) {
                     let database = try ScanIndex(url: databaseURL)
-                    let value = try IndexedScanner(home: scanHome).scan(url, index: database, cancellation: token) { update in Task { @MainActor in self.scanProgress = update } }
+                    let value = try IndexedScanner(home: scanHome, volumeIdentifier: volumeIdentifier).scan(url, index: database, cancellation: token) { update in Task { @MainActor in self.scanProgress = update } }
                     return (database, value)
                 }.value
                 if focus || report?.root.path == pair.1.root.path {
@@ -168,11 +176,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     reloadIndex(); refreshGrowth()
                 }
                 notifyGrowthIfNeeded(database: pair.0, path: pair.1.root.path)
-                isScanning = false; cancellation = nil
+                isScanning = false; cancellation = nil; scanningRoot = nil
                 try? store.saveReport(pair.1)
                 if pair.1.reachedLimit { notice = L10n.text("Análise parcial: limite de itens, espaço ou acesso. Escolha uma subpasta para aprofundar.") }
                 else if pair.1.isCancelled { notice = L10n.text("Análise interrompida. Os itens já lidos permanecem pesquisáveis e os totais são parciais.") }
-            } catch { isScanning = false; cancellation = nil; errorMessage = error.localizedDescription }
+            } catch { isScanning = false; cancellation = nil; scanningRoot = nil; errorMessage = error.localizedDescription }
             schedulePendingRescan()
         }
     }
@@ -341,10 +349,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     func watchCurrentRoot(_ enabled: Bool) {
         guard let root = report?.root.url else { return }
         do { try context.require([root]) } catch { errorMessage = error.localizedDescription; return }
+        guard context.scopeAvailable(root) else { monitoringStatus = L10n.text("A pasta ou o SSD está indisponível. Ausência não é espaço liberado."); return }
         if enabled && !isWatchingCurrentRoot && preferences.watchedFolders.count >= 10 { notice = L10n.text("Acompanhe até dez pastas para limitar o uso de recursos."); return }
         preferences.watchedFolders.removeAll { $0.path == root.path }
         if enabled {
-            let uuid = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? ""
+            let uuid = context.scanVolumeIdentifier()(root)
             preferences.watchedFolders.append(WatchedFolder(path: root.path, volumeUUID: uuid))
         }
         savePreferences(); startMonitoring()
@@ -359,7 +368,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             guard context.allows(URL(fileURLWithPath: folder.path)) else { continue }
             let url = URL(fileURLWithPath: folder.path)
             guard FileManager.default.isReadableFile(atPath: folder.path),
-                  (try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) == folder.volumeUUID else {
+                  context.scanVolumeIdentifier()(url) == folder.volumeUUID else {
                 monitoringStatus = L10n.text("Uma pasta acompanhada está indisponível; isso não representa espaço liberado.")
                 continue
             }
@@ -392,7 +401,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             rescanTask = nil
             guard preferences.backgroundRescans else { return }
             guard let watched = preferences.watchedFolders.first(where: { $0.path == root.path }),
-                  (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) == watched.volumeUUID else { pendingRoots.remove(path); schedulePendingRescan(); return }
+                  context.scanVolumeIdentifier()(root) == watched.volumeUUID else { pendingRoots.remove(path); schedulePendingRescan(); return }
             guard !isScanning && !busy && !context.isLowPower else { schedulePendingRescan(); return }
             pendingRoots.remove(path)
             lastBackgroundScan = Date(); scan(root, focus: false)
@@ -400,11 +409,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func refreshGrowth() {
         guard let database = index, let path = report?.root.path else { return }
-        let period = growthDays
+        guard context.scopeAvailable(URL(fileURLWithPath: path)) else { growthComparison = nil; monitoringStatus = L10n.text("A pasta ou o SSD está indisponível. Ausência não é espaço liberado."); return }
+        let period = growthDays, requireAvailable = !isSamples
         Task {
             do {
-                let value = try await Task.detached(priority: .utility) { try database.growth(root: path, days: period == 0 ? nil : period) }.value
-                guard report?.root.path == path else { return }
+                let value = try await Task.detached(priority: .utility) { try database.growth(root: path, days: period == 0 ? nil : period, requireAvailable: requireAvailable) }.value
+                guard report?.root.path == path, context.scopeAvailable(URL(fileURLWithPath: path)) else { return }
                 growthComparison = value
             } catch { monitoringStatus = error.localizedDescription }
         }
@@ -421,13 +431,14 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     private func notifyGrowthIfNeeded(database: ScanIndex, path: String) {
         guard preferences.growthAlerts,
+              context.scopeAvailable(URL(fileURLWithPath: path)),
               preferences.watchedFolders.contains(where: { $0.path == path }),
               Date().timeIntervalSince(preferences.lastAlerts[path] ?? .distantPast) > 86400 else { return }
-        let threshold = preferences.growthThresholdBytes
+        let threshold = preferences.growthThresholdBytes, requireAvailable = !isSamples
         Task {
-            guard let value = try? await Task.detached(priority: .utility, operation: { try database.growth(root: path) }).value,
+            guard let value = try? await Task.detached(priority: .utility, operation: { try database.growth(root: path, requireAvailable: requireAvailable) }).value,
                   let delta = value.logicalDelta, delta >= threshold else { return }
-            guard preferences.growthAlerts, preferences.watchedFolders.contains(where: { $0.path == path }), Date().timeIntervalSince(preferences.lastAlerts[path] ?? .distantPast) > 86400 else { return }
+            guard preferences.growthAlerts, context.scopeAvailable(URL(fileURLWithPath: path)), preferences.watchedFolders.contains(where: { $0.path == path }), Date().timeIntervalSince(preferences.lastAlerts[path] ?? .distantPast) > 86400 else { return }
             let content = UNMutableNotificationContent()
             content.title = "DiskWing"
             content.body = L10n.text("O uso de espaço de uma pasta acompanhada cresceu. Abra o aplicativo para revisar.")
