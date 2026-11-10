@@ -3,37 +3,70 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var mayTerminate: () -> Bool = { true }
+    var onFinishedLaunching: (() -> Void)?
+    private(set) var hasFinishedLaunching = false
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { mayTerminate() ? .terminateNow : .terminateCancel }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.activate(ignoringOtherApps: true) }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        hasFinishedLaunching = true
+        onFinishedLaunching?()
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }
 
 @main struct CacheSSDApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var model: AppModel
-    init() {
-        do { let context = try AppContext.forLaunch(arguments: ProcessInfo.processInfo.arguments); _model = StateObject(wrappedValue: AppModel(context: context)) }
-        catch { FileHandle.standardError.write(Data("DiskWing could not initialize the requested acceptance context. No live context was opened.\n".utf8)); exit(2) }
-    }
+    @StateObject private var launch = LaunchCoordinator()
     var body: some Scene {
         WindowGroup("DiskWing", id: "main") {
-            ContentView().environmentObject(model).environment(\.locale, L10n.locale).frame(minWidth: 1050, minHeight: 690).tint(Palette.accent).onAppear { delegate.mayTerminate = { model.operationMessage == nil && !model.isScanning } }
+            Group {
+                if let model = launch.model { ContentView().environmentObject(model) }
+                else { LaunchView(launch: launch) }
+            }
+            .environment(\.locale, L10n.locale).frame(minWidth: 1050, minHeight: 690).tint(Palette.accent)
+            .onAppear {
+                delegate.mayTerminate = { launch.model.map { $0.operationMessage == nil && !$0.isScanning } ?? true }
+                delegate.onFinishedLaunching = { launch.start() }
+                if delegate.hasFinishedLaunching { launch.start() }
+            }
         }
         .defaultSize(width: 1240, height: 810)
         .commands {
-            CommandGroup(replacing: .newItem) { Button(L10n.text("Analisar pasta…")) { model.chooseFolder() }.keyboardShortcut("o") }
-            CommandGroup(after: .toolbar) { Button(L10n.text("Atualizar análise")) { if let root = model.report?.root.url { model.scan(root) } }.keyboardShortcut("r").disabled(model.isScanning || model.busy) }
+            CommandGroup(replacing: .newItem) { if let model = launch.model { Button(L10n.text("Analisar pasta…")) { model.chooseFolder() }.keyboardShortcut("o") } }
+            CommandGroup(after: .toolbar) { if let model = launch.model { Button(L10n.text("Atualizar análise")) { if let root = model.report?.root.url { model.scan(root) } }.keyboardShortcut("r").disabled(model.isScanning || model.busy) } }
             CommandMenu(L10n.text("Navegar")) {
-                Button(L10n.text("Visão geral")) { model.section = .overview }.keyboardShortcut("1")
-                Button(L10n.text("Explorar espaço")) { model.section = .explorer }.keyboardShortcut("2")
-                Button(L10n.text("Caches e SSD")) { model.section = .caches }.keyboardShortcut("3")
-                Button(L10n.text("Histórico")) { model.section = .history }.keyboardShortcut("4")
-                Button(L10n.text("Ajustes")) { model.section = .preferences }.keyboardShortcut("5")
+                if let model = launch.model {
+                    Button(L10n.text("Visão geral")) { model.section = .overview }.keyboardShortcut("1")
+                    Button(L10n.text("Explorar espaço")) { model.section = .explorer }.keyboardShortcut("2")
+                    Button(L10n.text("Caches e SSD")) { model.section = .caches }.keyboardShortcut("3")
+                    Button(L10n.text("Histórico")) { model.section = .history }.keyboardShortcut("4")
+                    Button(L10n.text("Ajustes")) { model.section = .preferences }.keyboardShortcut("5")
+                }
             }
         }
         MenuBarExtra("DiskWing", systemImage: "externaldrive") {
-            MenuContent().environmentObject(model)
+            if let model = launch.model { MenuContent().environmentObject(model) }
+            else {
+                Text(L10n.text("Iniciando o DiskWing…"))
+                Button(L10n.text("Encerrar DiskWing")) { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
+            }
         }
+    }
+}
+
+struct LaunchView: View {
+    @ObservedObject var launch: LaunchCoordinator
+    var body: some View {
+        VStack(spacing: 16) {
+            if let failure = launch.failureMessage {
+                Image(systemName: "exclamationmark.triangle").font(.largeTitle).accessibilityHidden(true)
+                Text(L10n.text("Não foi possível iniciar o DiskWing")).font(.title2)
+                Text(failure).multilineTextAlignment(.center).frame(maxWidth: 480)
+                Button(L10n.text("Tentar novamente")) { launch.start() }.accessibilityIdentifier("launch.retry")
+            } else {
+                ProgressView(L10n.text("Iniciando o DiskWing…")).accessibilityIdentifier("launch.progress")
+            }
+        }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity).accessibilityIdentifier("launch.status")
     }
 }
 

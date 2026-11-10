@@ -72,75 +72,24 @@ final class SampleAvailability: @unchecked Sendable {
         return AppContext(home: home, store: Store(base: home.appendingPathComponent("Library/Application Support/CacheSSD")), helper: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/CacheSSDHelper"), container: nil, samples: nil)
     }
     static func forLaunch(arguments: [String], bundleIdentifier: String? = Bundle.main.bundleIdentifier) throws -> AppContext {
-        let flags = arguments.enumerated().filter { $0.element.hasPrefix("--acceptance-") }
-        guard !flags.isEmpty else {
-            guard bundleIdentifier != "com.cachessd.app.acceptance" else { throw sampleFailure() }
-            return live()
+        switch try AppLaunchRequest.parse(arguments: arguments, bundleIdentifier: bundleIdentifier) {
+        case .live: return live()
+        case .create(let workspace): return try makeSamples(workspace: workspace)
+        case .resume(let session): return try resumeSamples(session: session)
         }
-        guard bundleIdentifier != "com.cachessd.app" else { throw sampleFailure() }
-        guard flags.count == 1, let flag = flags.first, ["--acceptance-workspace", "--acceptance-session"].contains(flag.element), arguments.indices.contains(flag.offset + 1), !arguments[flag.offset + 1].hasPrefix("-") else { throw sampleFailure() }
-        let path = URL(fileURLWithPath: arguments[flag.offset + 1])
-        return try flag.element == "--acceptance-session" ? resumeSamples(session: path) : makeSamples(workspace: path)
     }
     static func makeSamples(workspace: URL, rescanDelay: TimeInterval = 30, rescanInterval: TimeInterval = 900) throws -> AppContext {
-        let parent = Paths.physicalURL(workspace), fm = FileManager.default
-        var info = stat()
-        guard parent.standardizedFileURL.path == workspace.standardizedFileURL.path,
-              lstat(parent.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, fm.isWritableFile(atPath: parent.path),
-              Volumes.free(at: parent) > 1_073_741_824 else { throw sampleFailure() }
-        try FileTree.validateDestination(parent)
-        let root = parent.appendingPathComponent(".DiskWing-samples-\(UUID().uuidString)")
-        guard mkdir(root.path, 0o700) == 0 else { throw sampleFailure() }
-        // Do not delete failed fixture creation; this directory is owned data
-        // for diagnosis, never a reason to clean the supplied parent broadly.
-        let physicalHome = root.appendingPathComponent("home")
-        try fm.createDirectory(at: physicalHome, withIntermediateDirectories: true)
-        let home = URL(fileURLWithPath: physicalHome.path, isDirectory: true).standardizedFileURL
-        let downloads = home.appendingPathComponent("Downloads")
-        try fm.createDirectory(at: downloads.appendingPathComponent("nested"), withIntermediateDirectories: true)
-        for number in 0..<150 { try Data(repeating: 65, count: number + 1).write(to: downloads.appendingPathComponent(String(format: "sample-%03d.txt", number))) }
-        try Data("generated searchable sample".utf8).write(to: downloads.appendingPathComponent("nested/find-me.txt"))
-        for tool in CacheCatalog.all(home: home) {
-            try fm.createDirectory(at: tool.source, withIntermediateDirectories: true)
-            try Data("generated cache payload".utf8).write(to: tool.source.appendingPathComponent("fixture-artifact"))
-        }
-        try fm.createDirectory(at: root.appendingPathComponent("sample-ssd"), withIntermediateDirectories: true)
-        try fm.createDirectory(at: root.appendingPathComponent("personal-destination"), withIntermediateDirectories: true)
-        let helper = root.appendingPathComponent("sample-helper")
-        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: helper)
-        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
-        let store = Store(base: root.appendingPathComponent("support"))
-        var settings = AppSettings(); settings.selectedVolumeUUID = "DISKWING-SAMPLE-EXTERNAL"; try store.save(settings)
-        var preferences = UserPreferences(); preferences.language = "pt-BR"; try store.write(preferences, name: "preferences.json")
-        try Data("diskwing-gui-samples-v1\n".utf8).write(to: root.appendingPathComponent(".diskwing-sample-session"))
-        return AppContext(home: home, store: store, helper: helper, container: root, samples: SampleState(), rescanDelay: rescanDelay, rescanInterval: rescanInterval)
+        try preparedSamples(SampleWorkspace.prepare(workspace: workspace), rescanDelay: rescanDelay, rescanInterval: rescanInterval)
     }
-    static func resumeSamples(session: URL) throws -> AppContext {
-        let root = Paths.physicalURL(session)
-        var info = stat()
-        guard root.standardizedFileURL.path == session.standardizedFileURL.path, root.lastPathComponent.hasPrefix(".DiskWing-samples-"), UUID(uuidString: String(root.lastPathComponent.dropFirst(".DiskWing-samples-".count))) != nil,
-              lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else { throw sampleFailure() }
-        let required = [root.appendingPathComponent(".diskwing-sample-session"), root.appendingPathComponent("home"), root.appendingPathComponent("support"), root.appendingPathComponent("sample-helper")]
-        for url in required {
-            guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK else { throw sampleFailure() }
-        }
-        for url in [required[0], required[3]] { guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { throw sampleFailure() } }
-        for url in [required[1], required[2]] { guard (try url.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true else { throw sampleFailure() } }
-        if let files = FileManager.default.enumerator(at: required[2], includingPropertiesForKeys: nil) {
-            for case let file as URL in files { guard lstat(file.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK else { throw sampleFailure() } }
-        } else { throw sampleFailure() }
-        guard ((try required[0].resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0) <= 64 else { throw sampleFailure() }
-        guard try Data(contentsOf: required[0]) == Data("diskwing-gui-samples-v1\n".utf8), FileManager.default.isExecutableFile(atPath: required[3].path) else { throw sampleFailure() }
-        let home = URL(fileURLWithPath: required[1].path, isDirectory: true).standardizedFileURL
-        let store = Store(base: required[2])
-        _ = try store.read(AppSettings.self, name: "settings.json"); _ = try store.preferences()
-        let online = root.appendingPathComponent("sample-ssd"), offline = root.appendingPathComponent("offline-sample-ssd")
-        for folder in [online, offline] {
-            if lstat(folder.path, &info) == 0 { guard info.st_mode & S_IFMT == S_IFDIR else { throw sampleFailure() } }
-            else { guard errno == ENOENT else { throw sampleFailure() } }
-        }
-        let connected = lstat(online.path, &info) == 0
-        return AppContext(home: home, store: store, helper: required[3], container: root, samples: SampleState(connected: connected))
+    static func resumeSamples(session: URL, rescanDelay: TimeInterval = 30, rescanInterval: TimeInterval = 900) throws -> AppContext {
+        try preparedSamples(SampleWorkspace.validate(session: session), rescanDelay: rescanDelay, rescanInterval: rescanInterval)
+    }
+    static func preparedSamples(_ prepared: PreparedSampleSession, rescanDelay: TimeInterval = 30, rescanInterval: TimeInterval = 900) throws -> AppContext {
+        let current = try FileIdentity(prepared.root)
+        guard current.device == prepared.identity.device, current.inode == prepared.identity.inode else { throw sampleFailure() }
+        let context = AppContext(home: prepared.home, store: Store(base: prepared.support), helper: prepared.helper, container: prepared.root, samples: SampleState(connected: prepared.connected), rescanDelay: rescanDelay, rescanInterval: rescanInterval)
+        try context.requireStorage()
+        return context
     }
     static func sampleFailure() -> Error { CacheSSDError.message(L10n.text("Não foi possível iniciar o modo de amostras. Escolha uma pasta existente, sem links e com espaço disponível.")) }
     func allows(_ url: URL) -> Bool {
