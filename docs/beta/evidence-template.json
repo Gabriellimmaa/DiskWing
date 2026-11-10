@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "participants": [],
+  "distribution": {
+    "developerIDVerified": false,
+    "notarizationStapled": false,
+    "signedUpdaterVerified": false,
+    "secondMacRecoveryVerified": false,
+    "voiceOverVerified": false,
+    "keyboardVerified": false,
+    "bothLanguagesVerified": false
+  },
+  "criticalBlockers": [
+    "Human beta and distribution checks pending"
+  ]
+}

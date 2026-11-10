@@ -1,0 +1,9 @@
+{
+  "architecture" : "arm64",
+  "date" : "2026-11-10T03:24:20Z",
+  "entries" : 1000000,
+  "indexBytes" : 502796288,
+  "partial" : false,
+  "peakResidentBytes" : 105824256,
+  "scanSeconds" : 192.9370059967041
+}

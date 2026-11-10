@@ -8,6 +8,7 @@
 *.mobileprovision
 # Build outputs and dependencies
 .build/
+.build-*/
 .swiftpm/
 dist/
 node_modules/

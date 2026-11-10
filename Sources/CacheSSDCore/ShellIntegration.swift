@@ -1,23 +1,25 @@
 import Foundation
+import Darwin
 
 public enum ShellIntegration {
     private static let begin = "# >>> CacheSSD managed integration >>>"
     private static let end = "# <<< CacheSSD managed integration <<<"
 
     public static func install(helper: URL, store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
-        guard FileManager.default.isExecutableFile(atPath: helper.path), !helper.path.contains("\n"), !helper.path.contains("'") else { throw CacheSSDError.message("O auxiliar local não está disponível para integração.") }
+        let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
+        guard FileManager.default.isExecutableFile(atPath: helper.path), !helper.path.contains("\n"), !helper.path.contains("'") else { throw CacheSSDError.message(L10n.text("O auxiliar local não está disponível para integração.")) }
         let rc = home.appendingPathComponent(".zshrc")
         let attributes = try? FileManager.default.attributesOfItem(atPath: rc.path)
-        guard attributes?[.type] as? FileAttributeType != .typeSymbolicLink else { throw CacheSSDError.message("Seu arquivo .zshrc usa um link personalizado. Ele foi preservado; a integração automática não altera arquivos de dotfiles vinculados.") }
+        guard attributes?[.type] as? FileAttributeType != .typeSymbolicLink else { throw CacheSSDError.message(L10n.text("Seu arquivo .zshrc usa um link personalizado. Ele foi preservado; a integração automática não altera arquivos de dotfiles vinculados.")) }
         let permissions = attributes?[.posixPermissions] ?? NSNumber(value: 0o600)
-        let original = (try? String(contentsOf: rc, encoding: .utf8)) ?? ""
+        let original = try readConfiguration(rc)
         let clean = removingBlock(original)
         // Preserve a byte-for-byte backup, including any pre-existing temporary-directory setting.
         try FileManager.default.createDirectory(at: store.base, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let backup = store.base.appendingPathComponent("zshrc-before-cachessd.txt")
         if !FileManager.default.fileExists(atPath: backup.path) { try original.write(to: backup, atomically: true, encoding: .utf8) }
         let integration = store.base.appendingPathComponent("integration.zsh")
-        guard !integration.path.contains("'") else { throw CacheSSDError.message("O caminho da integração não é compatível.") }
+        guard !integration.path.contains("'") else { throw CacheSSDError.message(L10n.text("O caminho da integração não é compatível.")) }
         let script = """
         # CacheSSD: native per-command routing; no symlinks or permanent external paths.
         if (( $+functions[_cachessd_restore] )); then _cachessd_restore; fi
@@ -84,22 +86,46 @@ public enum ShellIntegration {
             return String(line)
         }.joined(separator: "\n")
         let block = "\n\(begin)\n[[ -r '\(integration.path)' ]] && source '\(integration.path)'\n\(end)\n"
+        let changeName = "configuration-\(UUID().uuidString).json"
+        var change = ConfigurationChange(source: rc.path, before: original, after: updated + block)
+        try store.writeDurably(change, name: changeName)
+        guard try readConfiguration(rc) == original else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
         try (updated + block).write(to: rc, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: rc.path)
         var settings = store.settings(); settings.shellIntegrationEnabled = true; try store.save(settings)
         try store.append(OperationRecord(title: "Integração com o terminal ativada", detail: "Novos terminais escolhem caches por comando. Configurações personalizadas têm prioridade.", recoveryPath: backup.path))
+        change.state = "completed"; try store.writeDurably(change, name: changeName)
     }
 
     public static func uninstall(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
+        let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         let rc = home.appendingPathComponent(".zshrc")
         let attributes = try? FileManager.default.attributesOfItem(atPath: rc.path)
-        guard attributes?[.type] as? FileAttributeType != .typeSymbolicLink else { throw CacheSSDError.message("O .zshrc foi substituído por um link personalizado e será preservado. Remova a integração manualmente no seu gerenciador de dotfiles.") }
-        if let current = try? String(contentsOf: rc, encoding: .utf8) {
+        guard attributes?[.type] as? FileAttributeType != .typeSymbolicLink else { throw CacheSSDError.message(L10n.text("O .zshrc foi substituído por um link personalizado e será preservado. Remova a integração manualmente no seu gerenciador de dotfiles.")) }
+        var change: ConfigurationChange?
+        let changeName = "configuration-\(UUID().uuidString).json"
+        if FileManager.default.fileExists(atPath: rc.path) {
+            let current = try readConfiguration(rc)
+            change = ConfigurationChange(source: rc.path, before: current, after: removingBlock(current))
+            try store.writeDurably(change!, name: changeName)
+            guard try readConfiguration(rc) == current else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
             try removingBlock(current).write(to: rc, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: attributes?[.posixPermissions] ?? NSNumber(value: 0o600)], ofItemAtPath: rc.path)
         }
         var settings = store.settings(); settings.shellIntegrationEnabled = false; settings.useExternal = false; try store.save(settings)
         try store.append(OperationRecord(title: "Integração desativada", detail: "Abra um novo terminal para usar os padrões locais. A pasta de temporários permanece local; o backup original está disponível.", recoveryPath: store.base.appendingPathComponent("zshrc-before-cachessd.txt").path))
+        if change != nil { change!.state = "completed"; try store.writeDurably(change!, name: changeName) }
+    }
+
+    private static func readConfiguration(_ url: URL) throws -> String {
+        var info = stat()
+        if lstat(url.path, &info) != 0 {
+            if errno == ENOENT { return "" }
+            throw CacheSSDError.message(L10n.text("Não foi possível ler a configuração do terminal. Ela foi preservada."))
+        }
+        guard info.st_mode & S_IFMT == S_IFREG, info.st_mode & 0o444 != 0 else { throw CacheSSDError.message(L10n.text("A configuração não permite leitura e foi preservada.")) }
+        do { return try String(contentsOf: url, encoding: .utf8) }
+        catch { throw CacheSSDError.message(L10n.text("A configuração está ilegível e não será substituída.")) }
     }
 
     private static func removingBlock(_ value: String) -> String {

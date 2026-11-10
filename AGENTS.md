@@ -1,6 +1,8 @@
 # DiskWing contributor and agent entry point
 
-Read docs/context/PROJECT_CONTEXT.md, docs/context/CURRENT_STATE.md, docs/COMPATIBILITY.md, and docs/TESTING.md before changing behavior. docs/plans/ preserves the approved cache plan and product roadmap. Follow the approved Lift identity in design/brand/; do not redesign it during routine fixes.
+Read docs/context/PROJECT_CONTEXT.md, docs/context/CURRENT_STATE.md, docs/COMPATIBILITY.md, and docs/TESTING.md and docs/ARCHITECTURE.md before changing behavior. docs/plans/ preserves the approved cache plan and product roadmap. Follow the approved Lift identity in design/brand/; do not redesign it during routine fixes.
+
+The approved v1 roadmap and live acceptance/evidence ledger are docs/ROADMAP.md and docs/TRACEABILITY.json. Both primary flows, Apple Silicon, and PT/EN are required. Never mark a beta or notarized release complete using only code/tests.
 
 ## Architecture and commands
 
@@ -11,7 +13,7 @@ Historical chats may retain an obsolete recorded working directory. Run subseque
 - Build: python3 build.py (default .build/, dist/DiskWing.app).
 - Isolated tests: swift test -j 2.
 - Packaging tests: python3 -m unittest discover -s Tests/Packaging -v.
-- Installed-tool checks: DISKWING_RUN_NATIVE_TESTS=1 swift test -j 2. See docs/TESTING.md for prerequisites.
+- Installed-tool checks: DISKWING_RUN_NATIVE_TESTS=1 swift test -j 2. Actual disposable installs: DISKWING_RUN_INSTALL_TESTS=1 swift test -j 2 --filter NativeWorkflowTests. See docs/TESTING.md for prerequisites.
 - Optional fixtures location: CACHESSD_TEST_TEMP=/path/to/test-temp.
 
 ## Data preservation

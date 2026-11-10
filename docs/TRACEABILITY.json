@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "baselineRevision": "3c04017",
+  "approvedDefaults": {
+    "architectures": [
+      "arm64"
+    ],
+    "minimumMacOS": "14",
+    "languages": [
+      "pt-BR",
+      "en"
+    ],
+    "bothCoreFlowsRequired": true,
+    "telemetry": false,
+    "automaticCleanup": false
+  },
+  "milestoneAPIStatus": "Nine milestones created through the official GitHub interface; all nine issues assigned through the GitHub connector.",
+  "requirements": [
+    {
+      "id": "M0",
+      "title": "Traceability and approved roadmap",
+      "priority": "foundation",
+      "issue": 1,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/1",
+      "acceptance": "Every requirement has status, issue, milestone intent, acceptance criteria, tests and evidence; preserve historical plans and private archives.",
+      "implementation": "implemented",
+      "validation": "issues_and_milestones_verified",
+      "evidence": [
+        "docs/ROADMAP.md",
+        "docs/TRACEABILITY.json"
+      ],
+      "externalDependencies": [],
+      "milestone": 1,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/1"
+    },
+    {
+      "id": "M1",
+      "title": "Safe, recoverable operations",
+      "priority": "critical",
+      "issue": 2,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/2",
+      "acceptance": "Unreadable shell files are preserved; all mutations share a lease; incomplete measurement is explicit; durable checkpoints and guided recovery survive injected failures.",
+      "implementation": "implemented",
+      "validation": "isolated_and_subprocess_crash_tests_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/OperationSafetyTests.swift",
+        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift"
+      ],
+      "externalDependencies": [
+        "Physical power-loss/cable-removal and another Mac remain unverified."
+      ],
+      "milestone": 2,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/2"
+    },
+    {
+      "id": "M2",
+      "title": "Complete scoped disk explorer",
+      "priority": "high",
+      "issue": 3,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/3",
+      "acceptance": "A private paginated SQLite index finds items beyond the old display limits; full-scope search and bounded navigation report incomplete coverage honestly.",
+      "implementation": "implemented",
+      "validation": "pagination_global_search_and_one_million_entry_benchmark_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/ScanIndexTests.swift",
+        "Tests/CacheSSDCoreTests/ScaleTests.swift",
+        "docs/validation/scale.json"
+      ],
+      "externalDependencies": [
+        "Resource results need confirmation on additional Macs/filesystems."
+      ],
+      "milestone": 3,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/3"
+    },
+    {
+      "id": "M3",
+      "title": "Verified personal-file actions",
+      "priority": "high",
+      "issue": 4,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/4",
+      "acceptance": "Disposable files/folders retain data and metadata; conflicts, space, cloud data and interruption are checked; source is recoverable via verified copy or Trash.",
+      "implementation": "implemented",
+      "validation": "disposable_metadata_conflict_recovery_and_identity_tests_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/OperationSafetyTests.swift",
+        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift"
+      ],
+      "externalDependencies": [
+        "Additional filesystem metadata and very large copy throughput remain to be qualified."
+      ],
+      "milestone": 4,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4"
+    },
+    {
+      "id": "M4",
+      "title": "Qualified cache and SSD workflows",
+      "priority": "high",
+      "issue": 5,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/5",
+      "acceptance": "Seven versioned adapters describe effective routing and qualification. Disposable real installs/builds, SSD absent and documented offline scenarios pass. Bun/uv origins stay local.",
+      "implementation": "implemented",
+      "validation": "seven_real_native_workflows_and_local_fallback_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/NativeWorkflowTests.swift",
+        "docs/validation/native-workflows.json",
+        "Sources/CacheSSDCore/Resources/cache-qualification.json"
+      ],
+      "externalDependencies": [
+        "pip requires an offline wheelhouse for empty-cache installation; Homebrew/CocoaPods offline network isolation remains unverified."
+      ],
+      "milestone": 5,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5"
+    },
+    {
+      "id": "M5",
+      "title": "Opt-in growth tracking",
+      "priority": "medium",
+      "issue": 6,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/6",
+      "acceptance": "Comparable snapshots and advisory filesystem events show growth; absent disks and lost permission are not reported as recovered space; retention is bounded.",
+      "implementation": "implemented",
+      "validation": "snapshot_event_comparability_and_retention_tests_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/GrowthTrackingTests.swift"
+      ],
+      "externalDependencies": [
+        "Real seven-day use and notification frequency are beta evidence, not simulated-time test results."
+      ],
+      "milestone": 6,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/6"
+    },
+    {
+      "id": "M6",
+      "title": "Portuguese/English and accessible public UX",
+      "priority": "high",
+      "issue": 7,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/7",
+      "acceptance": "Both audiences can navigate core flows with keyboard/VoiceOver, choose languages and understand permissions, consequences, recovery and incomplete state.",
+      "implementation": "implemented",
+      "validation": "catalog_and_native_keyboard_language_explorer_smoke_passed",
+      "evidence": [
+        "Tests/CacheSSDCoreTests/LocalizationTests.swift",
+        "docs/ACCESSIBILITY.md",
+        "docs/validation/IMPLEMENTATION-2026-11-10.md"
+      ],
+      "externalDependencies": [
+        "Full hands-on VoiceOver acceptance and additional users/Macs pending."
+      ],
+      "milestone": 7,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/7"
+    },
+    {
+      "id": "M7",
+      "title": "Verified distribution and consented updates",
+      "priority": "release_gate",
+      "issue": 8,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/8",
+      "acceptance": "Internal installation remains usable without SSD; production requires Developer ID/notarization; signed Sparkle updates and removal preserve configuration. No signing keys in Git.",
+      "implementation": "tooling_implemented",
+      "validation": "ad_hoc_arm64_bundle_internal_install_and_sparkle_api_build_passed",
+      "evidence": [
+        "build.py",
+        "scripts/install_local.py",
+        "Sources/CacheSSDApp/Updates.swift",
+        "docs/DISTRIBUTION.md"
+      ],
+      "externalDependencies": [
+        "Developer ID Application identity and notarization profile unavailable.",
+        "Hosted signed appcast and end-to-end valid/invalid signed update checks pending.",
+        "Second-Mac restore/disable/removal pending."
+      ],
+      "milestone": 8,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/8"
+    },
+    {
+      "id": "M8",
+      "title": "Ten-person beta and v1 readiness",
+      "priority": "release_gate",
+      "issue": 9,
+      "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/9",
+      "acceptance": "Five general users and five developers; at least four of five in each group complete core tasks; immediate/seven-day results recorded; no known critical data-loss/core-flow blockers.",
+      "implementation": "beta_kit_implemented",
+      "validation": "awaiting_human_participants_and_seven_day_evidence",
+      "evidence": [
+        "docs/beta/PROTOCOL.md",
+        "scripts/release_readiness.py",
+        "Tests/Packaging/test_release_readiness.py"
+      ],
+      "externalDependencies": [
+        "Five general users and five developers; at least 80 percent independent successes in each cohort.",
+        "Seven-day follow-up and resolution of all critical release blockers."
+      ],
+      "milestone": 9,
+      "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/9"
+    }
+  ],
+  "updatedAt": "2026-11-10",
+  "publicV1Ready": false
+}

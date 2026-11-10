@@ -12,6 +12,10 @@ let command = args.first ?? "help"
 let store = Store()
 do {
     switch command {
+    case "self-check":
+        L10n.preference = "en"
+        guard !L10n.english.isEmpty, L10n.text("Nome") == "Name", CacheAdapters.qualifiedVersions.count == 7 else { throw CacheSSDError.message("Required application resources are unavailable.") }
+        print("DiskWing resources verified: PT/EN and seven cache qualifications")
     case "shell-env":
         let settings = store.settings()
         guard settings.shellIntegrationEnabled else { exit(0) }
@@ -28,9 +32,25 @@ do {
         guard args.count >= 2 else { throw CacheSSDError.message("Informe uma pasta: CacheSSDHelper scan /caminho") }
         let report = try DiskScanner().scan(URL(fileURLWithPath: args[1]))
         try printJSON(report)
+    case "index":
+        guard args.count >= 2 else { throw CacheSSDError.message("Informe uma pasta para indexar.") }
+        let database = try ScanIndex()
+        let report = try IndexedScanner().scan(URL(fileURLWithPath: args[1]), index: database)
+        try printJSON(report)
+    case "search":
+        guard args.count >= 3, let id = UUID(uuidString: args[1]) else { throw CacheSSDError.message("Use search SESSION QUERY.") }
+        try printJSON(ScanIndex().page(sessionID: id, search: args[2]).items)
+    case "operations":
+        try printJSON(store.operations())
+    case "recover":
+        guard args.count >= 2, let id = UUID(uuidString: args[1]), args.contains("--apply") else { throw CacheSSDError.message("Use recover ID --apply após revisar o registro.") }
+        try RecoveryManager().restoreSource(id: id); print("Origem recuperada.")
+    case "resolve":
+        guard args.count >= 2, let id = UUID(uuidString: args[1]), args.contains("--apply") else { throw CacheSSDError.message("Use resolve ID --apply para encerrar mantendo todas as cópias.") }
+        try RecoveryManager().keepCopiesAndResolve(id: id); print("Registro encerrado; cópias preservadas.")
     case "inventory":
-        struct Entry: Encodable { let id: String; let name: String; let path: String; let bytes: Int64; let allocated: Int64 }
-        try printJSON(CacheCatalog.all().map { tool in let size = FileTree.measure(tool.source); return Entry(id: tool.id, name: tool.name, path: tool.source.path, bytes: size.logical, allocated: size.allocated) })
+        struct Entry: Encodable { let id: String; let name: String; let path: String; let bytes: Int64; let allocated: Int64; let complete: Bool; let missing: Bool }
+        try printJSON(CacheCatalog.all().map { tool in let size = FileTree.measure(tool.source); return Entry(id: tool.id, name: tool.name, path: tool.source.path, bytes: size.logical, allocated: size.allocated, complete: size.isComplete, missing: size.missing) })
     case "migrate":
         guard args.count >= 2, args.contains("--apply") else { throw CacheSSDError.message("A migração altera arquivos. Revise no aplicativo ou use migrate TOOL --apply [--release-local].") }
         let record = try MigrationEngine().migrate(toolID: args[1], removeLocal: args.contains("--release-local"), progress: { message in FileHandle.standardError.write(Data((message + "\n").utf8)) })
@@ -56,7 +76,12 @@ do {
         CacheSSD Helper
           volumes                      Lista discos e espaço livre
           scan PASTA                   Analisa metadados; não altera arquivos
-          inventory                    Mede caches locais reconhecidos
+          index PASTA                  Indexa metadados em SQLite local
+          search SESSION QUERY         Busca em todo o escopo indexado
+          operations                   Lista registros duráveis de operação
+          recover ID --apply           Recupera origem ausente sem sobrescrever
+          resolve ID --apply           Encerra registro sem remover cópias
+          inventory                    Mede caches locais e indica leituras incompletas
           status                       Mostra o destino de cada integração
           run -- COMANDO ARGUMENTOS    Executa com o cache compatível disponível
           migrate TOOL --apply         Copia e valida um cache selecionado

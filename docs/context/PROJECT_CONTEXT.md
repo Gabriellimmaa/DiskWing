@@ -16,6 +16,7 @@ Every data-changing action has a review. Verify copies before releasing eligible
 4. A native local alpha was implemented/tested, without migrating personal caches.
 5. DiskWing was selected as the public name. Concept 01, Lift, was approved; preserve its silhouette, Manrope lettering, and palette.
 6. Consolidation was approved under MIT, with public consolidated context, private personal evidence, and preservation of the separate ChatGPT project.
+7. The alpha-to-v1 roadmap was approved with both explorer/cache flows, Apple Silicon, PT/EN, recoverable operations, optional growth tracking, signed consented updates and a real ten-person/seven-day beta. Implementation and validation evidence remain separate.
 
 Naming research was exploratory and time-specific. No domain purchase, trademark clearance, or release is established by it. A native Icon Composer .icon remains pending; completed .icns and asset catalogs are available.
 
@@ -23,6 +24,8 @@ Naming research was exploratory and time-specific. No domain purchase, trademark
 
 - docs/plans/PLANO-V1-APROVADO.md: sanitized historical cache plan.
 - docs/plans/ROADMAP-V0.1.md: evolution and beta criteria.
+- docs/ROADMAP.md and docs/TRACEABILITY.json: live requirements, issues/milestones and remaining release gates.
+- docs/ARCHITECTURE.md, docs/TESTING.md and docs/validation/: implementation contracts and evidence.
 - docs/context/CURRENT_STATE.md: completed work and next priorities.
 - docs/context/MIGRATION-2026-11-09.md: consolidation validation.
 - docs/COMPATIBILITY.md: technical identifiers to preserve.

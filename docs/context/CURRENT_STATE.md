@@ -1,23 +1,29 @@
 # Current state
 
-Updated 2026-11-09. Early local native macOS alpha, developed on Apple Silicon. Target: macOS 14. Verification on other Macs and OS versions is pending.
+Updated 2026-11-10. Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
 
 ## Implemented
 
-SwiftUI/AppKit app, menu extra, folder explorer, sorting/search, largest files, Finder, cancellable metadata scanner, reviewed personal-file actions, seven cache integrations, copy verification, native-tool checks, zsh routing, history, recovery journals, Xcode-default review, login-item option, and preparation for eject.
+- One cross-process operation lease for cache migration/restore, personal actions, shell/Xcode configuration and recovery; durable operation/configuration checkpoints; preserved unreadable records.
+- Verified bytes, permissions, timestamps, extended attributes/resource forks and ACLs; source identity/stability checks, cancellation, staging, conflict/space protection and guided recovery without overwrite.
+- SQLite index with paginated navigation, full-scope accent-insensitive search, size filters, logical/allocated ordering and streamed cancellable export.
+- Metadata-only scan with progress, partial coverage, hard-link allocation accounting, no traversal into links/other mounts, no intentional cloud download. Limits: one million entries, depth 80, index budget 512 MiB and 256 MiB free-space floor.
+- Up to two indexed trees per root and fifty comparable growth snapshots, with up to 10,000 folders per sample. Coverage limits are explicit. Private internal records are excluded from scans/events to avoid feedback.
+- Optional FSEvents tracking, rescans at least fifteen minutes apart, Low Power Mode pause, optional growth alerts limited to one per root/day. No folders are watched by default.
+- Seven versioned native cache adapters. Exact qualified versions are bundled; unknown/custom versions preserve the source. Bun/uv originals always remain local. Absolute Bun links within its own cache become relative in the copy.
+- Portuguese/English selection, native keyboard navigation, review/recovery screens and optional notification permission requested only from the alert control.
+- Internal-disk installer preserving the previous application; portable ad-hoc build and optional pinned Sparkle 2 build. HTTPS/public-key/Developer-ID checks, nested signing and notarization tooling exist; actual public signing remains unverified.
 
-Analysis: 200,000 entries, 80 levels, 120 displayed children per folder, 60 largest files. History: 150 operations and 50 scan summaries. Partial scans and unreadable paths are identified. APFS shared blocks prevent guaranteed recoverable-space claims.
+The current validation record is [implementation evidence](../validation/IMPLEMENTATION-2026-11-10.md), linked to [requirements](../TRACEABILITY.json) and nine GitHub issues/milestones. Original import hashes in the migration manifest describe the historical import, not subsequent source revisions.
 
-Consolidation did not execute personal migrations, shell activation, Xcode changes, startup activation, or physical ejection. Chrome data was not changed. No storage-saving claim is made.
+## Remaining release gates
 
-## Next priorities
+Developer ID Application certificate and notarization credentials; hosted signed appcast and end-to-end valid/invalid update checks; second Mac install/restore/disable/removal; hands-on VoiceOver, both languages and keyboard acceptance; five general users plus five developers with immediate and seven-day observations. See [distribution](../DISTRIBUTION.md) and [beta protocol](../beta/PROTOCOL.md).
 
-1. Test actual dependency installs/builds with disposable projects for every tool, with/without SSD and internet.
-2. Exercise restore, disable/uninstall, interrupted recovery, and eject with disposable data.
-3. Review accessibility and additional Macs/macOS versions.
-4. Add incremental tracking and growth comparisons after correctness/resource validation.
-5. Prepare Developer ID, notarization, signed updates, and beta with five general users and five developers.
+Events currently schedule full scoped rescans; subtree-only incremental reconciliation is future optimization. Resource limits can produce partial scans, including when retained trees consume the index budget. Large personal-copy throughput, physical unplug/power-loss behavior and cross-filesystem metadata compatibility need further device testing. Do not infer these results from synthetic fault injection.
 
-Pending: automatic event-based updates, seven-day comparisons, growth notifications, duplicates, full app uninstall, library migrations, native Icon Composer .icon, notarized binaries, and market validation.
+No personal cache migration, terminal activation, Xcode preference change, login registration, notification activation, disk ejection, Chrome operation or public binary release is performed by implementing these features. No storage-saving claim is made.
 
-Development does not authorize operating on personal caches. Review and recovery remain required.
+## Beyond v1
+
+Duplicate-content analysis with APFS clone/hard-link accounting, assisted app uninstall, dedicated library adapters, additional caches, Intel support according to demand and native Icon Composer polish remain outside v1.

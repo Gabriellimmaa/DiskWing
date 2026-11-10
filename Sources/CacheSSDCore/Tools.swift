@@ -54,7 +54,7 @@ public enum CommandRunner {
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             process.waitUntilExit()
             pipe.fileHandleForReading.readabilityHandler = nil
-            throw CacheSSDError.message("A ferramenta excedeu o tempo de verificação; nenhuma origem foi removida.")
+            throw CacheSSDError.message(L10n.text("A ferramenta excedeu o tempo de verificação; nenhuma origem foi removida."))
         }
         process.waitUntilExit()
         pipe.fileHandleForReading.readabilityHandler = nil
@@ -109,8 +109,8 @@ public struct BusyProcess: Identifiable, Sendable {
 public enum BusyInspector {
     public static func inspect(paths: [URL], tool: String? = nil) throws -> [BusyProcess] {
         let result = try CommandRunner.run(URL(fileURLWithPath: "/usr/sbin/lsof"), ["-n", "-P", "-F", "pcn"], timeout: 30, maxOutputBytes: 33_554_432)
-        guard !result.truncated else { throw CacheSSDError.message("A lista de arquivos em uso está incompleta. A operação foi adiada.") }
-        guard result.status == 0 || result.status == 1 else { throw CacheSSDError.message("Não foi possível verificar arquivos abertos. A operação foi adiada.") }
+        guard !result.truncated else { throw CacheSSDError.message(L10n.text("A lista de arquivos em uso está incompleta. A operação foi adiada.")) }
+        guard result.status == 0 || result.status == 1 else { throw CacheSSDError.message(L10n.text("Não foi possível verificar arquivos abertos. A operação foi adiada.")) }
         var pid = 0, name = "Processo", found: [Int: String] = [:]
         for line in result.output.split(separator: "\n") {
             guard let prefix = line.first else { continue }
@@ -121,7 +121,7 @@ public enum BusyInspector {
         }
         // A command may close a cache file between two writes. Also check the known clients.
         let ps = try CommandRunner.run(URL(fileURLWithPath: "/bin/ps"), ["-axo", "pid=,command="], timeout: 10, maxOutputBytes: 16_777_216)
-        guard ps.status == 0, !ps.truncated else { throw CacheSSDError.message("Não foi possível verificar todos os processos. A operação foi adiada.") }
+        guard ps.status == 0, !ps.truncated else { throw CacheSSDError.message(L10n.text("Não foi possível verificar todos os processos. A operação foi adiada.")) }
         let patterns: [String: [String]] = ["npm": ["npm-cli.js", "npx-cli.js"], "bun": ["/bun install", "/bun add", "/bun update", "bunx "], "gradle": ["GradleDaemon", "GradleWrapperMain", "org.gradle.launcher"], "cocoapods": ["/bin/pod install", "/bin/pod update", "/bin/pod cache"], "pip": ["-m pip install", "/pip install", "/pip3 install"], "uv": ["/uv sync", "/uv pip", "/uv tool", "/uvx "], "homebrew": ["brew.rb install", "brew.rb fetch", "brew.rb upgrade"]]
         for line in ps.output.split(separator: "\n") {
             let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)

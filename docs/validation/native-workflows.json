@@ -1,0 +1,83 @@
+{
+  "results": [
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:13Z",
+      "offline": "native --offline succeeded",
+      "sourceRetained": true,
+      "toolID": "bun",
+      "version": "1.3.3",
+      "workflow": "pinned package install and execution; original cache retained"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:18Z",
+      "offline": "not established; cached install without repo update only",
+      "sourceRetained": true,
+      "toolID": "cocoapods",
+      "version": "1.16.2",
+      "workflow": "temporary Podfile install without modifying an Xcode project"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:30Z",
+      "offline": "native --offline build succeeded",
+      "sourceRetained": true,
+      "toolID": "gradle",
+      "version": "9.2.0",
+      "workflow": "temporary Java project compiles pinned Maven dependency"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:36Z",
+      "offline": "not established; fetch reuse only",
+      "sourceRetained": true,
+      "toolID": "homebrew",
+      "version": "6.0.17",
+      "workflow": "bottle download reused; no global formula installation"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:38Z",
+      "offline": "native --offline succeeded",
+      "sourceRetained": true,
+      "toolID": "npm",
+      "version": "10.9.0",
+      "workflow": "pinned package install and execution"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:41Z",
+      "offline": "--no-index miss expected; wheelhouse required",
+      "sourceRetained": true,
+      "toolID": "pip",
+      "version": "26.2.1",
+      "workflow": "isolated --target install and import"
+    },
+    {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T03:29:43Z",
+      "offline": "native --offline succeeded",
+      "sourceRetained": true,
+      "toolID": "uv",
+      "version": "0.13.7",
+      "workflow": "isolated --target install/import in copy mode; original cache retained"
+    }
+  ],
+  "schemaVersion": 1,
+  "scope": "Disposable projects and injected SSD availability, not physical unplug or disconnected-network tests"
+}

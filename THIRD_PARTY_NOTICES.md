@@ -8,6 +8,6 @@ Bundled font files in design/brand/source/, its masters/source/ directory, and d
 
 ## Optional artwork tooling
 
-The app has no external Swift package dependencies. Optional artwork generation uses sharp (Apache-2.0) and fontTools (MIT), installed separately from their upstream distributions. Their package license notices apply to those tools and their transitive dependencies; dependencies are not vendored.
+Default local app builds have no external Swift package dependencies. Optional signed-update builds use Sparkle 2.10.1; its license and bundled third-party notices are preserved in LICENSES/Sparkle.txt and copied into the app. System SQLite and Apple SDKs are supplied by macOS/Xcode and are not vendored. Optional artwork generation uses sharp (Apache-2.0) and fontTools (MIT), installed separately from upstream distributions. Their package license notices apply to those tools and their transitive dependencies; dependencies are not vendored.
 
 See design/README.md for setup. The macOS SDK and Apple tools are supplied by the developer's Xcode installation under their own terms; they are not distributed here.
