@@ -13,7 +13,13 @@ public struct CacheDescriptor: Identifiable, Sendable {
         self.environmentKey = environmentKey; self.destinationChild = destinationChild
     }
     public func payload(at base: URL) -> URL { destinationChild.isEmpty ? base : base.appendingPathComponent(destinationChild) }
-    public var canReleaseLocal: Bool { !["bun", "uv"].contains(id) }
+    public var canReleaseLocal: Bool {
+        // PnP projects can execute packages directly from Yarn's cache, including Classic.
+        if ["bun", "uv", "yarn"].contains(id) { return false }
+        // ccache can store persistent user configuration alongside cached results.
+        if id == "ccache", FileManager.default.fileExists(atPath: source.appendingPathComponent("ccache.conf").path) { return false }
+        return true
+    }
 }
 
 public enum CacheCatalog {
@@ -25,7 +31,10 @@ public enum CacheCatalog {
             CacheDescriptor(id: "pip", name: "pip", explanation: "Downloads e pacotes Python compilados; não inclui ambientes instalados.", source: home.appendingPathComponent("Library/Caches/pip"), environmentKey: "PIP_CACHE_DIR"),
             CacheDescriptor(id: "homebrew", name: "Homebrew", explanation: "Downloads. Os aplicativos e ferramentas instalados ficam no Mac.", source: home.appendingPathComponent("Library/Caches/Homebrew"), environmentKey: "HOMEBREW_CACHE"),
             CacheDescriptor(id: "gradle", name: "Gradle", explanation: "Caches de compilação. JDKs, distribuições e configurações continuam locais.", source: home.appendingPathComponent(".gradle/caches"), environmentKey: "GRADLE_USER_HOME", destinationChild: "caches"),
-            CacheDescriptor(id: "uv", name: "uv", explanation: "Novos downloads podem usar o SSD. A origem fica no Mac para preservar ambientes existentes.", source: home.appendingPathComponent(".cache/uv"), environmentKey: "UV_CACHE_DIR")
+            CacheDescriptor(id: "uv", name: "uv", explanation: "Novos downloads podem usar o SSD. A origem fica no Mac para preservar ambientes existentes.", source: home.appendingPathComponent(".cache/uv"), environmentKey: "UV_CACHE_DIR"),
+            CacheDescriptor(id: "yarn", name: "Yarn Classic", explanation: "Cache de pacotes do Yarn 1. A origem fica no Mac para preservar projetos Plug’n’Play existentes.", source: home.appendingPathComponent("Library/Caches/Yarn/v6"), environmentKey: "YARN_CACHE_FOLDER", destinationChild: "v6"),
+            CacheDescriptor(id: "go", name: "Go", explanation: "Resultados de compilação. Módulos baixados, ferramentas instaladas e projetos ficam no Mac.", source: home.appendingPathComponent("Library/Caches/go-build"), environmentKey: "GOCACHE"),
+            CacheDescriptor(id: "ccache", name: "ccache", explanation: "Resultados de compilação C/C++. Compiladores, projetos e configurações são preservados.", source: home.appendingPathComponent(FileManager.default.fileExists(atPath: home.appendingPathComponent(".ccache").path) ? ".ccache" : "Library/Caches/ccache"), environmentKey: "CCACHE_DIR")
         ]
     }
     public static func find(_ id: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> CacheDescriptor? { all(home: home).first { $0.id == id } }
@@ -126,7 +135,7 @@ public enum BusyInspector {
         // A command may close a cache file between two writes. Also check the known clients.
         let ps = try CommandRunner.run(URL(fileURLWithPath: "/bin/ps"), ["-axo", "pid=,command="], timeout: 10, maxOutputBytes: 16_777_216)
         guard ps.status == 0, !ps.truncated else { throw CacheSSDError.message(L10n.text("Não foi possível verificar todos os processos. A operação foi adiada.")) }
-        let patterns: [String: [String]] = ["npm": ["npm-cli.js", "npx-cli.js"], "bun": ["/bun install", "/bun add", "/bun update", "bunx "], "gradle": ["GradleDaemon", "GradleWrapperMain", "org.gradle.launcher"], "cocoapods": ["/bin/pod install", "/bin/pod update", "/bin/pod cache"], "pip": ["-m pip install", "/pip install", "/pip3 install"], "uv": ["/uv sync", "/uv pip", "/uv tool", "/uvx "], "homebrew": ["brew.rb install", "brew.rb fetch", "brew.rb upgrade"]]
+        let patterns: [String: [String]] = ["npm": ["npm-cli.js", "npx-cli.js"], "bun": ["/bun install", "/bun add", "/bun update", "bunx "], "gradle": ["GradleDaemon", "GradleWrapperMain", "org.gradle.launcher"], "cocoapods": ["/bin/pod install", "/bin/pod update", "/bin/pod cache"], "pip": ["-m pip install", "/pip install", "/pip3 install"], "uv": ["/uv sync", "/uv pip", "/uv tool", "/uvx "], "homebrew": ["brew.rb install", "brew.rb fetch", "brew.rb upgrade"], "yarn": ["yarn.js", "yarn.cjs", "/yarn install", "/yarn add", "/yarn cache"], "go": ["/go build", "/go test", "/go install", "/go run", "/pkg/tool/"], "ccache": ["/ccache "]]
         for line in ps.output.split(separator: "\n") {
             let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
             guard parts.count == 2, let processID = Int(parts[0]), processID != getpid() else { continue }
