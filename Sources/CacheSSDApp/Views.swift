@@ -143,6 +143,8 @@ struct QuickScan: View {
 struct ExplorerView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
+        GeometryReader { geometry in
+        let compact = geometry.size.width < 1000
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 17) {
                 PageHeader(title: L10n.text("Explorar espaço"), subtitle: L10n.text("Os maiores itens aparecem primeiro. Abra uma pasta para entender seu conteúdo."))
@@ -150,30 +152,38 @@ struct ExplorerView: View {
                     HStack { ProgressView().controlSize(.small); VStack(alignment: .leading, spacing: 4) { Text(L10n.text("Lendo \(model.scanProgress?.entries.formatted(.number.locale(L10n.locale)) ?? "0") itens…")).font(.headline); Text(model.scanProgress?.currentPath ?? L10n.text("Preparando análise")).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }; Spacer(); Button(L10n.text("Interromper")) { model.cancel() } }.padding(13).background(Palette.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
                 }
                 if let report = model.report {
-                    HStack(spacing: 22) {
-                        Metric(label: L10n.text("Tamanho encontrado"), value: model.sizeText(report.root))
-                        Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true))
-                        Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale)))
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: compact ? 12 : 22) {
+                            Metric(label: L10n.text("Tamanho encontrado"), value: model.sizeText(report.root)).frame(maxWidth: .infinity, alignment: .leading)
+                            Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true)).frame(maxWidth: .infinity, alignment: .leading)
+                            Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale))).frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         Label(!model.currentScopeAvailable ? L10n.text("Análise indisponível") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: !model.currentScopeAvailable || report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(!model.currentScopeAvailable || report.isPartial ? Palette.orange : Palette.accent)
                     }
                 }
-            }.padding(28)
+            }.padding(.horizontal, compact ? 20 : 28).padding(.vertical, compact ? 16 : 24)
             if let report = model.report {
-                HStack {
-                    Button { model.goBack() } label: { Image(systemName: "chevron.left") }.disabled(model.breadcrumbs.count <= 1).accessibilityLabel(L10n.text("Voltar à pasta anterior"))
-                    Text(model.currentFolder?.path ?? report.root.path).font(.callout).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                    Spacer()
-                    Picker(L10n.text("Exibir"), selection: $model.showLargest) { Text(L10n.text("Pastas e arquivos")).tag(false); Text(L10n.text("Maiores arquivos")).tag(true) }.pickerStyle(.segmented).frame(width: 280)
-                    Toggle(L10n.text("Acompanhar pasta"), isOn: Binding(get: { model.isWatchingCurrentRoot }, set: { model.watchCurrentRoot($0) })).toggleStyle(.checkbox)
-                    Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.help(L10n.text("Exportar relatório com nomes e caminhos")).accessibilityLabel(L10n.text("Exportar relatório com nomes e caminhos")).disabled(model.busy || model.isScanning)
-                }.padding(.horizontal, 24).padding(.bottom, 14)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Button { model.goBack() } label: { Image(systemName: "chevron.left") }.disabled(model.breadcrumbs.count <= 1).accessibilityLabel(L10n.text("Voltar à pasta anterior"))
+                        Text(model.currentFolder?.path ?? report.root.path).font(.callout).lineLimit(1).truncationMode(.middle).textSelection(.enabled).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    }
+                    HStack {
+                        Picker(L10n.text("Exibir"), selection: $model.showLargest) { Text(L10n.text("Pastas e arquivos")).tag(false); Text(L10n.text("Maiores arquivos")).tag(true) }.pickerStyle(.segmented).frame(maxWidth: 280)
+                        Toggle(L10n.text("Acompanhar pasta"), isOn: Binding(get: { model.isWatchingCurrentRoot }, set: { model.watchCurrentRoot($0) })).toggleStyle(.checkbox)
+                        Spacer(minLength: 0)
+                        Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.help(L10n.text("Exportar relatório com nomes e caminhos")).accessibilityLabel(L10n.text("Exportar relatório com nomes e caminhos")).disabled(model.busy || model.isScanning)
+                    }
+                }.padding(.horizontal, compact ? 20 : 24).padding(.bottom, 12)
                 HSplitView {
                     VStack(spacing: 0) {
-                        HStack {
+                        VStack(alignment: .leading, spacing: 8) {
                             TextField(L10n.text("Buscar em toda a análise"), text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-search")
-                            TextField(L10n.text("Mínimo MiB"), text: $model.minimumMiB).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-minimum-size").frame(width: 105)
-                            Toggle(L10n.text("Ordenar por blocos"), isOn: $model.allocatedOrder).toggleStyle(.checkbox).font(.caption)
+                            HStack {
+                                TextField(L10n.text("Mínimo MiB"), text: $model.minimumMiB).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-minimum-size").frame(width: 105)
+                                Toggle(L10n.text("Ordenar por blocos"), isOn: $model.allocatedOrder).toggleStyle(.checkbox).font(.caption)
+                                Spacer(minLength: 0)
+                            }
                         }.padding(.horizontal, 18).padding(.bottom, 9)
                         HStack {
                             Button(L10n.text("Anterior")) { model.previousPage() }.disabled(model.indexOffset == 0 || model.indexLoading)
@@ -185,9 +195,9 @@ struct ExplorerView: View {
                         Table(model.visibleItems, selection: $model.selectedPath) {
                             TableColumn(L10n.text("Nome")) { item in
                                 HStack(spacing: 9) { Image(systemName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc").foregroundStyle(item.isDirectory ? Palette.secondary : .secondary); VStack(alignment: .leading, spacing: 3) { Text(item.name).lineLimit(1); if let issue = item.issue { Text(L10n.message(issue)).font(.caption2).foregroundStyle(.secondary).lineLimit(1) } } }.padding(.vertical, 4).onTapGesture(count: 2) { model.openFolder(item) }.contextMenu { ItemMenu(item: item) }
-                            }.width(min: 150, ideal: 300)
-                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(min: 110, ideal: 150)
-                            TableColumn(L10n.text("Categoria")) { item in Text(L10n.message(item.category.rawValue)).font(.caption).foregroundStyle(.secondary) }.width(min: 100, ideal: 150)
+                            }.width(min: 120, ideal: compact ? 200 : 300)
+                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(min: 96, ideal: compact ? 110 : 150)
+                            TableColumn(L10n.text("Categoria")) { item in Text(L10n.message(item.category.rawValue)).font(.caption).foregroundStyle(.secondary).lineLimit(2) }.width(min: 90, ideal: compact ? 120 : 150)
                         }
                         .accessibilityIdentifier("explorer-table")
                         .contextMenu(forSelectionType: String.self) { paths in
@@ -195,9 +205,9 @@ struct ExplorerView: View {
                         } primaryAction: { paths in
                             if let path = paths.first, let item = model.visibleItems.first(where: { $0.path == path }), !model.busy, !model.isScanning { model.openFolder(item) }
                         }
-                    }.frame(minWidth: 460)
-                    InspectorView(item: model.selectedItem).frame(minWidth: 235, idealWidth: 265, maxWidth: 310)
-                }
+                    }.frame(minWidth: compact ? 360 : 460, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    InspectorView(item: model.selectedItem).frame(minWidth: compact ? 210 : 235, idealWidth: compact ? 230 : 265, maxWidth: compact ? 260 : 310)
+                }.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 4) {
                     if let issue = model.currentFolder?.issue { Text(L10n.message(issue)).foregroundStyle(Palette.orange) }
                     if !report.unreadablePaths.isEmpty { Text(L10n.text("\(report.unreadablePaths.count) áreas ou itens não puderam ser lidos. Esses tamanhos são desconhecidos.")).foregroundStyle(Palette.orange) }
@@ -206,13 +216,14 @@ struct ExplorerView: View {
             } else if !model.isScanning {
                 ContentUnavailableView { Label(L10n.text("Escolha por onde começar"), systemImage: "folder") } description: { Text(L10n.text("A análise encontra arquivos grandes sem alterar seus dados.")) } actions: { Button(L10n.text("Escolher pasta…")) { model.chooseFolder() }.buttonStyle(.borderedProminent) }
             } else { Spacer() }
+        }.frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
     }
 }
 
 struct Metric: View {
     let label: String, value: String
-    var body: some View { VStack(alignment: .leading, spacing: 5) { Text(value).font(.system(size: 21, weight: .medium, design: .rounded)); Text(label).font(.caption).foregroundStyle(.secondary) } }
+    var body: some View { VStack(alignment: .leading, spacing: 5) { Text(value).font(.system(size: 21, weight: .medium, design: .rounded)).lineLimit(1).minimumScaleFactor(0.8); Text(label).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) } }
 }
 
 struct ItemMenu: View {
