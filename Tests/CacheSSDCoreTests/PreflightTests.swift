@@ -41,10 +41,16 @@ final class PreflightTests: XCTestCase {
         let store = Store(base: root.appendingPathComponent("support")), destination = root.appendingPathComponent("destination")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let child = source.appendingPathComponent("file-0")
-        let actions = PersonalActions(home: home, store: store, trashHandler: { _ in XCTFail("Changed folder must not be trashed"); return nil }, checkpoint: { journal in
-            if journal.phase == .trashing { try Data("new local data".utf8).write(to: child) }
+        var inspected = 0, trashCheckpoints = 0
+        let actions = PersonalActions(home: home, store: store, trashHandler: { _ in XCTFail("Changed folder must not be trashed"); return nil }, busyCheck: { paths, tool in
+            XCTAssertEqual(paths.map(\.path), [self.source.path]); XCTAssertNil(tool)
+            inspected += 1; return []
+        }, checkpoint: { journal in
+            if journal.phase == .trashing { trashCheckpoints += 1; try Data("new local data".utf8).write(to: child) }
         })
         XCTAssertThrowsError(try actions.move(source, to: destination))
+        XCTAssertEqual(trashCheckpoints, 1, "The intended Trash boundary must be reached")
+        XCTAssertEqual(inspected, 3)
         XCTAssertEqual(try String(contentsOf: child), "new local data")
         XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent(source.lastPathComponent).appendingPathComponent("file-0")), Data([42]))
         XCTAssertEqual(store.operations().first?.phase, .interrupted)

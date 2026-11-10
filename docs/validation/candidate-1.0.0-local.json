@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "status": "qualified-local-candidate-pending-external-gates",
+  "publicV1Ready": false,
+  "candidate": {
+    "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+    "buildNumber": "6",
+    "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+    "version": "1.0.0"
+  },
+  "manifest": {
+    "acceptanceOnly": false,
+    "architecture": "arm64",
+    "archive": {
+      "bytes": 1228150,
+      "fileName": "DiskWing-1.0.0-6-854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60.zip"
+    },
+    "builtAt": "2026-11-10T07:57:54.068327+00:00",
+    "candidate": {
+      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+      "buildNumber": "6",
+      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "version": "1.0.0"
+    },
+    "helperSHA256": "da303799ef83fd8f99831517bec167a83cc407680db4e596dacf58bfe999cba5",
+    "minimumMacOS": "14.0",
+    "profile": "candidate",
+    "schemaVersion": 1,
+    "sourceDirty": false,
+    "suite": "diskwing-candidate-v1",
+    "verification": {
+      "developerID": false,
+      "gatekeeperAccepted": false,
+      "notarizationAccepted": false,
+      "notarizationStapled": false,
+      "signatureVerified": true,
+      "updaterEnabled": false
+    }
+  },
+  "automatedQualification": {
+    "schemaVersion": 1,
+    "suite": "diskwing-candidate-qualification-v1",
+    "candidate": {
+      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "version": "1.0.0",
+      "buildNumber": "6",
+      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60"
+    },
+    "profile": "candidate",
+    "sourceDirty": false,
+    "date": "2026-11-10T08:01:03.908620+00:00",
+    "passed": true,
+    "publicV1Ready": false,
+    "checks": {
+      "archiveIdentity": true,
+      "safeArchivePaths": true,
+      "extractedBundleIdentity": true,
+      "internalLifecycle": true
+    },
+    "pendingManualGates": [
+      "second-mac-human-acceptance",
+      "voiceover-keyboard-pt-en",
+      "developer-id-notarization",
+      "signed-update-accept-reject",
+      "physical-cable-power-faults",
+      "ten-person-seven-day-beta"
+    ],
+    "scope": "Exact archive; temporary internal installation and generated helper fixtures. No GUI, other physical Mac, public signing/update or human acceptance claim.",
+    "lifecycle": {
+      "schemaVersion": 1,
+      "suite": "diskwing-bundle-lifecycle-v1",
+      "date": "2026-11-10T08:01:03.951128+00:00",
+      "applicationVersion": "1.0.0",
+      "buildNumber": "6",
+      "helperSHA256": "da303799ef83fd8f99831517bec167a83cc407680db4e596dacf58bfe999cba5",
+      "passed": true,
+      "checks": {
+        "internalInstallationAndSignature": true,
+        "installedHelperAndResources": true,
+        "temporaryAppRemovedEvidenceRetained": true
+      },
+      "pendingManualGates": [
+        "second-mac-human-acceptance",
+        "voiceover-keyboard-pt-en",
+        "developer-id-notarization",
+        "signed-update-accept-reject",
+        "physical-cable-power-faults",
+        "ten-person-seven-day-beta"
+      ],
+      "scope": "Temporary internal app installation; generated same-volume fixtures, simulated SSD/Trash; no GUI, native package install, physical unplug or public signing acceptance",
+      "core": {
+        "architecture": "arm64",
+        "checks": [
+          {
+            "id": "bundled-resources-pt-en",
+            "status": "passed"
+          },
+          {
+            "id": "indexed-explorer",
+            "status": "passed"
+          },
+          {
+            "id": "personal-copy-recovery",
+            "status": "passed"
+          },
+          {
+            "id": "cache-copy-restore-local-fallback",
+            "status": "passed"
+          },
+          {
+            "id": "isolated-shell-disable",
+            "status": "passed"
+          }
+        ],
+        "finishedAt": "2026-11-10T08:01:04Z",
+        "fixtureDisposition": "removed",
+        "helperSHA256": "da303799ef83fd8f99831517bec167a83cc407680db4e596dacf58bfe999cba5",
+        "macOS": "26.5.2",
+        "passed": true,
+        "pendingManualGates": [
+          "second-mac-human-acceptance",
+          "voiceover-keyboard-pt-en",
+          "developer-id-notarization",
+          "signed-update-accept-reject",
+          "physical-cable-power-faults",
+          "ten-person-seven-day-beta"
+        ],
+        "schemaVersion": 1,
+        "scope": "Generated fixtures; same-volume simulated SSD and Trash; no native tools, GUI, network, mounts or personal data",
+        "startedAt": "2026-11-10T08:01:04Z",
+        "suite": "diskwing-portable-acceptance-v1"
+      },
+      "fixtureDisposition": "removed"
+    },
+    "fixtureDisposition": "removed"
+  },
+  "guiSamples": {
+    "commit": "30e6b4dbaf841c4e57de37ef0c2d9d65ff362923",
+    "version": "0.2.0-dev",
+    "buildNumber": "3",
+    "archiveSHA256": "fba8d46f52347645410fe4159b3144305110e35cada58e94d814fc2592aed556",
+    "acceptanceOnly": true,
+    "scope": "Separate sample application domain; native GUI with generated fixtures. Never human VoiceOver, second-Mac or public acceptance."
+  },
+  "externalDependencies": [
+    "Developer ID Application identity, notarization access and protected Ed25519 update key",
+    "Another physical Apple Silicon Mac and the macOS14 minimum",
+    "Actual PT/EN keyboard and VoiceOver human acceptance",
+    "Separate disposable physical-fault device",
+    "Five general users and five developers, >=80 percent independent success in each cohort, seven real days"
+  ],
+  "ci": {
+    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
+    "exactHeadRun": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42778884800",
+    "exactHeadStatus": "success",
+    "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
+    "mainRun": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42779554478",
+    "mainStatus": "success"
+  },
+  "supersededBuilds": [
+    {
+      "version": "1.0.0",
+      "buildNumber": "4",
+      "archiveSHA256": "1fa184712e39875e56acbdf6523a9d1e4ccdc9dc1e8c8bd4d5bea805cf2c1143",
+      "reason": "macOS15 conservative configuration-discovery failures; superseded by later builds."
+    },
+    {
+      "version": "1.0.0",
+      "buildNumber": "5",
+      "archiveSHA256": "9d74b4850f516d592a9ad537281afe7671f863436072e81710cd1819f9328429",
+      "reason": "Superseded by final process-use/cancellation/content guard improvements; do not transfer affected approval."
+    }
+  ],
+  "sourceTreeMatchesImplementationMerge": true,
+  "suite": {
+    "swiftDiscovered": 183,
+    "swiftExecuted": 166,
+    "swiftSkipped": 17,
+    "swiftFailures": 0,
+    "pythonExecuted": 51,
+    "pythonFailures": 0,
+    "runnerLabels": [
+      "macos-15",
+      "macos-26"
+    ],
+    "optionalUpdaterCompiledOnBoth": true
+  }
+}

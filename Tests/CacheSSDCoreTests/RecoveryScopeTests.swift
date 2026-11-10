@@ -81,13 +81,16 @@ final class RecoveryScopeTests: XCTestCase {
         let expected = try FileTree.digest(tool.source)
         let volume = VolumeInfo(uuid: "GENERATED-SCOPE-VOLUME", name: "Fixture", path: disk.path, totalBytes: 1_000_000_000_000, freeBytes: 900_000_000_000, isInternal: false, isWritable: true)
         var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try f.store.save(settings)
-        _ = try MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in volume }, verifyNative: false).migrate(toolID: "npm", removeLocal: true)
+        _ = try MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] }).migrate(toolID: "npm", removeLocal: true)
         let location = try XCTUnwrap(f.store.settings().locations["npm"]), external = tool.payload(at: disk.appendingPathComponent(location.relativePath))
-        let engine = MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in volume }, verifyNative: false, checkpoint: { journal in
-            if journal.kind == "restore" && journal.phase == .copyVerified { throw CacheSSDError.message("Generated interruption") }
+        var reachedCheckpoint = false
+        let engine = MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] }, checkpoint: { journal in
+            if journal.kind == "restore" && journal.phase == .copyVerified { reachedCheckpoint = true; throw CacheSSDError.message("Generated interruption") }
         })
         XCTAssertThrowsError(try engine.restore(toolID: "npm"))
-        let record = try XCTUnwrap(f.store.operations().first(where: { $0.kind == "restore" })), manager = f.manager()
+        XCTAssertTrue(reachedCheckpoint, "Scoped restore must reach copyVerified before injected failure")
+        let record = try XCTUnwrap(f.store.operations().first(where: { $0.kind == "restore" }))
+        let manager = RecoveryManager(store: f.store, home: f.home, permittedRoot: f.session, busyCheck: { _, _ in [] })
         XCTAssertTrue(try XCTUnwrap(manager.pending().first(where: { $0.id == record.id })).canRestoreSource)
         try manager.restoreSource(id: record.id)
         XCTAssertNil(f.store.settings().locations["npm"])
