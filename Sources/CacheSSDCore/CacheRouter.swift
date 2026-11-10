@@ -46,6 +46,7 @@ public enum CacheRouter {
     }
     public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil, yarnGlobalConfigurations: [URL]? = nil) -> [String: String] {
         Dictionary(uniqueKeysWithValues: decisions(settings: settings, volumes: volumes ?? Volumes.list()).filter {
+            ($0.toolID != "yarn" || CacheAdapters.yarnClassicVersion(home: home) != nil) &&
             !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations, pipGlobalConfigurations: pipGlobalConfigurations, yarnGlobalConfigurations: yarnGlobalConfigurations) &&
             processEnvironment[$0.environmentKey] == nil &&
             !($0.toolID == "npm" && processEnvironment["NPM_CONFIG_CACHE"] != nil)
@@ -62,7 +63,6 @@ public enum CacheRouter {
         if ["uv", "pip"].contains(toolID), environment["XDG_CACHE_HOME"] != nil { return true }
         if toolID == "yarn" {
             // Do not send PnP or an upgraded Yarn runtime to a cache chosen for Classic.
-            guard CacheAdapters.yarnClassicVersion(home: home) != nil else { return true }
             if environment.keys.contains(where: { ["yarn_cache_folder", "yarn_config", "yarn_rc_filename", "yarn_ignore_path", "yarn_plugnplay_override", "npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig", "npm_config_prefix"].contains($0.lowercased()) }) { return true }
             if ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "PREFIX", "DESTDIR"].contains(where: { environment[$0] != nil }) { return true }
         }
@@ -119,6 +119,10 @@ public enum CacheRouter {
         for file in Set(files) {
             var info = stat()
             if lstat(file.path, &info) != 0 { if errno == ENOENT { continue }; return true }
+            // Classic also tries this legacy rc filename, ignoring EISDIR when
+            // it is the ordinary Yarn configuration/global-install directory.
+            if toolID == "yarn", file.path == home.appendingPathComponent(".config/yarn").path,
+               info.st_mode & S_IFMT == S_IFDIR { continue }
             guard info.st_mode & S_IFMT == S_IFREG, info.st_flags & UInt32(SF_DATALESS) == 0, info.st_size <= 1_048_576 else { return true }
             let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { return true }
