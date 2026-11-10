@@ -252,6 +252,44 @@ final class ManualTrashTests: XCTestCase {
         XCTAssertEqual(try FileTree.digest(URL(fileURLWithPath: XCTUnwrap(journal.trashPath))), before)
     }
 
+    func testDirectoryHintsDoNotChangeExistingOrAbsentTrashEligibility() throws {
+        let source = try file("Library/Caches/generated/data").deletingLastPathComponent()
+        let directory = URL(fileURLWithPath: source.path, isDirectory: true)
+        let fileHint = URL(fileURLWithPath: source.path, isDirectory: false)
+        XCTAssertTrue(directory.hasDirectoryPath)
+        XCTAssertFalse(fileHint.hasDirectoryPath)
+        XCTAssertEqual(directory.path, fileHint.path)
+        for item in [directory, fileHint] { XCTAssertNil(reason(item)) }
+        try FileManager.default.removeItem(at: source)
+        for item in [directory, fileHint] { XCTAssertNil(reason(item), "An absent source is assessed by its path, not its stale directory hint") }
+        for hint in [true, false] {
+            XCTAssertNotNil(reason(URL(fileURLWithPath: home.path, isDirectory: hint)), "The home root stays protected for either URL hint")
+        }
+    }
+
+    func testInterruptedTrashRecoversForBothDirectoryHints() throws {
+        for hint in [true, false] {
+            let (source, journal, before) = try interruptedCacheTrash()
+            let hintedSource = URL(fileURLWithPath: source.path, isDirectory: hint)
+            let hintedHome = URL(fileURLWithPath: home.path, isDirectory: hint)
+            XCTAssertNil(PersonalActionPolicy.reasonPreventingTrash(hintedSource, home: hintedHome, storeBase: store.base))
+            try RecoveryManager(store: store, home: hintedHome, busyCheck: { _, _ in [] }).restoreSource(id: journal.id)
+            XCTAssertEqual(try FileTree.digest(source), before)
+            XCTAssertEqual(store.operations().first(where: { $0.id == journal.id })?.phase, .resolved)
+        }
+    }
+
+    func testAbsentDirectoryHintsDoNotHideRedirectedAncestor() throws {
+        let source = try file("Library/Caches/generated/data").deletingLastPathComponent()
+        try FileManager.default.removeItem(at: source)
+        let library = home.appendingPathComponent("Library"), retained = home.appendingPathComponent("retained-library")
+        try FileManager.default.moveItem(at: library, to: retained)
+        try FileManager.default.createSymbolicLink(at: library, withDestinationURL: retained)
+        for hint in [true, false] {
+            XCTAssertNotNil(reason(URL(fileURLWithPath: source.path, isDirectory: hint)), "An absent leaf must not hide an existing symbolic ancestor")
+        }
+    }
+
     func testRecoveryDoesNotOverwriteRecreatedCache() throws {
         let (source, journal, before) = try interruptedCacheTrash()
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)

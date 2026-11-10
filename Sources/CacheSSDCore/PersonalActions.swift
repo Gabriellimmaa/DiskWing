@@ -6,9 +6,13 @@ public enum PersonalActionPolicy {
     /// Manual Trash has a wider scope than relocation. Eligibility never means
     /// that the selected data is disposable; the UI still reviews the selection.
     public static func reasonPreventingTrash(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, storeBase: URL? = nil) -> String? {
+        let requestedHome = home
         let item = url.standardizedFileURL, home = home.standardizedFileURL
-        guard url.isFileURL, item == item.resolvingSymlinksInPath(), home == home.resolvingSymlinksInPath(), trashPathIsUnredirected(item) else { return "Links e caminhos redirecionados ficam fora das ações automáticas." }
-        guard item != home, Paths.contains(item, in: home) else { return "A exclusão manual está disponível dentro da sua pasta pessoal. Raízes e áreas do sistema são preservadas." }
+        // Directory hints on an absent URL differ across Foundation versions.
+        // Inspect the actual supplied components, before standardization can
+        // abbreviate a physical /private/var path to its /var symlink alias.
+        guard url.isFileURL, requestedHome.isFileURL, trashPathIsUnredirected(url), trashPathIsUnredirected(requestedHome) else { return "Links e caminhos redirecionados ficam fora das ações automáticas." }
+        guard item.path != home.path, Paths.contains(item, in: home) else { return "A exclusão manual está disponível dentro da sua pasta pessoal. Raízes e áreas do sistema são preservadas." }
         let structural = ["Downloads", "Documents", "Desktop", "Movies", "Music", "Pictures", "Public", "Applications", "Library", "Library/Caches", "Library/Application Support", "Library/Containers", "Library/Group Containers", "Library/Developer", "Library/Preferences", ".config"]
         guard !structural.contains(where: { item.path.caseInsensitiveCompare(home.appendingPathComponent($0).path) == .orderedSame }) else { return "Esta é uma pasta estrutural. Abra-a e selecione um item específico para revisar." }
         let storage = Paths.physicalURL(storeBase ?? home.appendingPathComponent("Library/Application Support/CacheSSD")).standardizedFileURL

@@ -407,6 +407,12 @@ public final class RecoveryManager {
     }
 
     private func validateSource(_ journal: OperationJournal, source: URL) throws {
+        if journal.kind == "trash", journal.toolID == nil {
+            // Trash validates the original components, including an absent
+            // leaf's existing ancestors, before Foundation can rewrite them.
+            if let reason = PersonalActionPolicy.reasonPreventingTrash(source, home: home, storeBase: store.base) { throw CacheSSDError.message(reason) }
+            return
+        }
         guard source.standardizedFileURL == source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("A origem contém um caminho redirecionado.")) }
         if let toolID = journal.toolID {
             guard CacheCatalog.find(toolID, home: home)?.source == source else { throw CacheSSDError.message(L10n.text("A origem não corresponde ao cache reconhecido.")) }
@@ -414,10 +420,7 @@ public final class RecoveryManager {
             // The original is absent here. Standardize its existing parent so
             // /private/var and /var use the same spelling as the home roots.
             let policySource = source.deletingLastPathComponent().standardizedFileURL.appendingPathComponent(source.lastPathComponent)
-            let reason = journal.kind == "trash"
-                ? PersonalActionPolicy.reasonPreventingTrash(policySource, home: home.standardizedFileURL, storeBase: store.base)
-                : PersonalActionPolicy.reasonPreventing(policySource, home: home.standardizedFileURL)
-            if let reason { throw CacheSSDError.message(reason) }
+            if let reason = PersonalActionPolicy.reasonPreventing(policySource, home: home.standardizedFileURL) { throw CacheSSDError.message(reason) }
         }
     }
 }
