@@ -223,5 +223,120 @@
     }
   ],
   "updatedAt": "2026-11-10",
-  "publicV1Ready": false
+  "publicV1Ready": false,
+  "execution": {
+    "schemaVersion": 1,
+    "plan": "docs/AUTONOMOUS-DELIVERY.md",
+    "baseSHA": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
+    "maxActiveWorkers": 3,
+    "phase": "implementing",
+    "tasks": [
+      {
+        "id": "AUTO-00",
+        "requirement": "M0",
+        "priority": "foundation",
+        "classification": "confirmed",
+        "title": "Persist plan and merge PR12",
+        "owner": "coordinator",
+        "dependsOn": [],
+        "acceptance": "Plan/ledger committed; PR12 and main CI verified",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "SAFE-01",
+        "requirement": "M1",
+        "priority": "high",
+        "classification": "confirmed",
+        "title": "Operation-aware restore recovery and bounded cancellable preflight",
+        "owner": "safety_audit",
+        "dependsOn": [],
+        "acceptance": "Interrupted restores recover safely at every boundary; incomplete/cancelled preflight never releases sources",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "CACHE-01",
+        "requirement": "M4",
+        "priority": "high",
+        "classification": "confirmed",
+        "title": "Respect effective/explicit native cache configuration",
+        "owner": "coordinator",
+        "dependsOn": [],
+        "acceptance": "Divergent/unknown native paths and npm config selectors never trigger replacement",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "GUI-01",
+        "requirement": "M6",
+        "priority": "high",
+        "classification": "confirmed",
+        "title": "Consent, typed coverage, recovery discovery and isolated sample GUI",
+        "owner": "product_acceptance",
+        "dependsOn": [
+          "SAFE-01"
+        ],
+        "acceptance": "Both GUI sample journeys isolated; no stale release consent; unknown is not zero",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "INDEX-01",
+        "requirement": "M2",
+        "priority": "high",
+        "classification": "experiment",
+        "title": "Repeat limited index scans and bound retained storage",
+        "owner": "product_acceptance",
+        "dependsOn": [],
+        "acceptance": "Four rescans/reopen recover complete coverage when budget permits",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "RELEASE-01",
+        "requirement": "M7",
+        "priority": "high",
+        "classification": "confirmed",
+        "title": "Manifest, readiness, production boundaries and updater policy",
+        "owner": "unassigned",
+        "dependsOn": [],
+        "acceptance": "Malformed/mismatched evidence blocks promotion; full artifact identity; updater respects operations",
+        "status": "ready",
+        "evidence": []
+      },
+      {
+        "id": "QA-01",
+        "requirement": "M3",
+        "priority": "high",
+        "classification": "confirmed",
+        "title": "Independent adversarial/GUI/resource qualification",
+        "owner": "release_autonomy",
+        "dependsOn": [
+          "SAFE-01",
+          "CACHE-01",
+          "GUI-01",
+          "INDEX-01"
+        ],
+        "acceptance": "Exact integrated SHA and local/native/filesystem/scale/4GiB/GUI evidence",
+        "status": "in_progress",
+        "evidence": []
+      },
+      {
+        "id": "EXTERNAL-01",
+        "requirement": "M8",
+        "priority": "release_gate",
+        "classification": "external",
+        "title": "Signed distribution, another Mac/macOS14, accessibility and real beta",
+        "owner": "maintainer",
+        "dependsOn": [
+          "QA-01",
+          "RELEASE-01"
+        ],
+        "acceptance": "Signing/updates/physical/human gates; five per cohort, >=80 percent, seven real days",
+        "status": "pending_external",
+        "evidence": []
+      }
+    ]
+  }
 }
