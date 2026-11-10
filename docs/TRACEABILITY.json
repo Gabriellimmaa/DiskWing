@@ -442,7 +442,10 @@
           "No process on the failed CI runner was identified; a transient reader is a hypothesis. Real inspector/default FD test retained.",
           "PR19 exact-head macOS15/26 CI passed; implementation merged f915039",
           "Build 6 exact ZIP qualified through real temporary internal installation/helper/removal; no normal app/data changes",
-          "Final exact-head and implementation-main CI passed on both macOS runners: 183 discovered/166 executed/17 explicit skips/0 failures; 51 Python cases passed; optional updater compiled"
+          "Final exact-head and implementation-main CI passed on both macOS runners: 183 discovered/166 executed/17 explicit skips/0 failures; 51 Python cases passed; optional updater compiled",
+          "PR20 initial documentation-only CI exposed one remaining live-process dependency in a checkpoint test; real held-FD reproduction confirmed the mechanism, not the original runner process",
+          "71e3e4b/e7834d2: targeted checkpoint tests use explicit controlled inspection and require the intended phase; four Preflight/real-FD cases, 24 restore/scope cases and four disposable-image cases passed",
+          "Negative control stopped published in a completed case: exactly the new phase assertion failed; restored case passed. Application/helper/resources/packaging and immutable build 6 are unchanged."
         ],
         "issue": 18,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/18"
