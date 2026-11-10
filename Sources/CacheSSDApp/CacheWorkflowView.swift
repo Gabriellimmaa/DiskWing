@@ -27,6 +27,7 @@ struct CacheWorkflowContent: View {
                     Text(model.cacheWorkflowDetail).font(.callout).foregroundStyle(.secondary)
                     if model.canVerifyGraphicalCacheUsage {
                         Button(L10n.text("Verificar uso e concluir transferência")) { model.verifyCacheWorkflowUsage() }.disabled(model.busy || model.isScanning || model.cacheAnalyzing)
+                        Text(L10n.text("Durante a verificação, reabra o Chrome ou carregue uma página. Se ele estiver parado, o resultado pode continuar aguardando uso.")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 HStack {

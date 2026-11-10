@@ -26,6 +26,7 @@ struct VolumeTreeView: NSViewRepresentable {
         return scroll
     }
     func updateNSView(_ nsView: NSScrollView, context: Context) { context.coordinator.update(model) }
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) { coordinator.invalidate() }
 
     final class TreeScrollView: NSScrollView {
         override func tile() {
@@ -52,7 +53,7 @@ struct VolumeTreeView: NSViewRepresentable {
         var deferredExpansion: (parent: String, ordinal: Int, child: String)?
         var lastScrollRequest: UUID?
         var selectedReference: VirtualTreeReference?
-        private var synchronizingSelection = false
+        private var synchronizingSelection = false, active = true
         let pageSize = 128, pageBudget = 12
         init(model: AppModel) { self.model = model }
         func update(_ model: AppModel) {
@@ -79,6 +80,9 @@ struct VolumeTreeView: NSViewRepresentable {
                 table?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false); table?.scrollRowToVisible(row)
             }
         }
+        func invalidate() {
+            active = false; generation = UUID(); pending.removeAll(); deferredExpansion = nil; rootLoaded = true; table = nil
+        }
         func numberOfRows(in tableView: NSTableView) -> Int { branch.rowCount }
         func item(at row: Int) -> (ScanItem, VirtualTreeReference)? {
             guard let ref = branch.reference(at: row) else { return nil }
@@ -90,7 +94,7 @@ struct VolumeTreeView: NSViewRepresentable {
         }
         func request(parent: String, offset: Int, root: Bool = false, expand: (String, Int)? = nil) {
             let key = PageKey(parent: parent, offset: offset)
-            guard !parent.isEmpty, pending[key] != generation, model.indexedSessionID != nil else { return }
+            guard active, !parent.isEmpty, pending[key] != generation, model.indexedSessionID != nil else { return }
             guard activeReads < 3 else {
                 if let expand { deferredExpansion = (expand.0, expand.1, parent) }
                 return
@@ -100,11 +104,13 @@ struct VolumeTreeView: NSViewRepresentable {
                 defer {
                     activeReads -= 1
                     if pending[key] == token { pending.removeValue(forKey: key) }
-                    if !rootLoaded { request(parent: branch.path, offset: 0, root: true) }
-                    else if let deferred = deferredExpansion {
-                        deferredExpansion = nil
-                        request(parent: deferred.child, offset: 0, expand: (deferred.parent, deferred.ordinal))
-                    } else { table?.reloadData() }
+                    if active {
+                        if !rootLoaded { request(parent: branch.path, offset: 0, root: true) }
+                        else if let deferred = deferredExpansion {
+                            deferredExpansion = nil
+                            request(parent: deferred.child, offset: 0, expand: (deferred.parent, deferred.ordinal))
+                        } else { table?.reloadData() }
+                    }
                 }
                 do {
                     let page = try await model.treePage(parent: parent, offset: offset, limit: pageSize)

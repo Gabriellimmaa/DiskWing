@@ -131,7 +131,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private var observers: [NSObjectProtocol] = []
     private var updateObservation: AnyCancellable?
     private var volumeTargetRequest = UUID()
-    private var volumeDiscoveryRunning = false, volumeDiscoveryRequested = false
+    private var volumeDiscoveryRunning = false, volumeDiscoveryRequested = false, volumeDiscoverySuspended = false
     private var resumeDiscoveryCancellation = CancellationFlag()
     private var resumeReadTask: Task<[String: PendingVolumeScan], Never>?
     private var indexStorageVolumeUUID: String?
@@ -401,6 +401,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         refreshGrowth(); startMonitoring(); refreshVolumeTargets(); refreshRegisteredCacheStates()
     }
     func refreshVolumeTargets() {
+        if volumeDiscoverySuspended { volumeDiscoveryRequested = true; return }
         if volumeDiscoveryRunning { volumeDiscoveryRequested = true; resumeDiscoveryCancellation.cancel(); return }
         volumeDiscoveryRunning = true
         let discoveryCancellation = CancellationFlag(); resumeDiscoveryCancellation = discoveryCancellation
@@ -411,7 +412,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         Task {
             defer {
                 volumeDiscoveryRunning = false
-                if volumeDiscoveryRequested { volumeDiscoveryRequested = false; refreshVolumeTargets() }
+                if volumeDiscoveryRequested && !volumeDiscoverySuspended { volumeDiscoveryRequested = false; refreshVolumeTargets() }
             }
             let supplied = await context.scanVolumes()
             guard volumeTargetRequest == request, !discoveryCancellation.isCancelled else { return }
@@ -498,7 +499,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             try context.require([location.url])
         } catch { errorMessage = error.localizedDescription; return }
         let previous = previousSession ?? discovered?.sessionID, scanHome = home, scanStore = store, excluded = [store.base], token = CancellationFlag()
-        let progressMailbox = ScanProgressMailbox()
+        let progressMailbox = ScanProgressMailbox(), previousIndex = index
+        index = nil; explorerRevision = UUID()
         cancellation = token; explorerTarget = target; choosingVolume = false; section = .explorer
         isScanning = true; scanProgress = nil; scanningRoot = target.displayRoot; indexOnSSD = location.storageVolumeUUID != nil; indexSuspended = false
         indexStorageVolumeUUID = location.storageVolumeUUID
@@ -514,6 +516,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         Task {
             do {
                 let pair = try await Task.detached(priority: .userInitiated) {
+                    if let previousIndex { try previousIndex.close() }
                     let lease = try OperationLease(store: scanStore); defer { withExtendedLifetime(lease) {} }
                     let database = try location.openIndex(volumeIdentifier: sourceIdentifier)
                     let resumeID = resume ? previous : nil
@@ -580,10 +583,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             pageRequest = UUID(); indexedSessionID = nil; indexOffset = 0; indexedItems = []; indexTotal = 0
             selectedPath = nil; search = ""; section = .explorer
         }
-        let databaseURL = store.base.appendingPathComponent("index.sqlite")
+        let databaseURL = store.base.appendingPathComponent("index.sqlite"), previousIndex = index
+        index = nil; explorerRevision = UUID()
         Task {
             do {
                 let pair = try await Task.detached(priority: .userInitiated) {
+                    if let previousIndex { try previousIndex.close() }
                     let database = try ScanIndex(url: databaseURL)
                     let value = try IndexedScanner(home: scanHome, volumeIdentifier: volumeIdentifier).scan(url, index: database, cancellation: token) { update in Task { @MainActor in self.scanProgress = update } }
                     return (database, value)
@@ -675,7 +680,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 treemapItems = page.items
                 treemapOtherBytes = allocated ? summary.omittedAllocatedBytes : summary.omittedLogicalBytes
                 treemapOtherCount = summary.omittedCount
-            } catch { errorMessage = error.localizedDescription }
+            } catch { if indexedSessionID == session && explorerRevision == revision { errorMessage = error.localizedDescription } }
         }
     }
     func nextPage() { guard indexOffset + indexedItems.count < indexTotal else { return }; indexOffset += 120; reloadIndex() }
@@ -850,7 +855,16 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if case .migration(let tool) = action { remove = requestedRelease && tool.canReleaseLocal && adapterStatuses[tool.id]?.canReleaseSource == true }
         else { remove = false }
         let helper = helperURL, engine = context.migrationEngine(), personal = context.personalActions(), recovery = context.recovery()
+        if case .eject = action {
+            volumeDiscoverySuspended = true; resumeDiscoveryCancellation.cancel(); volumeTargetRequest = UUID()
+        }
         Task {
+            defer {
+                if case .eject = action {
+                    volumeDiscoverySuspended = false
+                    if volumeDiscoveryRequested { volumeDiscoveryRequested = false; refreshVolumeTargets() }
+                }
+            }
             do {
                 try validateAction(action)
                 switch action {

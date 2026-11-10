@@ -39,7 +39,7 @@ struct VolumeExplorerContent: View {
                         Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale)))
                         Spacer()
                         VStack(alignment: .trailing, spacing: 5) {
-                            Label(!model.currentScopeAvailable ? L10n.text("Volume ou índice indisponível") : model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial || model.analysisNeedsRefresh || !model.currentScopeAvailable ? "exclamationmark.circle" : "checkmark.circle")
+                            Label(model.isScanning ? L10n.text("Analisando o volume…") : !model.currentScopeAvailable ? L10n.text("Volume ou índice indisponível") : model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial || model.analysisNeedsRefresh || !model.currentScopeAvailable ? "exclamationmark.circle" : "checkmark.circle")
                                 .font(.caption).foregroundStyle(report.isPartial || model.analysisNeedsRefresh || !model.currentScopeAvailable ? Palette.orange : Palette.accent)
                             if report.isPartial && model.explorerTarget != nil { Button(L10n.text("Continuar análise")) { model.resumeExplorer() }.disabled(model.busy || model.isScanning) }
                         }
@@ -62,7 +62,8 @@ struct VolumeExplorerContent: View {
                         Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.accessibilityLabel(L10n.text("Exportar relatório"))
                             .disabled(model.busy || model.isScanning)
                     }.padding(.horizontal, 20).padding(.vertical, 12)
-                    if model.indexSuspended || !model.currentScopeAvailable {
+                    if model.isScanning { Spacer() }
+                    else if model.indexSuspended || !model.currentScopeAvailable {
                         ContentUnavailableView {
                             Label(model.indexSuspended ? L10n.text("Análise guardada no SSD") : L10n.text("Volume analisado indisponível"), systemImage: "externaldrive")
                         } description: {

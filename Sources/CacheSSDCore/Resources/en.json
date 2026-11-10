@@ -303,6 +303,7 @@
   "Downloads de Pods. Repositórios, projetos e credenciais ficam no Mac.": "Pod downloads. Repositories, projects, and credentials stay on the Mac.",
   "Downloads e pacotes Python compilados; não inclui ambientes instalados.": "Downloads and compiled Python packages; excludes installed environments.",
   "Downloads. Os aplicativos e ferramentas instalados ficam no Mac.": "Downloads. Installed applications and tools stay on the Mac.",
+  "Durante a verificação, reabra o Chrome ou carregue uma página. Se ele estiver parado, o resultado pode continuar aguardando uso.": "During verification, reopen Chrome or load a page. If it is idle, the result may keep waiting for use.",
   "Ejeção adiada. Encerre antes: ": "Ejection postponed. Close first: ",
   "Ejeção solicitada ao macOS. Aguarde o volume desaparecer antes de desconectar. Ao reconectar, novas execuções poderão voltar ao SSD.": "Ejection requested from macOS. Wait for the volume to disappear before disconnecting. New commands may use the SSD again after reconnection.",
   "Encerramento solicitado. Salve seu trabalho e conclua os diálogos dos aplicativos antes de transferir.": "Quit requested. Save your work and finish application dialogs before transferring.",
