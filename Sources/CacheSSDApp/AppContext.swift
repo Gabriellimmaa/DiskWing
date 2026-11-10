@@ -18,12 +18,20 @@ final class SampleAvailability: @unchecked Sendable {
 @MainActor final class SampleState: ObservableObject {
     enum Change { case volumes, power, preferences }
     var onChange: ((Change) -> Void)?
+    var changeVolume: ((Bool) throws -> Void)?
     let availability = SampleAvailability()
-    @Published var volumeConnected = true { didSet { availability.connected = volumeConnected; onChange?(.volumes) } }
+    @Published private(set) var volumeConnected: Bool
     @Published var lowPower = false { didSet { onChange?(.power) } }
     @Published var loginEnabled = false
     @Published var notificationsAllowed = true
     private(set) var events: [String] = []
+    init(connected: Bool = true) { volumeConnected = connected; availability.connected = connected }
+    func setVolumeConnected(_ connected: Bool) throws {
+        guard connected != volumeConnected else { return }
+        guard let changeVolume else { throw AppContext.sampleFailure() }
+        try changeVolume(connected)
+        volumeConnected = connected; availability.connected = connected; onChange?(.volumes)
+    }
     func record(_ event: String) { events.append(event) }
 }
 
@@ -35,6 +43,7 @@ final class SampleAvailability: @unchecked Sendable {
     let helperURL: URL
     let container: URL?
     let samples: SampleState?
+    private let containerIdentity: FileIdentity?
     let minimumRescanDelay: TimeInterval
     let minimumRescanInterval: TimeInterval
     var isSamples: Bool { samples != nil }
@@ -42,7 +51,21 @@ final class SampleAvailability: @unchecked Sendable {
     var loginEnabled: Bool { samples?.loginEnabled ?? (SMAppService.mainApp.status == .enabled) }
     private init(home: URL, store: Store, helper: URL, container: URL?, samples: SampleState?, rescanDelay: TimeInterval = 30, rescanInterval: TimeInterval = 900) {
         self.home = home; self.store = store; helperURL = helper; self.container = container; self.samples = samples
+        containerIdentity = container.flatMap { try? FileIdentity($0) }
         minimumRescanDelay = rescanDelay; minimumRescanInterval = rescanInterval
+        if let container {
+            samples?.changeVolume = { [weak self] connected in
+                guard let self else { throw AppContext.sampleFailure() }
+                try self.requireStorage()
+                let fm = FileManager.default
+                let online = container.appendingPathComponent("sample-ssd"), offline = container.appendingPathComponent("offline-sample-ssd")
+                let source = connected ? offline : online, destination = connected ? online : offline
+                var info = stat()
+                guard lstat(source.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+                      lstat(destination.path, &info) != 0, errno == ENOENT else { throw AppContext.sampleFailure() }
+                try fm.moveItem(at: source, to: destination)
+            }
+        }
     }
     static func live() -> AppContext {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -111,11 +134,20 @@ final class SampleAvailability: @unchecked Sendable {
         let home = URL(fileURLWithPath: required[1].path, isDirectory: true).standardizedFileURL
         let store = Store(base: required[2])
         _ = try store.read(AppSettings.self, name: "settings.json"); _ = try store.preferences()
-        return AppContext(home: home, store: store, helper: required[3], container: root, samples: SampleState())
+        let online = root.appendingPathComponent("sample-ssd"), offline = root.appendingPathComponent("offline-sample-ssd")
+        for folder in [online, offline] {
+            if lstat(folder.path, &info) == 0 { guard info.st_mode & S_IFMT == S_IFDIR else { throw sampleFailure() } }
+            else { guard errno == ENOENT else { throw sampleFailure() } }
+        }
+        let connected = lstat(online.path, &info) == 0
+        return AppContext(home: home, store: store, helper: required[3], container: root, samples: SampleState(connected: connected))
     }
     static func sampleFailure() -> Error { CacheSSDError.message(L10n.text("Não foi possível iniciar o modo de amostras. Escolha uma pasta existente, sem links e com espaço disponível.")) }
     func allows(_ url: URL) -> Bool {
         guard let container else { return true }
+        var rootInfo = stat()
+        guard let containerIdentity, lstat(container.path, &rootInfo) == 0, rootInfo.st_mode & S_IFMT == S_IFDIR,
+              Int64(rootInfo.st_dev) == containerIdentity.device, UInt64(rootInfo.st_ino) == containerIdentity.inode else { return false }
         guard url.isFileURL else { return false }
         // Check lexical containment before inspecting components. Only the
         // system's equivalent /var spelling is normalized; custom links fail.
@@ -134,6 +166,20 @@ final class SampleAvailability: @unchecked Sendable {
         return true
     }
     func require(_ urls: [URL]) throws { guard urls.allSatisfy(allows) else { throw CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste.")) } }
+    func requireStorage() throws {
+        guard let container else { return }
+        let marker = container.appendingPathComponent(".diskwing-sample-session")
+        let required = [home, store.base, helperURL, marker]
+        try require(required)
+        for (offset, url) in required.enumerated() {
+            var info = stat()
+            guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == (offset < 2 ? S_IFDIR : S_IFREG) else { throw Self.sampleFailure() }
+        }
+        let fd = Darwin.open(marker.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw Self.sampleFailure() }
+        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true); defer { try? file.close() }
+        guard try file.read(upToCount: 65) == Data("diskwing-gui-samples-v1\n".utf8) else { throw Self.sampleFailure() }
+    }
     func volumes() -> [VolumeInfo] {
         guard let root = container, let samples else { return Volumes.list() }
         return Self.sampleVolumes(root: root, home: home, connected: samples.availability.connected)
@@ -141,7 +187,9 @@ final class SampleAvailability: @unchecked Sendable {
     nonisolated private static func sampleVolumes(root: URL, home: URL, connected: Bool) -> [VolumeInfo] {
         let free = Volumes.free(at: root), total = free + 8_589_934_592
         var values = [VolumeInfo(uuid: "DISKWING-SAMPLE-INTERNAL", name: "Mac de amostra", path: home.path, totalBytes: total, freeBytes: free, isInternal: true, isWritable: true)]
-        if connected { values.append(VolumeInfo(uuid: "DISKWING-SAMPLE-EXTERNAL", name: "SSD de amostra", path: root.appendingPathComponent("sample-ssd").path, totalBytes: total, freeBytes: free, isInternal: false, isWritable: true)) }
+        let external = root.appendingPathComponent("sample-ssd")
+        var info = stat()
+        if connected && lstat(external.path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR { values.append(VolumeInfo(uuid: "DISKWING-SAMPLE-EXTERNAL", name: "SSD de amostra", path: external.path, totalBytes: total, freeBytes: free, isInternal: false, isWritable: true)) }
         return values
     }
     func volume(_ uuid: String) -> VolumeInfo? { volumes().first { $0.uuid == uuid } }
@@ -191,7 +239,7 @@ final class SampleAvailability: @unchecked Sendable {
         return SMAppService.mainApp.status == .enabled
     }
     func xcodeLocal() throws { if let samples { samples.record("xcode-local"); return }; try XcodeIntegration.useLocalDerivedData(store: store) }
-    func eject(_ volume: VolumeInfo) throws { try require([URL(fileURLWithPath: volume.path)]); if let samples { samples.volumeConnected = false; samples.record("eject"); return }; try NSWorkspace.shared.unmountAndEjectDevice(at: URL(fileURLWithPath: volume.path)) }
+    func eject(_ volume: VolumeInfo) throws { try require([URL(fileURLWithPath: volume.path)]); if let samples { try samples.setVolumeConnected(false); samples.record("eject"); return }; try NSWorkspace.shared.unmountAndEjectDevice(at: URL(fileURLWithPath: volume.path)) }
     func requestNotifications() async throws -> Bool { if let samples { samples.record("notification-permission"); return samples.notificationsAllowed }; return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) }
     func postNotification(_ content: UNMutableNotificationContent) async throws { if let samples { samples.record("notification"); return }; try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "DiskWing-growth", content: content, trigger: nil)) }
 }

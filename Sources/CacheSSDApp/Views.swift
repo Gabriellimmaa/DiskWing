@@ -332,7 +332,7 @@ struct HistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             PageHeader(title: L10n.text("Histórico"), subtitle: L10n.text("Operações realizadas neste Mac, com o resultado e o local de recuperação quando disponível."))
-            if !model.store.unreadableOperationRecords().isEmpty || !model.store.pendingConfigurationRecords().isEmpty {
+            if model.hasUnreadableRecoveryRecords {
                 Label(L10n.text("Há registros de recuperação ou configuração pendentes. Eles foram preservados; abra os registros locais para revisão."), systemImage: "exclamationmark.triangle").foregroundStyle(Palette.orange)
                 Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
             }
@@ -539,7 +539,7 @@ struct SampleModeBanner: View {
             Text(L10n.text("Arquivos, SSD e integrações do sistema são isolados ou simulados. A sessão é preservada para testar reinício e recuperação.")).font(.caption)
             HStack {
                 Button(L10n.text("Analisar amostras")) { model.chooseFolder() }.disabled(model.busy || model.isScanning).accessibilityIdentifier("sample-scan")
-                Toggle(L10n.text("SSD de amostra conectado"), isOn: $state.volumeConnected).toggleStyle(.checkbox).accessibilityIdentifier("sample-volume-connected")
+                Toggle(L10n.text("SSD de amostra conectado"), isOn: Binding(get: { state.volumeConnected }, set: { model.setSampleVolumeConnected($0) })).toggleStyle(.checkbox).accessibilityIdentifier("sample-volume-connected")
                 Toggle(L10n.text("Simular pouca energia"), isOn: $state.lowPower).toggleStyle(.checkbox).accessibilityIdentifier("sample-low-power")
             }
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Palette.accent.opacity(0.1)).accessibilityIdentifier("sample-mode-banner")

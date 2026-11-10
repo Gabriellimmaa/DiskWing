@@ -74,7 +74,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var isSamples: Bool { context.isSamples }
     var sampleState: SampleState? { context.samples }
     var pendingRecoveryCount: Int {
-        Set(recoveries.map(\.id)).union(interrupted.map(\.id)).count + store.unreadableOperationRecords().count + store.pendingConfigurationRecords().count
+        guard (try? context.requireStorage()) != nil else { return 1 }
+        return Set(recoveries.map(\.id)).union(interrupted.map(\.id)).count + store.unreadableOperationRecords().count + store.pendingConfigurationRecords().count
     }
     var operationHint: String? {
         switch activeAction {
@@ -109,8 +110,10 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     init(context: AppContext) {
         self.context = context; store = context.store; tools = CacheCatalog.all(home: context.home)
         updates = Updates(store: context.store, disabled: context.isSamples)
+        settings = AppSettings()
+        do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
         settings = context.store.settings(); loginEnabled = context.loginEnabled
-        volumes = context.volumes(); history = store.history(); interrupted = store.interruptedMigrations(); recoveries = context.recovery().pending()
+        volumes = context.volumes(); reloadRecords()
         do { preferences = try store.preferences() } catch { errorMessage = error.localizedDescription }
         L10n.preference = preferences.language
         updates.operationInProgress = { [weak self] in self?.operationMessage != nil || self?.isScanning == true }
@@ -128,17 +131,19 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         observers.append(NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.powerStateDidChange() } })
     }
     func refreshVolumes() {
+        do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
         volumes = context.volumes()
         if let scanningRoot, !context.scopeAvailable(scanningRoot) { cancellation?.cancel() }
         refreshGrowth(); startMonitoring()
     }
     func saveSettings() {
         do {
+            try context.requireStorage()
             let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
             var latest = store.settings()
             latest.selectedVolumeUUID = settings.selectedVolumeUUID; latest.useExternal = settings.useExternal
             try store.save(latest); settings = latest
-        } catch { settings = store.settings(); errorMessage = error.localizedDescription }
+        } catch { if (try? context.requireStorage()) != nil { settings = store.settings() }; errorMessage = error.localizedDescription }
     }
     func chooseFolder() {
         guard !busy, !isScanning else { return }
@@ -149,7 +154,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func scan(_ url: URL, focus: Bool = true) {
         guard !isScanning && !busy else { return }
-        do { try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
+        do { try context.requireStorage(); try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
         guard context.scopeAvailable(url) else { errorMessage = L10n.text("A pasta ou o SSD está indisponível. Ausência não é espaço liberado."); return }
         let scanHome = home
         let volumeIdentifier = context.scanVolumeIdentifier()
@@ -177,7 +182,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 }
                 notifyGrowthIfNeeded(database: pair.0, path: pair.1.root.path)
                 isScanning = false; cancellation = nil; scanningRoot = nil
-                try? store.saveReport(pair.1)
+                if (try? context.requireStorage()) != nil { try? store.saveReport(pair.1) }
                 if pair.1.reachedLimit { notice = L10n.text("Análise parcial: limite de itens, espaço ou acesso. Escolha uma subpasta para aprofundar.") }
                 else if pair.1.isCancelled { notice = L10n.text("Análise interrompida. Os itens já lidos permanecem pesquisáveis e os totais são parciais.") }
             } catch { isScanning = false; cancellation = nil; scanningRoot = nil; errorMessage = error.localizedDescription }
@@ -216,6 +221,10 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     func reveal(_ urls: [URL]) { do { try context.reveal(urls) } catch { errorMessage = error.localizedDescription } }
     func openRecords() { do { try context.open(store.base) } catch { errorMessage = error.localizedDescription } }
     func openPrivacy() { context.openPrivacy() }
+    func setSampleVolumeConnected(_ connected: Bool) {
+        do { try sampleState?.setVolumeConnected(connected) }
+        catch { errorMessage = L10n.text("Não foi possível mudar o estado do SSD de amostra. As cópias foram preservadas.") }
+    }
     func cachePolicyReason(_ item: ScanItem) -> String? {
         guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
         return PersonalActionPolicy.reasonPreventing(item.url, home: home)
@@ -252,9 +261,11 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func refreshInventory() {
         guard !inventoryRunning && !busy else { return }
+        do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
         inventoryRunning = true
         Task {
             for tool in tools {
+                guard (try? context.requireStorage()) != nil else { inventoryRunning = false; return }
                 guard context.allows(tool.source) else {
                     toolSizes[tool.id] = ToolSize(logical: 0, allocated: 0, complete: false, missing: false)
                     adapterStatuses[tool.id] = AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: nil, effectiveCachePath: nil, state: "custom-configuration", explanation: "O modo de amostras só permite os arquivos gerados para este teste.", canReleaseSource: false)
@@ -270,6 +281,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func setLocalOnly(allowDuringOperation: Bool = false) { guard !busy || allowDuringOperation else { return }; settings.useExternal = false; saveSettings(); notice = L10n.text("Novas execuções usarão caches locais. Reabra ferramentas e terminais que ainda estejam usando o SSD.") }
     private func validateAction(_ action: ReviewAction) throws {
+        try context.requireStorage()
         switch action {
         case .migration(let tool), .restore(let tool):
             guard tools.contains(where: { $0.id == tool.id && $0.source == tool.source }) else { throw AppContext.sampleFailure() }
@@ -286,7 +298,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func execute(_ action: ReviewAction) {
         guard !busy, !isScanning, review?.id == action.id else { return }
-        do { try validateAction(action) } catch { errorMessage = error.localizedDescription; return }
+        do { try validateAction(action) } catch { review = nil; errorMessage = error.localizedDescription; return }
         let requestedRelease = releaseLocal
         review = nil; activeAction = action; operationMessage = L10n.text("Preparando…")
         let token = CancellationFlag(); cancellation = token
@@ -296,6 +308,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         let helper = helperURL, engine = context.migrationEngine(), personal = context.personalActions(), recovery = context.recovery()
         Task {
             do {
+                try validateAction(action)
                 switch action {
                 case .migration(let tool):
                     let record = try await Task.detached(priority: .userInitiated) {
@@ -336,14 +349,22 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                         notice = L10n.text("Ejeção solicitada ao macOS. Aguarde o volume desaparecer antes de desconectar. Ao reconectar, novas execuções poderão voltar ao SSD.")
                     }
                 }
-                settings = store.settings(); history = store.history(); interrupted = store.interruptedMigrations(); recoveries = context.recovery().pending(); refreshVolumes(); operationMessage = nil; activeAction = nil; cancellation = nil
+                reloadRecords(); refreshVolumes(); operationMessage = nil; activeAction = nil; cancellation = nil
                 switch action { case .migration, .restore: refreshInventory(); default: break }
-            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; settings = store.settings(); history = store.history(); interrupted = store.interruptedMigrations(); recoveries = context.recovery().pending(); refreshVolumes(); errorMessage = error.localizedDescription }
+            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; reloadRecords(); refreshVolumes(); errorMessage = error.localizedDescription }
         }
+    }
+    func reloadRecords() {
+        do { try context.requireStorage() } catch { errorMessage = error.localizedDescription; return }
+        settings = store.settings(); history = store.history(); interrupted = store.interruptedMigrations(); recoveries = context.recovery().pending()
+    }
+    var hasUnreadableRecoveryRecords: Bool {
+        guard (try? context.requireStorage()) != nil else { return true }
+        return !store.unreadableOperationRecords().isEmpty || !store.pendingConfigurationRecords().isEmpty
     }
     var isWatchingCurrentRoot: Bool { report.map { item in preferences.watchedFolders.contains { $0.path == item.root.path } } ?? false }
     func savePreferences() {
-        do { try store.write(preferences, name: "preferences.json") } catch { errorMessage = error.localizedDescription }
+        do { try context.requireStorage(); try store.write(preferences, name: "preferences.json") } catch { errorMessage = error.localizedDescription }
     }
     func setLanguage(_ language: String) { L10n.preference = language; preferences.language = language; savePreferences() }
     func watchCurrentRoot(_ enabled: Bool) {
@@ -459,7 +480,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func exportReport(to url: URL) {
         guard let report, !busy, !isScanning else { return }
-        do { try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
+        do { try context.requireStorage(); try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
         do {
             let token = CancellationFlag(); cancellation = token; operationMessage = L10n.text("Exportando relatório…")
             let databaseURL = store.base.appendingPathComponent("index.sqlite"), session = indexedSessionID

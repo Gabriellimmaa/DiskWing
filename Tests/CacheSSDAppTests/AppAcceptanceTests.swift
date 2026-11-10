@@ -129,12 +129,45 @@ import CacheSSDCore
         try await wait(until: { model.report?.id != first && !model.isScanning && model.growthComparison?.state == "comparable" })
         model.watchCurrentRoot(true)
         XCTAssertEqual(model.preferences.watchedFolders.first?.volumeUUID, "DISKWING-SAMPLE-EXTERNAL-FILESYSTEM")
-        let previous = model.report?.id; state.volumeConnected = false
+        let previous = model.report?.id; try state.setVolumeConnected(false)
         XCTAssertFalse(model.currentScopeAvailable); XCTAssertNil(model.growthComparison)
         XCTAssertTrue(context.scanVolumeIdentifier()(scope).isEmpty)
         model.scan(scope); XCTAssertFalse(model.isScanning); XCTAssertEqual(model.report?.id, previous)
-        state.volumeConnected = true
+        try state.setVolumeConnected(true)
         try await wait(until: { model.growthComparison?.state == "comparable" })
         XCTAssertTrue(model.currentScopeAvailable)
+    }
+    func testDisconnectedSampleSSDIsActuallyUnavailableAndReconnectPreservesBytes() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let state = try XCTUnwrap(context.samples), session = try XCTUnwrap(context.container)
+        let file = session.appendingPathComponent("sample-ssd/verified-file")
+        try Data("generated verified bytes".utf8).write(to: file)
+        let expected = try FileTree.hash(file)
+        try state.setVolumeConnected(false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertThrowsError(try FileTree.hash(file))
+        let resumed = try AppContext.resumeSamples(session: session)
+        XCTAssertFalse(try XCTUnwrap(resumed.samples).volumeConnected)
+        try state.setVolumeConnected(true)
+        XCTAssertEqual(try FileTree.hash(file), expected)
+    }
+    func testActiveSessionStorageRedirectsCannotChangeSiblingFixtureConfiguration() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context), session = try XCTUnwrap(context.container), outside = root.appendingPathComponent("sibling")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let rc = outside.appendingPathComponent(".zshrc"), sentinel = Data("precious sibling fixture".utf8)
+        try sentinel.write(to: rc)
+        try FileManager.default.moveItem(at: context.home, to: session.appendingPathComponent("saved-home"))
+        try FileManager.default.createSymbolicLink(at: context.home, withDestinationURL: outside)
+        model.review = .integration; model.execute(.integration)
+        XCTAssertFalse(model.busy); XCTAssertNotNil(model.errorMessage); XCTAssertNil(model.review)
+        XCTAssertEqual(try Data(contentsOf: rc), sentinel)
+        try FileManager.default.removeItem(at: context.home); try FileManager.default.moveItem(at: session.appendingPathComponent("saved-home"), to: context.home)
+        try FileManager.default.moveItem(at: context.store.base, to: session.appendingPathComponent("saved-support"))
+        try FileManager.default.createSymbolicLink(at: context.store.base, withDestinationURL: outside)
+        model.preferences.language = "en"; model.savePreferences(); model.saveSettings()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent("preferences.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent("settings.json").path))
+        XCTAssertEqual(try Data(contentsOf: rc), sentinel)
     }
 }
