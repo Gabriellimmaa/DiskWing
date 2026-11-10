@@ -78,6 +78,15 @@ final class ExpandedCacheTests: XCTestCase {
         for argument in ["--dir=/generated", "--config-path=/generated", "-d/generated", "-o", "cache_dir=/generated", "CCACHE_CONFIGPATH=/generated"] { XCTAssertTrue(CacheRouter.commandExclusions(["ccache", argument]).contains("ccache"), argument) }
         XCTAssertTrue(CacheRouter.commandExclusions(["go", "build", "./..."]).isEmpty)
     }
+    func testCcachePreservesAnyUserAndAncestorConfiguration() throws {
+        let project = home.appendingPathComponent("Documents/project/nested")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        for path in [home.appendingPathComponent("Library/Preferences/ccache/ccache.conf"), project.deletingLastPathComponent().appendingPathComponent("ccache.conf")] {
+            try put(path, "compiler_check = content\n")
+            XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "ccache", directory: project, home: home, processEnvironment: [:]))
+            try FileManager.default.removeItem(at: path)
+        }
+    }
     func testFutureCacheWithMissingSourceCreatesOnlyExternalDestinationAndJournal() throws {
         let descriptor = try tool("go")
         let record = try engine().prepareFutureCache(toolID: descriptor.id)

@@ -102,7 +102,7 @@ public enum CacheRouter {
             }
             files = folders.flatMap { [$0.appendingPathComponent(".yarnrc"), $0.appendingPathComponent(".npmrc"), $0.appendingPathComponent("package.json")] }
         case "go": files = [home.appendingPathComponent("Library/Application Support/go/env"), home.appendingPathComponent(".config/go/env")]
-        case "ccache": files = [home.appendingPathComponent(".ccache/ccache.conf"), home.appendingPathComponent("Library/Caches/ccache/ccache.conf"), home.appendingPathComponent("Library/Preferences/ccache/ccache.conf"), home.appendingPathComponent(".config/ccache/ccache.conf"), URL(fileURLWithPath: "/opt/homebrew/etc/ccache.conf"), URL(fileURLWithPath: "/usr/local/etc/ccache.conf"), URL(fileURLWithPath: "/etc/ccache.conf")]
+        case "ccache": files = folders.map { $0.appendingPathComponent("ccache.conf") } + [home.appendingPathComponent(".ccache/ccache.conf"), home.appendingPathComponent("Library/Caches/ccache/ccache.conf"), home.appendingPathComponent("Library/Preferences/ccache/ccache.conf"), home.appendingPathComponent(".config/ccache/ccache.conf"), URL(fileURLWithPath: "/opt/homebrew/etc/ccache.conf"), URL(fileURLWithPath: "/usr/local/etc/ccache.conf"), URL(fileURLWithPath: "/etc/ccache.conf")]
         default: return false
         }
         for file in Set(files) {
@@ -127,6 +127,9 @@ public enum CacheRouter {
             for raw in text.split(separator: "\n") {
                 let line = raw.trimmingCharacters(in: .whitespaces).lowercased()
                 if line.hasPrefix("#") || line.hasPrefix(";") { continue }
+                // CCACHE_DIR also selects cache-specific configuration. Never drop unrelated
+                // compiler/namespace/remote settings when switching to a new cache root.
+                if toolID == "ccache", !line.isEmpty { return true }
                 if line.hasPrefix("[") { section = line.trimmingCharacters(in: CharacterSet(charactersIn: "[] ")); continue }
                 let key = line.split(whereSeparator: { $0 == "=" || $0 == ":" }).first?.trimmingCharacters(in: .whitespaces) ?? ""
                 if toolID == "npm" && ["cache", "userconfig", "globalconfig", "prefix"].contains(key) { return true }
