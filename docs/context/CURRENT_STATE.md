@@ -12,8 +12,9 @@ Local **1.0.0 build 8**, source `9be84dd`, has a clean-source
 [manifest](../validation/candidate-1.0.0-build8-local.json) and successful
 [exact-archive qualification](../validation/expanded-build8-qualification.json).
 Its runtime source files match the implementation merged into main. Build 7 is
-superseded; previous artifacts remain preserved. The normal installed app is
-still build 6 and its earlier backup remains intact. No personal-file migration or deletion,
+superseded; previous artifacts remain preserved. The maintainer subsequently authorized installation and launch of build 8. It is
+now installed and its normal window was observed; build 6 and the earlier backup
+are preserved. See [installation evidence](../validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md). No personal-file migration or deletion,
 real shell/Xcode/login activation or physical disk fault was
 performed by this delivery.
 
@@ -85,10 +86,10 @@ that disappears before identity proof can still stop a scan explicitly.
 
 ## Next actions and external gates
 
-1. Preserve build 8's exact archive and the installed build 6/backup. Inspect
+1. Preserve build 8's exact archive, the installed build 8 and its build 6/earlier backups. Inspect
    actual main/CI state when resuming and collect the maintainer's feedback;
-   its installation and personal-cache operations require their actual reviewed
-   selections and are not implied by sample tests.
+   installation/launch is complete; personal-cache operations still require
+   their actual reviewed selections and are not implied by this request.
 2. With actual Developer ID/notarization/update credentials, create a new
    production artifact with a larger build number and qualify signed valid/
    tampered updates, consent, operation blocking and deferred restart.

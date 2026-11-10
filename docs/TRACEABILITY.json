@@ -755,11 +755,26 @@
         ],
         "commit": "8aed2c788d22a0ff92d15a1c39170d5ea5489b68",
         "reviewer": "independent_scope"
+      },
+      {
+        "id": "LOCAL-INSTALL-02",
+        "requirement": "M7",
+        "priority": "maintainer_validation",
+        "classification": "explicitly_authorized",
+        "title": "Install and open qualified build8 while preserving current and earlier backups",
+        "owner": "coordinator",
+        "status": "complete_local",
+        "branch": "main",
+        "candidateCommit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
+        "evidence": [
+          "docs/validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md"
+        ],
+        "nextAction": "Collect maintainer feedback; do not initiate personal cache migration without its actual reviewed selection."
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
     "lastIntegratedCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
-    "nextAction": "Collect maintainer feedback on qualified local build8 while preserving installed6/backup and the exact archive. Any installation/personal cache operation needs its actual reviewed selection. Remaining gates: another physical Apple Silicon Mac/macOS14, disposable physical faults, human PT/EN/VoiceOver, five general+five developer participants and seven real days, DeveloperID/notarization/signed updates. ccache stays inactive until native qualification. No background agent service continues after this active session.",
+    "nextAction": "Collect maintainer feedback on installed build8. Preserve build6 and earlier backups plus immutable candidate archives. Personal cache operations require actual reviewed selections; none were performed by this installation. External physical/human/signing gates remain pending.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "integrationBranch": "main",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/22",
@@ -776,36 +791,16 @@
     "implementationMerge": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "sessionContext": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
     "localInstallation": {
-      "date": "2026-11-10",
-      "status": "installed_and_launched",
-      "candidate": {
-        "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
-        "buildNumber": "6",
-        "commit": "4db260076b602c309c3493f9b06548b0751f7356",
-        "version": "1.0.0"
-      },
-      "applicationIdentifier": "com.cachessd.app",
-      "destination": "current user Applications directory on internal storage",
-      "archiveHashVerified": true,
-      "installedHelperHashVerified": true,
-      "installedSignatureVerified": true,
-      "previousApplication": {
-        "version": "0.2.0-dev",
-        "buildNumber": "3",
-        "preserved": true
-      },
-      "launchObservation": {
-        "normalApplicationProcessObserved": true,
-        "onScreenWindowObserved": true,
-        "title": "DiskWing",
-        "width": 1240,
-        "height": 785,
-        "scope": "Observed after the authorized launch; no claim about future foreground state."
-      },
-      "maintainerInterfaceFeedback": "pending",
-      "humanAcceptanceAttested": false,
-      "personalMigrationsInitiatedByAssistant": false,
-      "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+      "version": "1.0.0",
+      "buildNumber": "8",
+      "scope": "Explicitly authorized installation and launch only; no personal cache migration",
+      "evidence": "docs/validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md",
+      "previousBuildBackup": "6",
+      "earlierBackupsPreserved": true,
+      "normalWindowObserved": true,
+      "trackedSettingsAndIntegrationUnchanged": true,
+      "operationRecordsUnchanged": true,
+      "maintainerAcceptance": "pending"
     },
     "scopeExpansionPlan": "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
     "agentCapacityPolicy": {
@@ -854,6 +849,38 @@
     },
     "lastIntegratedCodeCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "handoffBranch": "codex/expanded-handoff",
-    "candidateRuntimeSourceMatchesMain": "e3ab12e1c201273882b1a2e2616f0e7c9930362f"
+    "candidateRuntimeSourceMatchesMain": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "previousLocalInstallation": {
+      "date": "2026-11-10",
+      "status": "installed_and_launched",
+      "candidate": {
+        "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+        "buildNumber": "6",
+        "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+        "version": "1.0.0"
+      },
+      "applicationIdentifier": "com.cachessd.app",
+      "destination": "current user Applications directory on internal storage",
+      "archiveHashVerified": true,
+      "installedHelperHashVerified": true,
+      "installedSignatureVerified": true,
+      "previousApplication": {
+        "version": "0.2.0-dev",
+        "buildNumber": "3",
+        "preserved": true
+      },
+      "launchObservation": {
+        "normalApplicationProcessObserved": true,
+        "onScreenWindowObserved": true,
+        "title": "DiskWing",
+        "width": 1240,
+        "height": 785,
+        "scope": "Observed after the authorized launch; no claim about future foreground state."
+      },
+      "maintainerInterfaceFeedback": "pending",
+      "humanAcceptanceAttested": false,
+      "personalMigrationsInitiatedByAssistant": false,
+      "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+    }
   }
 }
