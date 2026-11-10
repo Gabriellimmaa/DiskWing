@@ -1,5 +1,6 @@
 {
   "%@ (%@)": "%@ (%@)",
+  "%@ caches locais · %@ conhecidos": "%@ local caches · %@ known",
   "%@ conhecidos. Estes itens não contam como transferidos.": "%@ known. These items do not count as transferred.",
   "%@ de dados encontrados": "%@ of data found",
   "%@ em uso": "%@ used",

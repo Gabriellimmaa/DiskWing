@@ -77,6 +77,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     @Published var indexedSessionID: UUID?
     private var index: ScanIndex?
     private var pageRequest = UUID()
+    private var pageTask: Task<Void, Never>?, treemapTask: Task<Void, Never>?
+    private(set) var activeExplorerReads = 0
     @Published var isScanning = false
     @Published var scanProgress: ScanProgress?
     @Published var operationMessage: String?
@@ -612,32 +614,43 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         }
     }
     func reloadIndex() {
+        pageTask?.cancel(); treemapTask?.cancel()
         guard let database = index, let session = indexedSessionID else { return }
         let request = UUID(); pageRequest = request; indexLoading = true; selectedPath = nil; inspectedItem = nil
         let query = search, offset = indexOffset, onlyFiles = showLargest, allocated = allocatedOrder
         let parent = query.isEmpty && !onlyFiles ? currentFolder?.path : nil
         let requestedMinimum = Double(minimumMiB.replacingOccurrences(of: ",", with: ".")) ?? 0
         let minimum = requestedMinimum.isFinite && requestedMinimum > 0 ? Int64(min(requestedMinimum, Double(Int64.max / 1_048_576)) * 1_048_576) : 0
-        Task {
+        pageTask = Task {
             do {
                 try await Task.sleep(nanoseconds: 100_000_000)
                 guard pageRequest == request else { return }
-                let page = try await Task.detached(priority: .userInitiated) {
+                let page = try await withExplorerRead {
                     try database.page(sessionID: session, parent: parent, search: query, filesOnly: onlyFiles, minimumBytes: minimum, allocatedOrder: allocated, offset: offset)
-                }.value
+                }
                 guard pageRequest == request, indexedSessionID == session else { return }
                 indexedItems = page.items; indexTotal = page.total; indexLoading = false; selectedPath = nil; inspectedItem = nil
                 refreshTreemap()
-            } catch { if pageRequest == request { indexLoading = false; errorMessage = error.localizedDescription } }
+            } catch { if pageRequest == request { indexLoading = false; if !Task.isCancelled { errorMessage = error.localizedDescription } } }
         }
+    }
+    func withExplorerRead<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
+        while activeExplorerReads >= 3 {
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try Task.checkCancellation(); activeExplorerReads += 1
+        defer { activeExplorerReads -= 1 }
+        let result = try await Task.detached(priority: .userInitiated, operation: operation).value
+        try Task.checkCancellation(); return result
     }
     func treePage(parent: String, offset: Int, limit: Int) async throws -> IndexedPage {
         guard let database = index, let session = indexedSessionID else { throw CacheSSDError.message(L10n.text("Aguarde a análise do volume.")) }
         let query = search, files = showLargest, allocated = allocatedOrder
         let parentPath = query.isEmpty && !files ? parent : nil
-        return try await Task.detached(priority: .userInitiated) {
+        return try await withExplorerRead {
             try database.page(sessionID: session, parent: parentPath, search: query, filesOnly: files, allocatedOrder: allocated, offset: offset, limit: limit)
-        }.value
+        }
     }
     func treemapContainsSelection(_ item: ScanItem) -> Bool {
         guard let selectedPath else { return false }
@@ -666,21 +679,22 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if let ordinal { treeScrollRequest = (UUID(), ordinal) }
     }
     func refreshTreemap() {
+        treemapTask?.cancel()
         guard search.isEmpty, !showLargest, let folder = currentFolder, let session = indexedSessionID, let database = index else {
             treemapItems = []; treemapOtherBytes = 0; treemapOtherCount = 0; return
         }
         let allocated = allocatedOrder, revision = explorerRevision
-        Task {
+        treemapTask = Task {
             do {
-                let summary = try await Task.detached(priority: .userInitiated) {
+                let summary = try await withExplorerRead {
                     try database.childrenSummary(sessionID: session, parent: folder.path, allocatedOrder: allocated, offset: 0, limit: 200)
-                }.value
+                }
                 let page = summary.page
                 guard currentFolder?.path == folder.path, indexedSessionID == session, explorerRevision == revision, allocatedOrder == allocated, search.isEmpty else { return }
                 treemapItems = page.items
                 treemapOtherBytes = allocated ? summary.omittedAllocatedBytes : summary.omittedLogicalBytes
                 treemapOtherCount = summary.omittedCount
-            } catch { if indexedSessionID == session && explorerRevision == revision { errorMessage = error.localizedDescription } }
+            } catch { if !Task.isCancelled && indexedSessionID == session && explorerRevision == revision { errorMessage = error.localizedDescription } }
         }
     }
     func nextPage() { guard indexOffset + indexedItems.count < indexTotal else { return }; indexOffset += 120; reloadIndex() }

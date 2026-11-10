@@ -64,7 +64,7 @@ struct CacheWorkflowContent: View {
                         if exceptions.contains(where: { !model.cacheSizeKnown($0) }) {
                             Text(L10n.text("\(exceptions.filter { !model.cacheSizeKnown($0) }.count) itens com tamanho desconhecido, preservados no Mac.")).font(.caption).foregroundStyle(.secondary)
                         }
-                        ForEach(exceptions) { entry in CacheWorkflowRow(entry: entry, selectable: false) }
+                        CacheExceptionsList(entries: exceptions)
                     }
                 } else if !model.cacheAnalyzing {
                     Text(L10n.text("O SSD escolhido e a integração, sozinhos, não transferem nenhum cache. A análise mostra o que pode sair do Mac com segurança.")).font(.callout).foregroundStyle(.secondary)
@@ -78,6 +78,36 @@ struct CacheWorkflowContent: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
                 }
             }.padding(28)
+        }
+    }
+}
+
+private struct CacheExceptionsList: View {
+    @EnvironmentObject var model: AppModel
+    let entries: [CacheTransferEntry]
+    private struct Group: Identifiable { let id: String; let title: String; let entries: [CacheTransferEntry] }
+    private var groups: [Group] {
+        let grouped = Dictionary(grouping: entries) { entry in
+            model.graphicalCacheCandidates.first { $0.id == entry.id }?.applicationID ?? entry.id
+        }
+        return grouped.map { id, entries in
+            Group(id: id, title: id == GraphicalCacheCatalog.chromeBundleID ? "Google Chrome" : entries[0].title, entries: entries)
+        }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+    var body: some View {
+        ForEach(groups) { group in
+            if group.entries.count == 1, let entry = group.entries.first { CacheWorkflowRow(entry: entry, selectable: false) }
+            else {
+                DisclosureGroup {
+                    ForEach(group.entries) { entry in CacheWorkflowRow(entry: entry, selectable: false) }
+                } label: {
+                    HStack {
+                        Text(group.title).font(.headline)
+                        Spacer()
+                        Text(L10n.text("\(group.entries.count) caches locais · \(ByteText.format(group.entries.filter { model.cacheSizeKnown($0) }.reduce(0) { $0 + $1.logicalBytes })) conhecidos")).font(.caption).foregroundStyle(.secondary)
+                    }
+                }.padding(14).background(Palette.panel.opacity(0.55), in: RoundedRectangle(cornerRadius: 7))
+            }
         }
     }
 }

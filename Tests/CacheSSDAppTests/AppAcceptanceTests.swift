@@ -278,6 +278,28 @@ import CacheSSDCore
             XCTAssertTrue(FileManager.default.fileExists(atPath: context.home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path))
         }
     }
+    func testExplorerReadLimitSurvivesUnmountedAndReplacementCoordinators() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context); model.chooseFolder()
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading && model.activeExplorerReads == 0 })
+        let gate = DispatchSemaphore(value: 0)
+        let holding = (0..<3).map { _ in Task { try await model.withExplorerRead { gate.wait(); return 1 } } }
+        defer { for _ in 0..<3 { gate.signal() } }
+        try await wait(until: { model.activeExplorerReads == 3 })
+        let old = VolumeTreeView.Coordinator(model: model); old.update(model)
+        await Task.yield(); old.invalidate()
+        let current = VolumeTreeView.Coordinator(model: model); current.update(model)
+        await Task.yield()
+        XCTAssertEqual(model.activeExplorerReads, 3, "A replacement view must wait for the same global slots")
+        for _ in 0..<3 { gate.signal() }
+        for task in holding { _ = try await task.value }
+        try await wait(until: { current.rootLoaded && current.activeReads == 0 && old.activeReads == 0 })
+        XCTAssertEqual(current.branch.childCount, model.indexTotal)
+        XCTAssertTrue(old.pages.isEmpty, "A cancelled coordinator must not publish or acquire a slot later")
+        XCTAssertLessThanOrEqual(model.activeExplorerReads, 3)
+        current.invalidate()
+    }
+
     func testRapidTreeRequestsStayBoundedAcrossQueryChanges() async throws {
         let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
         let model = AppModel(context: context); model.chooseFolder()

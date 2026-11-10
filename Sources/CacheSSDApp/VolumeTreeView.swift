@@ -49,6 +49,7 @@ struct VolumeTreeView: NSViewRepresentable {
         var branch = VirtualTreeBranch(path: "", childCount: 0)
         var pages: [PageKey: [ScanItem]] = [:], order: [PageKey] = [], pending: [PageKey: UUID] = [:]
         var signature = "", generation = UUID(), language = ""
+        var readTasks: [UUID: Task<Void, Never>] = [:]
         var activeReads = 0, rootLoaded = false
         var deferredExpansion: (parent: String, ordinal: Int, child: String)?
         var lastScrollRequest: UUID?
@@ -69,6 +70,7 @@ struct VolumeTreeView: NSViewRepresentable {
             let next = [model.explorerRevision.uuidString, model.indexedSessionID?.uuidString ?? "", model.currentFolder?.path ?? "", model.search, String(model.allocatedOrder), String(model.showLargest), model.minimumMiB].joined(separator: "\u{1f}")
             table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
             if signature != next {
+                readTasks.values.forEach { $0.cancel() }
                 signature = next; generation = UUID(); pages.removeAll(); order.removeAll(); pending.removeAll(); rootLoaded = false; deferredExpansion = nil
                 branch = VirtualTreeBranch(path: model.currentFolder?.path ?? "", childCount: 0)
                 selectedReference = nil
@@ -81,7 +83,7 @@ struct VolumeTreeView: NSViewRepresentable {
             }
         }
         func invalidate() {
-            active = false; generation = UUID(); pending.removeAll(); deferredExpansion = nil; rootLoaded = true; table = nil
+            active = false; readTasks.values.forEach { $0.cancel() }; generation = UUID(); pending.removeAll(); deferredExpansion = nil; rootLoaded = true; table = nil
         }
         func numberOfRows(in tableView: NSTableView) -> Int { branch.rowCount }
         func item(at row: Int) -> (ScanItem, VirtualTreeReference)? {
@@ -99,9 +101,10 @@ struct VolumeTreeView: NSViewRepresentable {
                 if let expand { deferredExpansion = (expand.0, expand.1, parent) }
                 return
             }
-            let token = generation; pending[key] = token; activeReads += 1
-            Task {
+            let token = generation, taskID = UUID(); pending[key] = token; activeReads += 1
+            let reading = Task {
                 defer {
+                    readTasks.removeValue(forKey: taskID)
                     activeReads -= 1
                     if pending[key] == token { pending.removeValue(forKey: key) }
                     if active {
@@ -113,6 +116,8 @@ struct VolumeTreeView: NSViewRepresentable {
                     }
                 }
                 do {
+                    guard active, generation == token else { return }
+                    try Task.checkCancellation()
                     let page = try await model.treePage(parent: parent, offset: offset, limit: pageSize)
                     guard generation == token else { return }
                     pages[key] = page.items; order.removeAll { $0 == key }; order.append(key)
@@ -121,9 +126,10 @@ struct VolumeTreeView: NSViewRepresentable {
                     if let (parentPath, ordinal) = expand { branch.setExpansion(parent: parentPath, ordinal: ordinal, branch: VirtualTreeBranch(path: parent, childCount: page.total)) }
                     reloadPreservingSelection()
                 } catch {
-                    guard generation == token else { return }; rootLoaded = true; model.errorMessage = error.localizedDescription
+                    guard generation == token, !Task.isCancelled else { return }; rootLoaded = true; model.errorMessage = error.localizedDescription
                 }
             }
+            readTasks[taskID] = reading
         }
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             let column = tableColumn?.identifier.rawValue ?? "name"
