@@ -4,6 +4,24 @@ import CSQLite
 
 private let sqlTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+enum VolumeScanStop: Error { case cancelled, storage }
+private final class VolumeSQLControl {
+    let cancellation: CancellationFlag
+    let allowed: () -> Bool
+    let owner: UInt64
+    var stopped: VolumeScanStop?
+    init(cancellation: CancellationFlag, allowed: @escaping () -> Bool) {
+        self.cancellation = cancellation; self.allowed = allowed
+        var thread: UInt64 = 0; pthread_threadid_np(nil, &thread); owner = thread
+    }
+    func check() -> VolumeScanStop? {
+        if let stopped { return stopped }
+        if cancellation.isCancelled { stopped = .cancelled }
+        else if !allowed() { stopped = .storage }
+        return stopped
+    }
+}
+
 public struct IndexedSession: Codable, Identifiable, Sendable {
     public let id: UUID
     public let root: String
@@ -31,6 +49,7 @@ enum SQLValue { case text(String), integer(Int64), real(Double), null }
 public final class ScanIndex: @unchecked Sendable {
     private var db: OpaquePointer?
     private let lock = NSRecursiveLock()
+    private var volumeSQLControl: VolumeSQLControl?
     public let url: URL
     public init(url: URL = Paths.support.appendingPathComponent("index.sqlite")) throws {
         self.url = url
@@ -95,8 +114,19 @@ public final class ScanIndex: @unchecked Sendable {
 
     @discardableResult func execute(_ sql: String, _ values: [SQLValue] = []) throws -> [[String: SQLValue]] {
         lock.lock(); defer { lock.unlock() }
+        var thread: UInt64 = 0; pthread_threadid_np(nil, &thread)
+        let control = volumeSQLControl?.owner == thread ? volumeSQLControl : nil
+        let cleanup = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().hasPrefix("ROLLBACK")
+        if !cleanup, let stopped = control?.check() { throw stopped }
+        if let control, !cleanup {
+            sqlite3_progress_handler(db, 4096, { context in
+                guard let context else { return 0 }
+                return autoreleasepool { Unmanaged<VolumeSQLControl>.fromOpaque(context).takeUnretainedValue().check() == nil ? 0 : 1 }
+            }, Unmanaged.passUnretained(control).toOpaque())
+        }
+        defer { if control != nil { sqlite3_progress_handler(db, 0, nil, nil) } }
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw failure() }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { if let stopped = control?.stopped { throw stopped }; throw failure() }
         defer { sqlite3_finalize(statement) }
         for (index, value) in values.enumerated() {
             let number = Int32(index + 1)
@@ -111,7 +141,7 @@ public final class ScanIndex: @unchecked Sendable {
         while true {
             let status = sqlite3_step(statement)
             if status == SQLITE_DONE { break }
-            guard status == SQLITE_ROW else { throw failure() }
+            guard status == SQLITE_ROW else { if let stopped = control?.stopped { throw stopped }; throw failure() }
             var row: [String: SQLValue] = [:]
             for column in 0..<sqlite3_column_count(statement) {
                 let key = String(cString: sqlite3_column_name(statement, column))
@@ -125,6 +155,23 @@ public final class ScanIndex: @unchecked Sendable {
             rows.append(row)
         }
         return rows
+    }
+    func withVolumeWorkChecks<T>(cancellation: CancellationFlag, allowed: @escaping () -> Bool, body: () throws -> T) throws -> T {
+        lock.lock()
+        guard volumeSQLControl == nil else { lock.unlock(); throw CacheSSDError.message("Outra análise já está usando este índice.") }
+        volumeSQLControl = VolumeSQLControl(cancellation: cancellation, allowed: allowed)
+        lock.unlock()
+        defer { lock.lock(); volumeSQLControl = nil; lock.unlock() }
+        return try body()
+    }
+    func checkVolumeWork() throws {
+        lock.lock(); defer { lock.unlock() }
+        if let stopped = volumeSQLControl?.check() { throw stopped }
+    }
+    func physicalDatabaseBytes() -> Int64 {
+        [url.path, url.path + "-wal", url.path + "-shm"].reduce(0) { total, path in
+            var metadata = stat(); return total + (lstat(path, &metadata) == 0 ? Int64(metadata.st_size) : 0)
+        }
     }
     private func failure() -> Error { CacheSSDError.message(L10n.text("O índice não pôde concluir a operação. Verifique espaço e acesso; os arquivos analisados não foram alterados.")) }
     static func string(_ row: [String: SQLValue], _ key: String) -> String { if case .text(let value) = row[key] { return value }; return "" }

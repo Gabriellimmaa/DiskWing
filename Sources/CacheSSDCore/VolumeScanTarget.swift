@@ -56,7 +56,7 @@ public struct VolumeScanTarget: Codable, Identifiable, Sendable {
     public let dataNamespace: String
     public var isSystemGroup: Bool { roots.contains { $0.role == .system } && roots.contains { $0.role == .data } }
     public init(id: String, name: String, roots: [VolumeScanRoot], displayRoot: URL? = nil, dataNamespace: String? = nil) throws {
-        guard !id.isEmpty, !roots.isEmpty, Set(roots.map(\.id)).count == roots.count else { throw CacheSSDError.message("A seleção de volumes é inválida.") }
+        guard !id.isEmpty, roots.count == 1 || roots.count == 2 && Set(roots.map { $0.role.rawValue }) == Set(["system", "data"]), Set(roots.map(\.id)).count == roots.count else { throw CacheSSDError.message("A seleção de volumes é inválida.") }
         schemaVersion = 1; self.id = id; self.name = name; self.roots = roots
         self.displayRoot = displayRoot ?? roots.first(where: { $0.role == .system })?.url ?? roots[0].url
         let suffix = SHA256.hash(data: Data(id.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
@@ -67,6 +67,11 @@ public struct VolumeScanTarget: Codable, Identifiable, Sendable {
         }
         guard Paths.safeComponent(namespace) else { throw CacheSSDError.message("A seleção de volumes é inválida.") }
         self.dataNamespace = namespace
+    }
+    func validateStructure() throws {
+        guard schemaVersion == 1, !id.isEmpty, displayRoot.isFileURL, Paths.safeComponent(dataNamespace),
+              roots.count == 1 || roots.count == 2 && Set(roots.map { $0.role.rawValue }) == Set(["system", "data"]),
+              Set(roots.map(\.id)).count == roots.count, roots.allSatisfy({ $0.url.isFileURL && $0.id == $0.volumeUUID && !$0.id.isEmpty }) else { throw CacheSSDError.message("A seleção de volumes é inválida ou pertence a uma versão mais recente.") }
     }
     public static func folder(_ url: URL, name: String? = nil) throws -> VolumeScanTarget {
         let root = try VolumeScanRoot(url: Paths.physicalURL(url))

@@ -212,4 +212,142 @@ final class VolumeScanTests: XCTestCase {
         XCTAssertThrowsError(try VolumeScanner(home: root).scan(target(), index: index, resumeSessionID: partial.id, policy: unlimited))
         XCTAssertEqual(ScanIndex.string(try XCTUnwrap(index.execute("SELECT target FROM volume_targets WHERE session=?", [.text(partial.id.uuidString)]).first), "target"), future)
     }
+    func testResumeRemovesDeletedLinksAndClearsFormerRegularSourceProof() throws {
+        try file("a/regular", bytes: 19)
+        try FileManager.default.createSymbolicLink(atPath: source.appendingPathComponent("a/old-link").path, withDestinationPath: "regular")
+        for n in 0..<100 { try file("z/file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database)
+        let first = try VolumeScanner(home: root, maximumEntriesPerPass: 40).scan(target(), index: index, policy: unlimited)
+        let oldRegular = try XCTUnwrap(try index.page(sessionID: first.id, search: "a/regular").items.first)
+        XCTAssertNotNil(try index.sourceLocation(sessionID: first.id, path: oldRegular.path))
+        try FileManager.default.removeItem(at: source.appendingPathComponent("a/old-link"))
+        try FileManager.default.removeItem(at: source.appendingPathComponent("a/regular"))
+        try FileManager.default.createSymbolicLink(atPath: source.appendingPathComponent("a/regular").path, withDestinationPath: "../z/file-0")
+        let report = try VolumeScanner(home: root).scan(target(), index: index, resumeSessionID: first.id, policy: unlimited)
+        XCTAssertEqual(report.root.logicalBytes, 100)
+        XCTAssertEqual(try index.page(sessionID: first.id, search: "old-link").total, 0)
+        let replacement = try XCTUnwrap(try index.page(sessionID: first.id, search: "a/regular").items.first)
+        XCTAssertTrue(replacement.isSymbolicLink)
+        XCTAssertNil(try index.sourceLocation(sessionID: first.id, path: replacement.path))
+    }
+    func testCompletedDirectoryProofIsUpdatedAcrossRepeatedResumptions() throws {
+        try file("a/done", bytes: 9)
+        for n in 0..<100 { try file("z/file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database)
+        let first = try VolumeScanner(home: root, maximumEntriesPerPass: 30).scan(target(), index: index, policy: unlimited)
+        try file("a/new", bytes: 7)
+        _ = try VolumeScanner(home: root, maximumEntriesPerPass: 30).scan(target(), index: index, resumeSessionID: first.id, policy: unlimited)
+        _ = try VolumeScanner(home: root, maximumEntriesPerPass: 0).scan(target(), index: index, resumeSessionID: first.id, policy: unlimited)
+        let job = try XCTUnwrap(index.execute("SELECT state FROM volume_queue WHERE session=? AND relative='a'", [.text(first.id.uuidString)]).first)
+        XCTAssertEqual(ScanIndex.string(job, "state"), "done", "An unchanged completed branch must not be invalidated again by its old proof")
+    }
+    func testFutureInputAndTableFormatAreRefusedBeforePruningOrDDL() throws {
+        let index = try ScanIndex(url: database)
+        var value = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(target())) as? [String: Any])
+        value["schemaVersion"] = 99
+        let future = try JSONDecoder().decode(VolumeScanTarget.self, from: JSONSerialization.data(withJSONObject: value))
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(future, index: index, policy: unlimited))
+        XCTAssertTrue(try index.execute("SELECT name FROM sqlite_master WHERE name LIKE 'volume_%'").isEmpty)
+        let partial = try VolumeScanner(home: root, maximumEntriesPerPass: 0).scan(target(), index: index, policy: unlimited)
+        try index.execute("UPDATE volume_format SET version=99")
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(target(), index: index, policy: unlimited))
+        XCTAssertEqual(try index.session(id: partial.id)?.state, "paused")
+        XCTAssertEqual(ScanIndex.integer(try XCTUnwrap(index.execute("SELECT version FROM volume_format").first), "version"), 99)
+    }
+    func testPersistedDataNamespaceCollisionCannotOverwriteARealFolderOnResume() throws {
+        let system = root.appendingPathComponent("system"), data = root.appendingPathComponent("data")
+        try FileManager.default.createDirectory(at: system, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        try file("unmapped", at: data)
+        let target = try VolumeScanTarget(id: "generated-group", name: "Generated Mac", roots: [VolumeScanRoot(url: system, volumeUUID: "system", role: .system), VolumeScanRoot(url: data, volumeUUID: "data", role: .data)], displayRoot: system)
+        let scanner = VolumeScanner(home: root, maximumEntriesPerPass: 0, volumeIdentifier: { $0.path == system.path ? "system" : "data" })
+        let index = try ScanIndex(url: database), partial = try scanner.scan(target, index: index, policy: unlimited)
+        try file(target.dataNamespace + "/real-content", bytes: 31, at: system)
+        XCTAssertThrowsError(try scanner.scan(target, index: index, resumeSessionID: partial.id, policy: unlimited))
+        XCTAssertEqual(try index.session(id: partial.id)?.state, "paused")
+        XCTAssertEqual(try Data(contentsOf: system.appendingPathComponent(target.dataNamespace + "/real-content")).count, 31)
+    }
+    func testCancellationIsObservedDuringRevalidationAndTheSessionRemainsResumable() throws {
+        for n in 0..<700 { try file("folder/file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database), selected = try target()
+        let first = try VolumeScanner(home: root, maximumEntriesPerPass: 400).scan(selected, index: index, policy: unlimited)
+        let flag = CancellationFlag()
+        var phase = VolumeScanPhase.enumerating, cancelledDuringRevalidation = false
+        let scanner = VolumeScanner(home: root, phaseChanged: { phase = $0 })
+        let stopped = try scanner.scan(selected, index: index, resumeSessionID: first.id, policy: unlimited, cancellation: flag, progress: { _ in
+            if phase == .revalidating { cancelledDuringRevalidation = true; flag.cancel() }
+        })
+        XCTAssertTrue(cancelledDuringRevalidation); XCTAssertTrue(stopped.isCancelled); XCTAssertTrue(stopped.isPartial)
+        XCTAssertEqual(try index.resumableVolumeSession(targetID: selected.id), first.id)
+        let complete = try VolumeScanner(home: root).scan(selected, index: index, resumeSessionID: first.id, policy: unlimited)
+        XCTAssertFalse(complete.isPartial); XCTAssertEqual(complete.root.fileCount, 700)
+    }
+    func testAggregationBudgetPauseCanResumeWithNoPendingDirectories() throws {
+        for n in 0..<180 { try file("file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database), selected = try target()
+        var phase = VolumeScanPhase.enumerating
+        let scanner = VolumeScanner(home: root, freeBytes: { _ in phase == .aggregating ? 0 : Int64.max }, phaseChanged: { phase = $0 })
+        let first = try scanner.scan(selected, index: index, policy: IndexStoragePolicy(maximumBytes: nil, minimumFreeBytes: 1024))
+        XCTAssertTrue(first.isPartial); XCTAssertEqual(try index.session(id: first.id)?.state, "paused")
+        XCTAssertEqual(ScanIndex.integer(try XCTUnwrap(index.execute("SELECT COUNT(*) n FROM volume_queue WHERE session=? AND state<>'done'", [.text(first.id.uuidString)]).first), "n"), 0)
+        XCTAssertEqual(try index.resumableVolumeSession(targetID: selected.id), first.id)
+        let complete = try VolumeScanner(home: root).scan(selected, index: index, resumeSessionID: first.id, policy: unlimited)
+        XCTAssertFalse(complete.isPartial); XCTAssertEqual(complete.root.logicalBytes, 180)
+    }
+    func testBudgetInterruptsLargeResetSQLAtomicallyWithoutLosingItsQueue() throws {
+        for n in 0..<1500 { try file("a/file-\(n)", bytes: 1) }
+        for n in 0..<1000 { try file("z/file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database), selected = try target()
+        let first = try VolumeScanner(home: root, maximumEntriesPerPass: 1600).scan(selected, index: index, policy: unlimited)
+        let before = try index.page(sessionID: first.id, search: "a/file-").total
+        XCTAssertEqual(before, 1500)
+        try file("a/new", bytes: 1)
+        var phase = VolumeScanPhase.enumerating, resetChecks = 0
+        let scanner = VolumeScanner(home: root, freeBytes: { _ in
+            if phase == .resetting { resetChecks += 1; return resetChecks < 5 ? Int64.max : 0 }
+            return Int64.max
+        }, phaseChanged: { phase = $0 })
+        let paused = try scanner.scan(selected, index: index, resumeSessionID: first.id, policy: IndexStoragePolicy(maximumBytes: nil, minimumFreeBytes: 1024))
+        XCTAssertGreaterThanOrEqual(resetChecks, 5); XCTAssertTrue(paused.isPartial)
+        XCTAssertEqual(try index.page(sessionID: first.id, search: "a/file-").total, before, "The interrupted reset must roll back rather than lose part of a completed branch")
+        XCTAssertEqual(try index.resumableVolumeSession(targetID: selected.id), first.id)
+        let complete = try VolumeScanner(home: root).scan(selected, index: index, resumeSessionID: first.id, policy: unlimited)
+        XCTAssertFalse(complete.isPartial); XCTAssertEqual(complete.root.fileCount, 2501)
+    }
+    func testUnmarkedVolumeTablesAreNotGuessedOrUpgraded() throws {
+        let index = try ScanIndex(url: database)
+        try index.execute("CREATE TABLE volume_queue(value TEXT)")
+        try index.execute("INSERT INTO volume_queue VALUES('unknown-preserved')")
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(target(), index: index, policy: unlimited))
+        XCTAssertTrue(try index.execute("SELECT 1 FROM sqlite_master WHERE name='volume_format'").isEmpty)
+        XCTAssertEqual(ScanIndex.string(try XCTUnwrap(index.execute("SELECT value FROM volume_queue").first), "value"), "unknown-preserved")
+        XCTAssertTrue(try index.sessions().isEmpty)
+    }
+    func testRetentionIsGuardedAndItsPausedHeaderCanResume() throws {
+        for n in 0..<80 { try file("file-\(n)", bytes: 1) }
+        let index = try ScanIndex(url: database), selected = try target()
+        _ = try VolumeScanner(home: root).scan(selected, index: index, policy: unlimited)
+        _ = try VolumeScanner(home: root).scan(selected, index: index, policy: unlimited)
+        XCTAssertEqual(try index.sessions().count, 2)
+        var phase = VolumeScanPhase.enumerating
+        let scanner = VolumeScanner(home: root, freeBytes: { _ in phase == .resetting ? 0 : Int64.max }, phaseChanged: { phase = $0 })
+        let partial = try scanner.scan(selected, index: index, policy: IndexStoragePolicy(maximumBytes: nil, minimumFreeBytes: 1024))
+        XCTAssertTrue(partial.isPartial); XCTAssertEqual(try index.sessions().count, 3, "A stopped prune preserves the old trees and the bounded new continuation header")
+        XCTAssertEqual(try index.resumableVolumeSession(targetID: selected.id), partial.id)
+        let report = try VolumeScanner(home: root).scan(selected, index: index, resumeSessionID: partial.id, policy: unlimited)
+        XCTAssertFalse(report.isPartial); XCTAssertEqual(report.root.fileCount, 80); XCTAssertEqual(try index.sessions().count, 2)
+    }
+    func testRetentionPreservesUnknownFutureTargetsAlongsideKnownTrees() throws {
+        try file("kept", bytes: 1)
+        let index = try ScanIndex(url: database), selected = try target()
+        let first = try VolumeScanner(home: root).scan(selected, index: index, policy: unlimited)
+        var future = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(selected)) as? [String: Any])
+        future["schemaVersion"] = 99
+        let text = String(decoding: try JSONSerialization.data(withJSONObject: future), as: UTF8.self)
+        try index.execute("UPDATE volume_targets SET target=? WHERE session=?", [.text(text), .text(first.id.uuidString)])
+        for _ in 0..<3 { _ = try VolumeScanner(home: root).scan(selected, index: index, policy: unlimited) }
+        XCTAssertNotNil(try index.session(id: first.id))
+        XCTAssertEqual(ScanIndex.string(try XCTUnwrap(index.execute("SELECT target FROM volume_targets WHERE session=?", [.text(first.id.uuidString)]).first), "target"), text)
+        XCTAssertEqual(try index.sessions().count, 3, "Two understood trees are retained without deleting the unknown future record")
+    }
 }
