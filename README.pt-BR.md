@@ -42,3 +42,5 @@ Os nomes internos CacheSSD e os formatos persistidos foram mantidos para preserv
 A versão pública depende de assinatura Developer ID, notarização, validação em outro Mac e beta com cinco usuários gerais e cinco desenvolvedores durante sete dias. A implementação dessas estruturas não comprova essas etapas. Consulte [distribuição](docs/DISTRIBUTION.md) e [protocolo da beta](docs/beta/PROTOCOL.md).
 
 O destino das cópias e migrações precisa preservar permissões e metadados. APFS foi validado localmente; exFAT é recusado. A conferência exige ao menos 256 MiB livres e pode interromper a operação preservando a origem. Veja a [validação dos sistemas de arquivos](docs/validation/FILESYSTEMS-2026-11-10.md).
+
+O [kit de validação](docs/acceptance/SECOND_MAC.md) executa amostras isoladas a partir do aplicativo e prepara a revisão em outro Mac. Seus resultados não substituem os testes com pessoas.

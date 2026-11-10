@@ -19,3 +19,5 @@ Legacy settings.json, history records, migration journals, installation IDs, vol
 Original import hashes are historical evidence, not hashes of the evolving checkout. Configuration before/after records may contain secrets and must remain private. Optional Sparkle preference keys are separate; they do not rename CacheSSD storage.
 
 Directory verification retains the historical SHA-256 input: root metadata text followed by sorted-key JSON for path-sorted manifest entries. The new disposable verification database changes neither journal digests nor schemas. Unicode path ordering uses Swift comparison rather than SQLite binary collation. Destinations lacking extended-security support (including the qualified ExFAT image) are refused before copy publication or source release. APFS qualification is documented in validation/FILESYSTEMS-2026-11-10.md.
+
+The acceptance-check helper command and its standalone schema-1 reports are additive diagnostics. They do not read/write the normal settings, change existing persisted identifiers, or declare release readiness. Generated acceptance stores are isolated and removed only after success.

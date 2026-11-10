@@ -24,11 +24,13 @@ See [implementation evidence](validation/IMPLEMENTATION-2026-11-10.md) and [all 
 
 ## Follow-on qualification and next priorities
 
-PR #10 is merged at 6e95e499 and its [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42755083061). The next M1/M3 increment replaces whole-tree in-memory verification with compatible streamed digests and makes a single-file copy cancellable. It adds a 20,001-file resource benchmark and actual disposable filesystem images: APFS metadata/recovery, low space, read-only and safe ExFAT refusal. See [qualification evidence](validation/FILESYSTEMS-2026-11-10.md). These are local development checks, not final milestone closure.
+PR #11 is merged at 1cdcaabf and its [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42758794618). The merged M1/M3 increment replaces whole-tree in-memory verification with compatible streamed digests and makes a single-file copy cancellable. It adds a 20,001-file resource benchmark and actual disposable filesystem images: APFS metadata/recovery, low space, read-only and safe ExFAT refusal. See [qualification evidence](validation/FILESYSTEMS-2026-11-10.md). These are local development checks, not final milestone closure.
+
+The follow-on portable acceptance kit adds self-contained bundled checks, a real temporary internal installation/removal runner and a private PT/EN/VoiceOver/lifecycle review template. It also resolves physical temporary-workspace paths before SQLite NOFOLLOW checks. Automated evidence does not close another-Mac or human acceptance gates.
 
 The next independent gates, in order of prerequisites, are:
 
-1. Review/CI for this increment, then another Apple Silicon Mac's disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7).
+1. Review/CI for the portable acceptance kit, then another Apple Silicon Mac's disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7). The packaged helper/lifecycle runner prepares repeatable generated samples; [the manual handoff](acceptance/SECOND_MAC.md) records the independent human checks without treating automated results as completion.
 2. Hands-on keyboard/VoiceOver and both-language acceptance across the two core flows, keeping user data untouched (M6).
 3. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent and recovery (M7). Credentials/hosting are external prerequisites; no public release is implicit.
 4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness.

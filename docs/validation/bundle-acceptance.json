@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "suite": "diskwing-bundle-lifecycle-v1",
+  "date": "2026-11-10T05:11:35.866704+00:00",
+  "applicationVersion": "0.2.0-dev",
+  "buildNumber": "3",
+  "helperSHA256": "0369da0efd873a9389cdb8ccd458a2470cf5579c84c034ea8fc4b818aa03733c",
+  "passed": true,
+  "checks": {
+    "internalInstallationAndSignature": true,
+    "installedHelperAndResources": true,
+    "temporaryAppRemovedEvidenceRetained": true
+  },
+  "pendingManualGates": [
+    "second-mac-human-acceptance",
+    "voiceover-keyboard-pt-en",
+    "developer-id-notarization",
+    "signed-update-accept-reject",
+    "physical-cable-power-faults",
+    "ten-person-seven-day-beta"
+  ],
+  "scope": "Temporary internal app installation; generated same-volume fixtures, simulated SSD/Trash; no GUI, native package install, physical unplug or public signing acceptance",
+  "core": {
+    "architecture": "arm64",
+    "checks": [
+      {
+        "id": "bundled-resources-pt-en",
+        "status": "passed"
+      },
+      {
+        "id": "indexed-explorer",
+        "status": "passed"
+      },
+      {
+        "id": "personal-copy-recovery",
+        "status": "passed"
+      },
+      {
+        "id": "cache-copy-restore-local-fallback",
+        "status": "passed"
+      },
+      {
+        "id": "isolated-shell-disable",
+        "status": "passed"
+      }
+    ],
+    "finishedAt": "2026-11-10T05:11:39Z",
+    "fixtureDisposition": "removed",
+    "helperSHA256": "0369da0efd873a9389cdb8ccd458a2470cf5579c84c034ea8fc4b818aa03733c",
+    "macOS": "26.5.2",
+    "passed": true,
+    "pendingManualGates": [
+      "second-mac-human-acceptance",
+      "voiceover-keyboard-pt-en",
+      "developer-id-notarization",
+      "signed-update-accept-reject",
+      "physical-cable-power-faults",
+      "ten-person-seven-day-beta"
+    ],
+    "schemaVersion": 1,
+    "scope": "Generated fixtures; same-volume simulated SSD and Trash; no native tools, GUI, network, mounts or personal data",
+    "startedAt": "2026-11-10T05:11:36Z",
+    "suite": "diskwing-portable-acceptance-v1"
+  },
+  "fixtureDisposition": "removed"
+}

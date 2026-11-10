@@ -44,6 +44,9 @@ jobs:
           dist/DiskWing.app/Contents/MacOS/CacheSSDHelper self-check
           plutil -lint dist/DiskWing.app/Contents/Resources/en.lproj/InfoPlist.strings
           plutil -lint dist/DiskWing.app/Contents/Resources/pt-BR.lproj/InfoPlist.strings
+      - name: Qualify a disposable internal installation and removal
+        run: |
+          python3 scripts/qualify_bundle.py dist/DiskWing.app --workspace "$RUNNER_TEMP/diskwing-tests" --output "$RUNNER_TEMP/diskwing-bundle-report.json"
 
   updater:
     runs-on: macos-15
