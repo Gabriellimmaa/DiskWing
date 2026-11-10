@@ -785,9 +785,14 @@
           "Sources/CacheSSDCore/CacheTransfer*",
           "Tests/CacheSSDCoreTests/Graphical*"
         ],
-        "status": "implementing",
+        "status": "implemented_graphical_native_qualification_in_progress",
         "evidence": [],
-        "nextAction": "Implement targeted tests, independent review and integration."
+        "nextAction": "Complete opaque OS-managed quarantine-copy proof and actual read/write observer; native Chrome final pass, platform-limited qualification and independent review.",
+        "implementationCommits": [
+          "3f22f5481244e099b457ed5a0d8b847f56e0f130",
+          "d973726452ca27d0541acb03ace740d54e5b1594"
+        ],
+        "validation": "42 isolated cache/proof cases passed in worker; normal NSWorkspace Chrome launch and HTTP reuse/new writes/fallback/restore exercised but final observer/source-release gate not passed yet. Browser version remains provisional and cannot be promoted before final native success and independent review."
       },
       {
         "id": "UX-VOLUME-01",
@@ -803,15 +808,17 @@
           "Sources/CacheSSDCore/Volumes.swift",
           "Sources/CacheSSDCore/VolumeScanTarget.swift"
         ],
-        "status": "implemented_storage_binding_hardening_and_scale_in_progress",
+        "status": "implemented_isolated_passed_review_and_scale_pending",
         "evidence": [],
-        "nextAction": "Finish >1M run, add independently reviewed no-follow storage binding and serialized index close, integrate UI call sites.",
+        "nextAction": "Independent storage review; repeat >1M on final bound factory once graphical qualification releases native lane.",
         "implementationCommits": [
           "fe4364ba8a6d75ec8cec320366acb7a42724c0a4",
           "5f68cf612907e8952e11eb84309b98944dccb7eb",
-          "11b1e8aa1d6ea11df3e98c5412fb5ff0cfdc6980"
+          "11b1e8aa1d6ea11df3e98c5412fb5ff0cfdc6980",
+          "4bdf0eb5ef769ae009bc3b522b28ea0c0394802e",
+          "4043c0c9bdd315786cb80e78af36c33d4d8dc0b6"
         ],
-        "validation": "41 targeted isolated tests passed; independent reviewer repeated prior 39 cases. New >1M filesystem benchmark running. Storage root binding/open/close API remains in progress."
+        "validation": "57 isolated targeted cases passed, including default temporary spelling, source/root bindings, read-only lookup and explicit close. First >1M attempt aborted for performance and fixture removed; hotpath optimized, final benchmark pending."
       },
       {
         "id": "UX-TRASH-01",
@@ -851,12 +858,12 @@
         "status": "implemented_targeted_tests_passed_independent_review_pending",
         "evidence": [],
         "nextAction": "Independent review of final fixes, integrate close/open APIs; full suite and PT/EN native sample checks; build separately identified candidate >8.",
-        "validation": "PT native samples observed with synchronized top-level map/tree, keyboard folder navigation and reviewed batch cancellation. Minimum-column width and temporary aliases corrected after observation. Targeted app regression tests cover unknown registry before mutation, unloaded-row target safety, nested selection, index storage and eject/resume. Full final PT/EN native pass pending."
+        "validation": "44 app/localization/treemap/storage cases passed with generated SSD fixtures. Explicit source/index absence, close/eject/cancel/reconnect, read-only queue discovery after relaunch, fresh-versus-resume, nested selection and bounded outstanding tree reads covered. Default temporary graphical fixture alias awaits cache fixup; final native PT/EN pass remains pending."
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
-    "lastIntegratedCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
-    "nextAction": "Implement approved app-oriented cache workflow and volume/tree/treemap explorer with external Trash; qualify at least one normal-launch graphical application in isolated profiles; preserve installed8/backup and personal data.",
+    "lastIntegratedCommit": "77e5055",
+    "nextAction": "Finish graphical native acceptance and final volume benchmark, independent reviews, PT/EN native samples, exact new candidate and CI/PR. Preserve installed build8 and backups; no personal migrations.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "integrationBranch": "codex/cache-volume-ux",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/22",

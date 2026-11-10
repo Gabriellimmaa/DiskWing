@@ -46,8 +46,10 @@ struct VolumeTreeView: NSViewRepresentable {
         weak var table: NSTableView?
         var model: AppModel
         var branch = VirtualTreeBranch(path: "", childCount: 0)
-        var pages: [PageKey: [ScanItem]] = [:], order: [PageKey] = [], pending = Set<PageKey>()
+        var pages: [PageKey: [ScanItem]] = [:], order: [PageKey] = [], pending: [PageKey: UUID] = [:]
         var signature = "", generation = UUID(), language = ""
+        var activeReads = 0, rootLoaded = false
+        var deferredExpansion: (parent: String, ordinal: Int, child: String)?
         var lastScrollRequest: UUID?
         var selectedReference: VirtualTreeReference?
         private var synchronizingSelection = false
@@ -61,15 +63,15 @@ struct VolumeTreeView: NSViewRepresentable {
                 table?.setAccessibilityLabel(L10n.text("Árvore do volume"))
                 table?.tableColumns.first(where: { $0.identifier.rawValue == "name" })?.title = L10n.text("Nome")
                 table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
-                table?.reloadData()
+                reloadWithoutSelectionNotification()
             }
             let next = [model.explorerRevision.uuidString, model.indexedSessionID?.uuidString ?? "", model.currentFolder?.path ?? "", model.search, String(model.allocatedOrder), String(model.showLargest), model.minimumMiB].joined(separator: "\u{1f}")
             table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
             if signature != next {
-                signature = next; generation = UUID(); pages.removeAll(); order.removeAll(); pending.removeAll()
+                signature = next; generation = UUID(); pages.removeAll(); order.removeAll(); pending.removeAll(); rootLoaded = false; deferredExpansion = nil
                 branch = VirtualTreeBranch(path: model.currentFolder?.path ?? "", childCount: 0)
                 selectedReference = nil
-                table?.reloadData(); request(parent: branch.path, offset: 0, root: true)
+                reloadWithoutSelectionNotification(); request(parent: branch.path, offset: 0, root: true)
             }
             if let request = model.treeScrollRequest, lastScrollRequest != request.id,
                let row = branch.rowIndex(parent: branch.path, ordinal: request.ordinal) {
@@ -88,19 +90,32 @@ struct VolumeTreeView: NSViewRepresentable {
         }
         func request(parent: String, offset: Int, root: Bool = false, expand: (String, Int)? = nil) {
             let key = PageKey(parent: parent, offset: offset)
-            guard !parent.isEmpty, !pending.contains(key), model.indexedSessionID != nil else { return }
-            pending.insert(key); let token = generation
+            guard !parent.isEmpty, pending[key] != generation, model.indexedSessionID != nil else { return }
+            guard activeReads < 3 else {
+                if let expand { deferredExpansion = (expand.0, expand.1, parent) }
+                return
+            }
+            let token = generation; pending[key] = token; activeReads += 1
             Task {
+                defer {
+                    activeReads -= 1
+                    if pending[key] == token { pending.removeValue(forKey: key) }
+                    if !rootLoaded { request(parent: branch.path, offset: 0, root: true) }
+                    else if let deferred = deferredExpansion {
+                        deferredExpansion = nil
+                        request(parent: deferred.child, offset: 0, expand: (deferred.parent, deferred.ordinal))
+                    } else { table?.reloadData() }
+                }
                 do {
                     let page = try await model.treePage(parent: parent, offset: offset, limit: pageSize)
                     guard generation == token else { return }
-                    pending.remove(key); pages[key] = page.items; order.removeAll { $0 == key }; order.append(key)
+                    pages[key] = page.items; order.removeAll { $0 == key }; order.append(key)
                     while order.count > pageBudget { pages.removeValue(forKey: order.removeFirst()) }
-                    if root { branch.childCount = page.total }
+                    if root { branch.childCount = page.total; rootLoaded = true }
                     if let (parentPath, ordinal) = expand { branch.setExpansion(parent: parentPath, ordinal: ordinal, branch: VirtualTreeBranch(path: parent, childCount: page.total)) }
                     reloadPreservingSelection()
                 } catch {
-                    guard generation == token else { return }; pending.remove(key); model.errorMessage = error.localizedDescription
+                    guard generation == token else { return }; rootLoaded = true; model.errorMessage = error.localizedDescription
                 }
             }
         }
@@ -113,6 +128,8 @@ struct VolumeTreeView: NSViewRepresentable {
                 let cell = TreeNameCell(); cell.leading.constant = CGFloat(min(ref.depth, 8) * 12 + 4)
                 let expanded = branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal)
                 cell.disclosure.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: item.isDirectory ? L10n.text("Abrir pasta") : nil)
+                cell.disclosure.setAccessibilityLabel(expanded ? L10n.text("Recolher pasta") : L10n.text("Expandir pasta"))
+                cell.disclosure.setAccessibilityValue(expanded ? 1 : 0)
                 cell.disclosure.isHidden = !item.isDirectory || !model.search.isEmpty || model.showLargest
                 cell.action = { [weak self] in self?.toggle(item, ref: ref) }
                 cell.name.stringValue = model.explorerName(item); cell.icon.image = NSImage(systemSymbolName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc", accessibilityDescription: nil)
@@ -135,6 +152,10 @@ struct VolumeTreeView: NSViewRepresentable {
             if branch.isExpanded(parent: ref.parent, ordinal: ref.ordinal) {
                 branch.setExpansion(parent: ref.parent, ordinal: ref.ordinal, branch: nil); reloadPreservingSelection()
             } else { request(parent: item.path, offset: 0, expand: (ref.parent, ref.ordinal)) }
+        }
+        private func reloadWithoutSelectionNotification() {
+            let previous = synchronizingSelection; synchronizingSelection = true
+            table?.reloadData(); synchronizingSelection = previous
         }
         func reloadPreservingSelection() {
             synchronizingSelection = true

@@ -19,14 +19,14 @@ struct CacheWorkflowContent: View {
                         Text(L10n.text("Escolher SSD…")).tag("")
                         ForEach(model.volumes.filter { !$0.isInternal }) { volume in Text(volume.name + " · " + ByteText.format(volume.freeBytes)).tag(volume.uuid) }
                         if let id = model.settings.selectedVolumeUUID, !model.volumes.contains(where: { $0.uuid == id }) { Text(L10n.text("SSD desconectado")).tag(id) }
-                    }.labelsHidden().frame(maxWidth: 300).disabled(model.busy || model.cacheAnalyzing)
+                    }.labelsHidden().frame(maxWidth: 300).disabled(model.busy || model.isScanning || model.cacheAnalyzing)
                 }.padding(18).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
                 if let issue = model.destinationIssue { Label(issue, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(Palette.orange) }
                 VStack(alignment: .leading, spacing: 9) {
                     Label(model.cacheWorkflowHeadline, systemImage: model.cacheTransferResults.contains { $0.state == .ssdVerified } ? "externaldrive.badge.checkmark" : "shippingbox").font(.title3.weight(.semibold))
                     Text(model.cacheWorkflowDetail).font(.callout).foregroundStyle(.secondary)
-                    if !model.cacheTransferResults.isEmpty {
-                        Button(L10n.text("Verificar uso e concluir transferência")) { model.verifyCacheWorkflowUsage() }.disabled(model.busy || model.cacheAnalyzing)
+                    if model.canVerifyGraphicalCacheUsage {
+                        Button(L10n.text("Verificar uso e concluir transferência")) { model.verifyCacheWorkflowUsage() }.disabled(model.busy || model.isScanning || model.cacheAnalyzing)
                     }
                 }
                 HStack {
@@ -35,7 +35,7 @@ struct CacheWorkflowContent: View {
                     Spacer()
                     if !model.cacheEntries.isEmpty {
                         Button(L10n.text("Revisar transferência…")) { model.reviewCacheTransfer() }.buttonStyle(.borderedProminent)
-                            .disabled(model.busy || model.cacheAnalyzing || model.newCacheTransferBlocked || model.cacheSelectedIDs.isEmpty || model.selectedVolume == nil || model.destinationIssue != nil)
+                            .disabled(model.busy || model.isScanning || model.cacheAnalyzing || model.newCacheTransferBlocked || model.selectedCacheTransferEntries.isEmpty || model.selectedVolume == nil || model.destinationIssue != nil)
                     }
                 }
                 if !model.cacheEntries.isEmpty {
@@ -123,7 +123,7 @@ private struct CacheWorkflowRow: View {
                 }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
             }.font(.caption).padding(.leading, selectable ? 30 : 0)
         }.padding(15).frame(maxWidth: .infinity, alignment: .leading).background(Palette.panel.opacity(selectable ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 7))
-        .disabled(model.busy)
+        .disabled(model.busy || model.isScanning)
     }
 }
 

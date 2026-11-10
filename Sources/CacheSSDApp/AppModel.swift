@@ -4,6 +4,7 @@ import ServiceManagement
 import CacheSSDCore
 import UserNotifications
 import Combine
+import Darwin
 
 enum AppSection: String, CaseIterable, Identifiable {
     case overview = "Visão geral", explorer = "Explorar volumes", caches = "Caches no SSD", history = "Histórico", preferences = "Ajustes"
@@ -23,6 +24,15 @@ enum ReviewAction: Identifiable {
     }
 }
 
+private final class ScanProgressMailbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest: ScanProgress?
+    func send(_ value: ScanProgress) { lock.lock(); latest = value; lock.unlock() }
+    func take() -> ScanProgress? { lock.lock(); defer { lock.unlock() }; let value = latest; latest = nil; return value }
+}
+
+private struct PendingVolumeScan: Sendable { let location: VolumeIndexLocation; let sessionID: UUID; let startedAt: Date }
+
 struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true; var missing = false }
 
 @MainActor final class AppModel: ObservableObject {
@@ -41,6 +51,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     @Published var volumeTargets: [VolumeScanTarget] = []
     @Published var explorerTarget: VolumeScanTarget?
     @Published var choosingVolume = true
+    @Published var preferExternalIndex = true
+    @Published private(set) var resumableVolumeIDs = Set<String>()
+    private var pendingVolumeScans: [String: PendingVolumeScan] = [:]
     @Published var indexOnSSD = false
     @Published var explorerRevision = UUID()
     @Published var indexSuspended = false
@@ -118,12 +131,22 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private var observers: [NSObjectProtocol] = []
     private var updateObservation: AnyCancellable?
     private var volumeTargetRequest = UUID()
+    private var volumeDiscoveryRunning = false, volumeDiscoveryRequested = false
+    private var resumeDiscoveryCancellation = CancellationFlag()
+    private var resumeReadTask: Task<[String: PendingVolumeScan], Never>?
     private var indexStorageVolumeUUID: String?
     var busy: Bool { operationMessage != nil || updates.sessionInProgress }
     var currentFolder: ScanItem? { breadcrumbs.last }
     var currentScopeAvailable: Bool {
         if indexSuspended { return false }
-        if let target = explorerTarget { return target.roots.allSatisfy { context.scopeAvailable($0.url) } }
+        if let target = explorerTarget {
+            let identifier = context.volumeIdentityProvider()
+            return target.roots.allSatisfy { root in
+                guard context.scopeAvailable(root.url), identifier(root.url).caseInsensitiveCompare(root.volumeUUID) == .orderedSame,
+                      let identity = try? FileIdentity(root.url) else { return false }
+                return identity.device == root.identity.device && identity.inode == root.identity.inode
+            }
+        }
         return report.map { context.scopeAvailable($0.root.url) } ?? false
     }
     var selectedVolume: VolumeInfo? { volumes.first { $0.uuid == settings.selectedVolumeUUID } }
@@ -150,7 +173,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if cacheStateUnknown { return L10n.text("Estado dos caches precisa de revisão") }
         if !hasRegisteredCacheDestinations { return L10n.text("Nenhum cache transferido") }
         if cacheTransferResults.contains(where: { $0.state == .transferring }) { return L10n.text("Transferindo") }
-        let errors = cacheTransferResults.filter { $0.state == .error }.count
+        let errors = cacheTransferResults.filter { $0.state == .error || $0.state == .exception }.count
         if errors > 0 { return L10n.text("\(errors) itens precisam de revisão") }
         let temporary = cacheTransferResults.filter { $0.state == .localTemporary }.count
         if temporary > 0 { return L10n.text("\(temporary) itens em modo temporário sem SSD") }
@@ -160,6 +183,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     var cacheWorkflowDetail: String {
         if !hasRegisteredCacheDestinations { return L10n.text("Escolha o SSD e analise os aplicativos para revisar a primeira transferência.") }
+        if !canVerifyGraphicalCacheUsage { return L10n.text("Destinos de terminal preparados. Abra um novo terminal. Nesta versão, o DiskWing não verifica execuções já encerradas.") }
         return L10n.text("Reabra os aplicativos ou use um novo terminal. A verificação distingue configuração de gravação real no SSD.")
     }
     func cacheSizeKnown(_ entry: CacheTransferEntry) -> Bool {
@@ -178,7 +202,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         case .configuredNeedsReopen: return L10n.text("Configurado; aguardando reabertura ou uso")
         case .ssdVerified: return L10n.text("Uso do SSD comprovado")
         case .localTemporary: return L10n.text("Temporário sem SSD")
-        case .exception: return L10n.text("Continua no Mac")
+        case .exception: return L10n.text("Compatibilidade precisa de revisão")
         case .error: return L10n.text("Precisa de revisão")
         }
     }
@@ -255,11 +279,14 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             cacheEntries = entries; cacheSelectedIDs = selected; cacheTransferResults = results; cacheAnalyzing = false
         }
     }
+    var selectedCacheTransferEntries: [CacheTransferEntry] {
+        cacheEntries.filter { cacheSelectedIDs.contains($0.id) && $0.blockedReason == nil && !cacheRegisteredIDs.contains($0.id) }
+    }
     var newCacheTransferBlocked: Bool { cacheStateUnknown || hasUnreadableRecoveryRecords || pendingRecoveryCount > 0 }
     func reviewCacheTransfer() {
-        guard let volume = selectedVolume, !busy, !cacheAnalyzing else { return }
+        guard let volume = selectedVolume, !busy, !isScanning, !cacheAnalyzing else { return }
         guard !newCacheTransferBlocked else { errorMessage = L10n.text("Revise os registros de recuperação antes de transferir novos caches."); return }
-        let entries = cacheEntries.filter { cacheSelectedIDs.contains($0.id) && $0.blockedReason == nil && !cacheRegisteredIDs.contains($0.id) }
+        let entries = selectedCacheTransferEntries
         guard !entries.isEmpty else { return }
         review = .cacheTransfer(CacheTransferPlan(destinationVolume: volume, entries: entries))
     }
@@ -299,14 +326,15 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                         }
                     }.value
                 }
-                cacheRegisteredIDs.insert(entry.id)
+                cacheRegisteredIDs.insert(entry.id); cacheSelectedIDs.remove(entry.id)
             } catch { failed += 1; result = CacheTransferItemResult(id: entry.id, state: .error, detail: error.localizedDescription) }
             cacheTransferResults.removeAll { $0.id == entry.id }; cacheTransferResults.append(result)
         }
         notice = failed > 0 ? L10n.text("Transferência parcial. Revise o resultado de cada aplicativo.") : cancellation.isCancelled ? L10n.text("Transferência interrompida. Os resultados concluídos e as cópias foram preservados.") : L10n.text("Destinos preparados. Reabra os aplicativos ou use um novo terminal para verificar o uso.")
     }
+    var canVerifyGraphicalCacheUsage: Bool { graphicalCacheCandidates.contains { cacheRegisteredIDs.contains($0.id) } }
     func verifyCacheWorkflowUsage() {
-        guard !busy, !isScanning, !cacheAnalyzing else { return }
+        guard !busy, !isScanning, !cacheAnalyzing, canVerifyGraphicalCacheUsage else { return }
         let engine = context.graphicalEngine(), candidates = graphicalCacheCandidates, token = CancellationFlag()
         cacheAnalyzing = true; cancellation = token; operationMessage = L10n.text("Verificando uso e concluindo transferências…")
         Task {
@@ -362,47 +390,115 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if let scanningRoot, !context.scopeAvailable(scanningRoot) { cancellation?.cancel() }
         if let uuid = indexStorageVolumeUUID, !volumes.contains(where: { $0.uuid == uuid }) {
             cancellation?.cancel()
-            if !isScanning { suspendExplorerIndex() }
+            if !isScanning, let closing = suspendExplorerIndex() {
+                Task { do { try await Task.detached(priority: .utility) { try closing.close() }.value } catch { errorMessage = error.localizedDescription } }
+            }
+        }
+        if explorerTarget != nil && !currentScopeAvailable {
+            cancellation?.cancel(); analysisNeedsRefresh = report != nil
+            selectedPath = nil; inspectedItem = nil; treemapItems = []; explorerRevision = UUID()
         }
         refreshGrowth(); startMonitoring(); refreshVolumeTargets(); refreshRegisteredCacheStates()
     }
     func refreshVolumeTargets() {
-        let supplied = volumes, sampleMode = isSamples, request = UUID(); volumeTargetRequest = request
+        if volumeDiscoveryRunning { volumeDiscoveryRequested = true; resumeDiscoveryCancellation.cancel(); return }
+        volumeDiscoveryRunning = true
+        let discoveryCancellation = CancellationFlag(); resumeDiscoveryCancellation = discoveryCancellation
+        let sampleMode = isSamples, request = UUID(); volumeTargetRequest = request
+        let context = context
+        let internalDirectory = store.base, external = selectedVolume, installation = settings.installationID
+        let identifier = context.volumeIdentityProvider()
         Task {
+            defer {
+                volumeDiscoveryRunning = false
+                if volumeDiscoveryRequested { volumeDiscoveryRequested = false; refreshVolumeTargets() }
+            }
+            let supplied = await context.scanVolumes()
+            guard volumeTargetRequest == request, !discoveryCancellation.isCancelled else { return }
             let values = await Task.detached(priority: .userInitiated) {
                 sampleMode ? Volumes.scanTargets(volumes: supplied, metadata: { _ in nil }) : Volumes.scanTargets(volumes: supplied)
             }.value
-            guard volumeTargetRequest == request else { return }; volumeTargets = values
+            guard volumeTargetRequest == request, !discoveryCancellation.isCancelled else { return }; volumeTargets = values
+            let reading = Task.detached(priority: .utility) {
+                Self.findPendingVolumeScans(targets: values, internalDirectory: internalDirectory, external: external,
+                    installationID: installation, identifier: identifier, sampleMode: sampleMode, cancellation: discoveryCancellation)
+            }
+            resumeReadTask = reading
+            let pending = await reading.value; resumeReadTask = nil
+            guard volumeTargetRequest == request, !discoveryCancellation.isCancelled else { return }
+            pendingVolumeScans = pending; resumableVolumeIDs = Set(pending.keys)
         }
     }
-    func chooseVolume() { guard !busy, !isScanning else { return }; section = .explorer; choosingVolume = true }
-    func scanVolume(_ target: VolumeScanTarget, resume: Bool = false) {
+    nonisolated private static func findPendingVolumeScans(targets: [VolumeScanTarget], internalDirectory: URL,
+        external: VolumeInfo?, installationID: String, identifier: @escaping (URL) -> String, sampleMode: Bool, cancellation: CancellationFlag) -> [String: PendingVolumeScan] {
+        var result: [String: PendingVolumeScan] = [:]
+        for target in targets {
+            if cancellation.isCancelled { break }
+            let choices: [VolumeInfo?] = external.map { [$0, nil] } ?? [nil]
+            for volume in choices {
+                if cancellation.isCancelled { break }
+                do {
+                    let location = try IndexStoragePolicy.location(internalDirectory: internalDirectory, externalVolume: volume, installationID: installationID, targetID: target.id,
+                        filesystemType: sampleMode ? { _ in "apfs" } : IndexStoragePolicy.filesystemType, volumeIdentifier: identifier)
+                    var metadata = stat()
+                    guard lstat(location.url.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG, metadata.st_flags & UInt32(SF_DATALESS) == 0 else { continue }
+                    let database = try location.openIndex(createIfMissing: false, volumeIdentifier: identifier)
+                    defer { try? database.close() }
+                    guard let sessionID = try database.resumableVolumeSession(targetID: target.id), let session = try database.session(id: sessionID) else { continue }
+                    if let previous = result[target.id], previous.startedAt >= session.startedAt { continue }
+                    result[target.id] = PendingVolumeScan(location: location, sessionID: sessionID, startedAt: session.startedAt)
+                } catch { continue } // Unknown/missing indexes remain untouched; a new scan is an explicit choice.
+            }
+        }
+        return result
+    }
+    func chooseVolume() { guard !busy, !isScanning else { return }; refreshVolumeTargets(); section = .explorer; choosingVolume = true }
+    func scanVolume(_ requestedTarget: VolumeScanTarget, resume: Bool = false) {
+        let target: VolumeScanTarget
+        do {
+            guard requestedTarget.schemaVersion == 1 else { throw CacheSSDError.message(L10n.text("A seleção de volumes é inválida ou pertence a uma versão mais recente.")) }
+            if resume, let current = volumeTargets.first(where: { $0.id == requestedTarget.id }) {
+                guard Set(current.roots.map(\.id)) == Set(requestedTarget.roots.map(\.id)), requestedTarget.roots.allSatisfy({ previous in current.roots.contains { $0.id == previous.id && $0.volumeUUID == previous.volumeUUID && $0.role == previous.role && $0.identity.inode == previous.identity.inode } }) else {
+                    throw CacheSSDError.message(L10n.text("A análise não corresponde aos volumes selecionados."))
+                }
+                target = try VolumeScanTarget(id: current.id, name: current.name, roots: current.roots, displayRoot: current.displayRoot, dataNamespace: requestedTarget.dataNamespace)
+            } else {
+                target = resume ? requestedTarget : try VolumeScanTarget(id: requestedTarget.id, name: requestedTarget.name, roots: requestedTarget.roots, displayRoot: requestedTarget.displayRoot)
+            }
+        } catch { errorMessage = error.localizedDescription; return }
         guard !busy, !isScanning else { return }
         do { try context.requireStorage(); try context.require(target.roots.map(\.url)) }
         catch { errorMessage = error.localizedDescription; return }
+        let previousSession = resume && explorerTarget?.id == target.id ? (indexedSessionID ?? suspendedVolumeSessionID) : nil
+        let discovered = resume && previousSession == nil ? pendingVolumeScans[target.id] : nil
+        if resume && previousSession == nil && discovered == nil {
+            errorMessage = L10n.text("Nenhuma análise pendente foi encontrada. Reconecte o SSD original ou inicie uma nova análise."); return
+        }
         let external: VolumeInfo?
-        if resume {
+        if resume, previousSession != nil {
             if let originalIndexVolume = indexStorageVolumeUUID {
                 guard let volume = context.volume(originalIndexVolume) else {
                     errorMessage = L10n.text("Reconecte o SSD que guarda esta análise antes de retomá-la. A fila foi preservada."); return
                 }
                 external = volume
             } else { external = nil }
-        } else {
-            if let issue = destinationIssue { errorMessage = issue; return }
-            external = selectedVolume
+        } else if discovered != nil { external = nil }
+        else {
+            if preferExternalIndex, let issue = destinationIssue { errorMessage = issue; return }
+            external = preferExternalIndex ? selectedVolume : nil
         }
         let usingInternalWhileSSDAbsent = external == nil && settings.selectedVolumeUUID != nil
 
         let sourceIdentifier = context.volumeIdentityProvider()
         let location: VolumeIndexLocation
         do {
-            location = try IndexStoragePolicy.location(internalDirectory: store.base, externalVolume: external, installationID: settings.installationID, targetID: target.id,
+            location = try discovered?.location ?? IndexStoragePolicy.location(internalDirectory: store.base, externalVolume: external, installationID: settings.installationID, targetID: target.id,
                                                        filesystemType: isSamples ? { _ in "apfs" } : IndexStoragePolicy.filesystemType,
                                                        volumeIdentifier: sourceIdentifier)
             try context.require([location.url])
         } catch { errorMessage = error.localizedDescription; return }
-        let previous = resume ? (indexedSessionID ?? suspendedVolumeSessionID) : nil, scanHome = home, excluded = [store.base], token = CancellationFlag()
+        let previous = previousSession ?? discovered?.sessionID, scanHome = home, scanStore = store, excluded = [store.base], token = CancellationFlag()
+        let progressMailbox = ScanProgressMailbox()
         cancellation = token; explorerTarget = target; choosingVolume = false; section = .explorer
         isScanning = true; scanProgress = nil; scanningRoot = target.displayRoot; indexOnSSD = location.storageVolumeUUID != nil; indexSuspended = false
         indexStorageVolumeUUID = location.storageVolumeUUID
@@ -410,15 +506,23 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if !resume { report = nil; breadcrumbs = []; indexedSessionID = nil }
         search = ""; showLargest = false
         Task {
+            while cancellation === token && isScanning {
+                if let update = progressMailbox.take() { scanProgress = update }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+        Task {
             do {
                 let pair = try await Task.detached(priority: .userInitiated) {
-                    let database = try ScanIndex(url: location.url)
-                    let resumeID = try previous ?? database.resumableVolumeSession(targetID: target.id)
+                    let lease = try OperationLease(store: scanStore); defer { withExtendedLifetime(lease) {} }
+                    let database = try location.openIndex(volumeIdentifier: sourceIdentifier)
+                    let resumeID = resume ? previous : nil
                     let result = try VolumeScanner(home: scanHome, volumeIdentifier: sourceIdentifier, excludedRoots: excluded).scan(target, index: database, resumeSessionID: resumeID, policy: location.policy, cancellation: token) { update in
-                        Task { @MainActor in self.scanProgress = update }
+                        progressMailbox.send(update)
                     }
-                    return (database, result)
+                    return (database, result, try database.volumeTarget(sessionID: result.id) ?? target)
                 }.value
+                explorerTarget = pair.2
                 index = pair.0; report = pair.1; indexedSessionID = pair.1.id; suspendedVolumeSessionID = nil; indexSuspended = false
                 breadcrumbs = [pair.1.root]; analysisNeedsRefresh = false; explorerRevision = UUID()
                 isScanning = false; cancellation = nil; scanningRoot = nil; reloadIndex()
@@ -427,11 +531,13 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             } catch { isScanning = false; cancellation = nil; scanningRoot = nil; indexSuspended = index == nil && report != nil; errorMessage = error.localizedDescription }
         }
     }
-    private func suspendExplorerIndex() {
+    @discardableResult private func suspendExplorerIndex() -> ScanIndex? {
+        let closing = index
         if let session = indexedSessionID { suspendedVolumeSessionID = session }
         index = nil; indexedSessionID = nil; pageRequest = UUID(); explorerRevision = UUID(); indexLoading = false
         indexedItems = []; treemapItems = []; treemapOtherBytes = 0; treemapOtherCount = 0
         selectedPath = nil; inspectedItem = nil; indexSuspended = report != nil; analysisNeedsRefresh = report != nil
+        return closing
     }
     func refreshExplorer() {
         if let target = explorerTarget { scanVolume(target) }
@@ -502,7 +608,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func reloadIndex() {
         guard let database = index, let session = indexedSessionID else { return }
-        let request = UUID(); pageRequest = request; indexLoading = true
+        let request = UUID(); pageRequest = request; indexLoading = true; selectedPath = nil; inspectedItem = nil
         let query = search, offset = indexOffset, onlyFiles = showLargest, allocated = allocatedOrder
         let parent = query.isEmpty && !onlyFiles ? currentFolder?.path : nil
         let requestedMinimum = Double(minimumMiB.replacingOccurrences(of: ",", with: ".")) ?? 0
@@ -537,14 +643,21 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         guard treemapOtherCount > 0, selectedTreemapContainer == nil, let path = selectedPath, let folder = currentFolder?.path else { return false }
         return path.hasPrefix(folder == "/" ? "/" : folder + "/")
     }
+    func volumeTitle(_ target: VolumeScanTarget) -> String {
+        if !target.isSystemGroup, target.roots.count == 1, target.roots[0].role == .system, target.name.hasSuffix(" — Sistema") {
+            return L10n.text("\(String(target.name.dropLast(" — Sistema".count))) — Sistema")
+        }
+        if target.roots.count == 1, target.roots[0].role == .data, target.name == "Dados do armazenamento interno" { return L10n.text("Dados do armazenamento interno") }
+        return target.name
+    }
     func explorerName(_ item: ScanItem) -> String {
         guard let target = explorerTarget, target.isSystemGroup,
               item.path == target.displayRoot.appendingPathComponent(target.dataNamespace).path else { return item.name }
         return L10n.text("Outros dados do volume")
     }
-    func clearExplorerSelection() { selectedPath = nil; inspectedItem = nil }
+    func clearExplorerSelection() { if selectedPath != nil || inspectedItem != nil { selectedPath = nil; inspectedItem = nil } }
     func selectExplorerItem(_ item: ScanItem, ordinal: Int? = nil) {
-        selectedPath = item.path; inspectedItem = item
+        if selectedPath != item.path || inspectedItem?.fileIdentity != item.fileIdentity { selectedPath = item.path; inspectedItem = item }
         if let ordinal { treeScrollRequest = (UUID(), ordinal) }
     }
     func refreshTreemap() {
@@ -622,6 +735,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
         guard !cacheStateUnknown, !context.graphicalEngine().hasUnsafeRecoveryRecords() else { return L10n.text("Os registros dos caches precisam de revisão antes de alterar arquivos.") }
         guard !analysisNeedsRefresh else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
+        guard explorerTarget == nil || currentScopeAvailable else { return L10n.text("O volume analisado está indisponível. Reconecte-o e atualize a análise.") }
         if explorerTarget != nil {
             do {
                 let source = try explorerSource(item)
@@ -699,7 +813,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
             inventoryRunning = false
         }
     }
-    func setLocalOnly(allowDuringOperation: Bool = false) { guard !busy || allowDuringOperation else { return }; settings.useExternal = false; saveSettings(); notice = L10n.text("Novas execuções usarão caches locais. Reabra ferramentas e terminais que ainda estejam usando o SSD.") }
+    func setLocalOnly(allowDuringOperation: Bool = false) { guard !busy || allowDuringOperation else { return }; settings.useExternal = false; saveSettings(); notice = L10n.text("Novos comandos usarão caches locais. Reabra os terminais. Para aplicativos gráficos, revise Restaurar no Mac na lista de caches.") }
     private func validateAction(_ action: ReviewAction) throws {
         try context.requireStorage()
         switch action {
@@ -792,7 +906,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 case .xcodeLocal:
                     try context.xcodeLocal(); notice = L10n.text("O Xcode usará o local padrão no Mac. Os arquivos anteriores no SSD foram preservados.")
                 case .eject(let volume):
-                    if indexStorageVolumeUUID == volume.uuid { suspendExplorerIndex() }
+                    resumeDiscoveryCancellation.cancel(); volumeTargetRequest = UUID()
+                    if let reader = resumeReadTask { _ = await reader.value }
+                    if indexStorageVolumeUUID == volume.uuid, let closing = suspendExplorerIndex() {
+                        try await Task.detached(priority: .utility) { try closing.close() }.value
+                    }
+                    guard !token.isCancelled else { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
                     if isSamples { try context.eject(volume); notice = L10n.text("SSD de amostra desconectado. Nenhum disco físico foi ejetado."); break }
                     let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
                     var routingSettings = store.settings()
@@ -804,6 +923,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                         let locations = routingSettings.locations.values.filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativePath) } + graphicalLocations
                         let processes = try await Task.detached { try BusyInspector.inspect(paths: locations) }.value
                         guard processes.isEmpty else { throw CacheSSDError.message(L10n.text("Ejeção adiada. Encerre antes: ") + processes.map { L10n.text("\($0.name) (\($0.pid))") }.joined(separator: L10n.text(", "))) }
+                        guard !token.isCancelled else { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
                         try context.eject(volume)
                         notice = L10n.text("Ejeção solicitada ao macOS. Aguarde o volume desaparecer antes de desconectar. Ao reconectar, novas execuções poderão voltar ao SSD.")
                     }

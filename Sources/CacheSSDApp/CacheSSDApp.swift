@@ -81,7 +81,7 @@ struct MenuContent: View {
         Button(L10n.text("Abrir DiskWing")) { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
         Button(L10n.text("Escolher volume…")) { openWindow(id: "main"); model.chooseVolume() }
         Divider()
-        Button(L10n.text("Usar somente o Mac")) { model.setLocalOnly() }.disabled(model.busy)
+        Button(L10n.text("Usar o Mac nos próximos comandos")) { model.setLocalOnly() }.disabled(model.busy)
         if let volume = model.selectedVolume { Button(L10n.text("Preparar para ejetar \(volume.name)…")) { openWindow(id: "main"); model.review = .eject(volume) }.disabled(model.busy || model.isScanning) }
         Divider()
         Button(L10n.text("Encerrar DiskWing")) { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")

@@ -143,11 +143,13 @@ final class FilesystemQualificationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath:mounted.appendingPathComponent("MacCaches").path))
         try record("apfs-low-space-refusal",filesystem:"APFS",extra:["originalPreserved":true,"diskReservationMiB":written])
     }
-    func testExternalAPFSFinderTrashRemountConflictAndRecovery() throws {
-        let mounted = try attach("APFS")
+    func testExternalAPFSFinderTrashRemountConflictAndRecovery() throws { try qualifyExternalFinderTrash("APFS") }
+    func testExternalHFSFinderTrashRemountConflictAndRecovery() throws { try qualifyExternalFinderTrash("HFS+") }
+    private func qualifyExternalFinderTrash(_ filesystem: String) throws {
+        let mounted = try attach(filesystem)
         func volume(at url: URL) throws -> VolumeInfo {
             let values = try url.resourceValues(forKeys: [.volumeUUIDStringKey])
-            return VolumeInfo(uuid: try XCTUnwrap(values.volumeUUIDString), name: "Disposable APFS", path: url.path,
+            return VolumeInfo(uuid: try XCTUnwrap(values.volumeUUIDString), name: "Disposable volume", path: url.path,
                 totalBytes: 2_147_483_648, freeBytes: Volumes.free(at: url), isInternal: false, isWritable: true)
         }
         let personal = mounted.appendingPathComponent("Personal/generated.txt")
@@ -200,7 +202,7 @@ final class FilesystemQualificationTests: XCTestCase {
         XCTAssertEqual(try FileTree.digest(recoveredSource), digest)
         XCTAssertEqual(try FileIdentity(recoveredSource).inode, originalIdentity.inode)
         XCTAssertFalse(FileManager.default.fileExists(atPath: trashAfter.path))
-        try record("apfs-finder-trash-remount-recovery", filesystem: "APFS", extra: ["nativeFinderTrash": true, "volumeIdentityRemount": true, "changedMountPath": true, "conflictPreserved": true, "restoredByRename": true])
+        try record(filesystem == "APFS" ? "apfs-finder-trash-remount-recovery" : "hfs-finder-trash-remount-recovery", filesystem: filesystem, extra: ["nativeFinderTrash": true, "volumeIdentityRemount": true, "changedMountPath": true, "conflictPreserved": true, "restoredByRename": true])
     }
     func testExternalExFATTrashRefusesBeforeCallingOS() throws {
         let mounted = try attach("ExFAT", size: "128m")

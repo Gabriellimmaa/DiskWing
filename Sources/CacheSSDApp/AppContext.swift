@@ -151,6 +151,13 @@ final class SampleAvailability: @unchecked Sendable {
         if connected && lstat(external.path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR { values.append(VolumeInfo(uuid: "DISKWING-SAMPLE-EXTERNAL", name: "SSD de amostra", path: external.path, totalBytes: total, freeBytes: free, isInternal: false, isWritable: true)) }
         return values
     }
+    func scanVolumes() async -> [VolumeInfo] {
+        if isSamples { return volumes() }
+        return await Task.detached(priority: .userInitiated) {
+            let urls = (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? []) + [URL(fileURLWithPath: "/"), DataVolumePaths.dataRoot]
+            return Self.operationVolumes(urls: urls)
+        }.value
+    }
     func volume(_ uuid: String) -> VolumeInfo? { volumes().first { $0.uuid == uuid } }
     func scanVolumeIdentifier() -> (URL) -> String {
         if let container, let availability = samples?.availability {
@@ -233,8 +240,8 @@ final class SampleAvailability: @unchecked Sendable {
             return matches.count == 1 ? matches[0] : nil
         }
     }
-    nonisolated private static func operationVolumes() -> [VolumeInfo] {
-        let urls = (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []) + [URL(fileURLWithPath: "/"), DataVolumePaths.dataRoot]
+    nonisolated private static func operationVolumes(urls supplied: [URL]? = nil) -> [VolumeInfo] {
+        let urls = supplied ?? (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []) + [URL(fileURLWithPath: "/"), DataVolumePaths.dataRoot]
         var seen = Set<String>()
         return urls.compactMap { source in
             let url = Paths.physicalURL(source)

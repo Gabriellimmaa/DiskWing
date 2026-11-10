@@ -8,7 +8,7 @@ struct VolumeExplorerContent: View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(model.explorerTarget?.name ?? L10n.text("Explorar volumes")).font(.system(size: 27, weight: .semibold))
+                    Text(model.explorerTarget.map { model.volumeTitle($0) } ?? L10n.text("Explorar volumes")).font(.system(size: 27, weight: .semibold))
                     Text(model.choosingVolume || model.report == nil ? L10n.text("Escolha um volume para encontrar o que ocupa espaço.") : L10n.text("Árvore e mapa mostram o mesmo volume. Selecione um item para revisar suas opções.")).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -39,8 +39,8 @@ struct VolumeExplorerContent: View {
                         Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale)))
                         Spacer()
                         VStack(alignment: .trailing, spacing: 5) {
-                            Label(model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial || model.analysisNeedsRefresh ? "exclamationmark.circle" : "checkmark.circle")
-                                .font(.caption).foregroundStyle(report.isPartial || model.analysisNeedsRefresh ? Palette.orange : Palette.accent)
+                            Label(!model.currentScopeAvailable ? L10n.text("Volume ou índice indisponível") : model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: report.isPartial || model.analysisNeedsRefresh || !model.currentScopeAvailable ? "exclamationmark.circle" : "checkmark.circle")
+                                .font(.caption).foregroundStyle(report.isPartial || model.analysisNeedsRefresh || !model.currentScopeAvailable ? Palette.orange : Palette.accent)
                             if report.isPartial && model.explorerTarget != nil { Button(L10n.text("Continuar análise")) { model.resumeExplorer() }.disabled(model.busy || model.isScanning) }
                         }
                     }.padding(.horizontal, 24).padding(.vertical, 18)
@@ -51,7 +51,7 @@ struct VolumeExplorerContent: View {
                             HStack(spacing: 5) {
                                 ForEach(Array(model.breadcrumbs.enumerated()), id: \.offset) { position, folder in
                                     if position > 0 { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
-                                    Button(position == 0 ? model.explorerTarget?.name ?? model.explorerName(folder) : model.explorerName(folder)) { model.navigateToBreadcrumb(position) }.buttonStyle(.plain)
+                                    Button(position == 0 ? model.explorerTarget.map { model.volumeTitle($0) } ?? model.explorerName(folder) : model.explorerName(folder)) { model.navigateToBreadcrumb(position) }.buttonStyle(.plain)
                                 }
                             }
                         }
@@ -62,11 +62,11 @@ struct VolumeExplorerContent: View {
                         Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.accessibilityLabel(L10n.text("Exportar relatório"))
                             .disabled(model.busy || model.isScanning)
                     }.padding(.horizontal, 20).padding(.vertical, 12)
-                    if model.indexSuspended {
+                    if model.indexSuspended || !model.currentScopeAvailable {
                         ContentUnavailableView {
-                            Label(L10n.text("Análise guardada no SSD"), systemImage: "externaldrive")
+                            Label(model.indexSuspended ? L10n.text("Análise guardada no SSD") : L10n.text("Volume analisado indisponível"), systemImage: "externaldrive")
                         } description: {
-                            Text(L10n.text("Reconecte o SSD e retome a análise. O índice e a fila foram preservados; ausência não é tamanho zero."))
+                            Text(model.indexSuspended ? L10n.text("Reconecte o SSD e retome a análise. O índice e a fila foram preservados; ausência não é tamanho zero.") : L10n.text("O volume ou sua identidade mudou. Reconecte o volume original e retome, ou escolha um volume novamente. Os totais anteriores foram preservados."))
                         } actions: {
                             Button(L10n.text("Retomar análise")) { model.resumeExplorer() }.disabled(model.busy || model.isScanning)
                         }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -109,7 +109,7 @@ private struct VolumeChooser: View {
                         HStack(spacing: 16) {
                             Image(systemName: target.roots.contains { $0.isInternal } ? "internaldrive" : "externaldrive").font(.system(size: 30, weight: .light)).foregroundStyle(Palette.accent)
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(target.name).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                                Text(model.volumeTitle(target)).font(.title3.weight(.semibold)).foregroundStyle(.primary)
                                 Text(target.isSystemGroup ? L10n.text("Sistema e dados do Mac em uma árvore, sem duplicar pastas.") : L10n.text("Analisar tudo que estiver acessível neste volume.")).font(.callout).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -120,8 +120,13 @@ private struct VolumeChooser: View {
                         }.padding(22).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
                         .disabled(model.busy || model.isScanning).accessibilityIdentifier("scan-volume-" + target.id)
+                    if model.resumableVolumeIDs.contains(target.id) {
+                        HStack { Spacer(); Button(L10n.text("Retomar análise pendente")) { model.scanVolume(target, resume: true) }.disabled(model.busy || model.isScanning) }
+                    }
                 }
                 if model.volumeTargets.isEmpty { ProgressView(L10n.text("Identificando volumes…")).padding(30) }
+                Toggle(L10n.text("Guardar os dados da análise no SSD dos caches, quando disponível"), isOn: $model.preferExternalIndex).disabled(model.busy || model.isScanning)
+                Text(L10n.text("Essa escolha afeta a lista da análise. O volume explorado e os caches dos aplicativos continuam separados. No Mac, a lista tem limite de espaço.")).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 Text(L10n.text("A análise lê nomes e tamanhos. Nenhum arquivo é alterado. O SSD dos caches é escolhido separadamente em Caches no SSD.")).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
             }.padding(24)
         }

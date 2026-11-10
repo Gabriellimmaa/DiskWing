@@ -173,8 +173,8 @@ struct InspectorView: View {
             if let item {
                 VStack(alignment: .leading, spacing: 16) {
                     Image(systemName: item.isDirectory ? "folder" : "doc").font(.system(size: 40, weight: .ultraLight)).foregroundStyle(Palette.accent)
-                    Text(item.name).font(.headline).textSelection(.enabled)
-                    Text(model.sizeText(item)).font(.system(size: 25, weight: .medium, design: .rounded))
+                    Text(model.explorerName(item)).font(.headline).textSelection(.enabled)
+                    Text(model.sizeText(item, allocated: model.allocatedOrder)).font(.system(size: 25, weight: .medium, design: .rounded))
                     Text(L10n.message(item.category.rawValue)).foregroundStyle(.secondary)
                     Text(item.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Divider()
@@ -182,7 +182,6 @@ struct InspectorView: View {
                     else { Text(L10n.text("Revise o conteúdo antes de escolher uma ação. O tamanho não indica se um arquivo é dispensável.")).font(.callout).foregroundStyle(.secondary) }
                     Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }.frame(maxWidth: .infinity, alignment: .leading)
                     if item.isDirectory {
-                        Button(L10n.text("Abrir pasta")) { model.openFolder(item) }.disabled(model.isScanning || model.busy)
                         Button(L10n.text("Abrir pasta")) { model.openFolder(item) }.disabled(model.isScanning || model.busy)
                     }
                     if model.cachePolicyReason(item) == nil {
