@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an ad-hoc signed DiskWing bundle from this checkout on macOS."""
+"""Build a verified DiskWing bundle and immutable candidate archive on macOS."""
 from pathlib import Path
 import argparse
 import base64
@@ -10,13 +10,18 @@ import subprocess
 import uuid
 import re
 import json
+import importlib.util
 
 PROJECT = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location('diskwing_release_evidence', PROJECT / 'scripts/release_evidence.py')
+release_evidence = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(release_evidence)
 BUNDLE_ID = 'com.cachessd.app'  # Preserve the local alpha's identity and preferences.
 
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--acceptance-bundle', action='store_true', help='Isolated dev-only DiskWing Samples application domain.')
+    parser.add_argument('--profile', choices=['dev', 'candidate', 'production'], default='dev')
     parser.add_argument('--scratch', type=Path, default=PROJECT / '.build')
     parser.add_argument('--configuration', choices=['debug', 'release'], default='release')
     parser.add_argument('--output', type=Path, default=PROJECT / 'dist/DiskWing.app')
@@ -31,9 +36,13 @@ def parse_args(argv=None):
 
 
 def release_settings(args):
-    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?', args.version) or not args.build_number.isdigit() or int(args.build_number) < 1:
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?', args.version) or re.fullmatch(r'[0-9]{1,18}', args.build_number) is None or int(args.build_number) < 1:
         raise ValueError('Use a semantic version and a positive numeric build number.')
+    if args.acceptance_bundle and (args.profile != 'dev' or args.with_updater or args.notary_profile):
+        raise ValueError('Samples bundles are dev-only without updater or notarization.')
     developer_id = args.sign_identity.startswith('Developer ID Application: ')
+    if args.profile == 'production' and (not developer_id or not args.notary_profile or args.configuration != 'release' or not args.with_updater):
+        raise ValueError('Production requires a release build, signed updater, Developer ID Application and a notarization profile.')
     if args.notary_profile and not developer_id:
         raise ValueError('Notarization requires a Developer ID Application identity.')
     if not args.with_updater:
@@ -55,7 +64,7 @@ def release_settings(args):
             'SUSendProfileInfo': False, 'SUEnableSystemProfiling': False}
 
 
-def sign_bundle(stage, identity):
+def sign_bundle(stage, identity, helper_identifier='com.cachessd.helper'):
     options = ['--force', '--sign', identity, '--options', 'runtime']
     if identity != '-':
         options += ['--timestamp']
@@ -76,7 +85,7 @@ def sign_bundle(stage, identity):
         for path in sorted(paths, key=lambda p: len(p.parts), reverse=True) + [framework]:
             subprocess.run(['codesign'] + options + [str(path)], check=True)
     helper = stage / 'Contents/MacOS/CacheSSDHelper'
-    subprocess.run(['codesign'] + options + ['--identifier', 'com.cachessd.helper', str(helper)], check=True)
+    subprocess.run(['codesign'] + options + ['--identifier', helper_identifier, str(helper)], check=True)
     subprocess.run(['codesign'] + options + [str(stage)], check=True)
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(stage)], check=True)
 
@@ -105,7 +114,7 @@ def localized_usage_descriptions(info):
     return {'en': english, 'pt-BR': {key: info[key] for key in english}}
 
 
-def validate_output(output):
+def validate_output(output, bundle_id=BUNDLE_ID):
     if output.is_symlink() or output.suffix != '.app':
         raise ValueError('Output must be a regular .app directory, without a symbolic link.')
     if output.exists():
@@ -114,14 +123,19 @@ def validate_output(output):
                 identifier = plistlib.load(file).get('CFBundleIdentifier')
         except (OSError, plistlib.InvalidFileException) as error:
             raise ValueError('Refusing to replace a directory without a DiskWing identity.') from error
-        if identifier != BUNDLE_ID:
+        if identifier != bundle_id:
             raise ValueError('Refusing to replace an unrelated application.')
 
 
 def main(argv=None):
     args = parse_args(argv)
     update_settings = release_settings(args)
-    validate_output(args.output.absolute())
+    bundle_id = BUNDLE_ID + ('.acceptance' if args.acceptance_bundle else '')
+    display_name = 'DiskWing Samples' if args.acceptance_bundle else 'DiskWing'
+    if args.acceptance_bundle and args.output == PROJECT / 'dist/DiskWing.app':
+        args.output = PROJECT / 'dist/DiskWingAcceptance.app'
+    commit, dirty = release_evidence.source_identity(PROJECT, args.profile)
+    validate_output(args.output.absolute(), bundle_id)
     output = args.output.resolve()
     scratch = args.scratch.resolve()
     if scratch == PROJECT or scratch in PROJECT.parents:
@@ -138,7 +152,8 @@ def main(argv=None):
     subprocess.run(swift + ['-j', '2'], check=True, env=env)
     binary_dir = Path(subprocess.check_output(swift + ['--show-bin-path'], text=True, env=env).strip())
     output.parent.mkdir(parents=True, exist_ok=True)
-    stage = output.parent / ('.DiskWing-build-' + str(uuid.uuid4()) + '.app')
+    stage_root = output.parent / ('.DiskWing-build-' + str(uuid.uuid4()))
+    stage = stage_root / output.name
     backup = output.parent / ('.DiskWing-previous-' + str(uuid.uuid4()) + '.app')
     try:
         macos = stage / 'Contents/MacOS'
@@ -161,8 +176,8 @@ def main(argv=None):
             shutil.copyfile(PROJECT / 'LICENSES/Sparkle.txt', resources / 'Sparkle-LICENSE.txt')
         info = {
             'CFBundleDevelopmentRegion': 'pt_BR', 'CFBundleExecutable': 'CacheSSD',
-            'CFBundleIdentifier': BUNDLE_ID, 'CFBundleName': 'DiskWing',
-            'CFBundleDisplayName': 'DiskWing', 'CFBundlePackageType': 'APPL',
+            'CFBundleIdentifier': bundle_id, 'CFBundleName': display_name,
+            'CFBundleDisplayName': display_name, 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': args.version, 'CFBundleVersion': args.build_number,
             'CFBundleLocalizations': ['en', 'pt-BR'],
             'LSMinimumSystemVersion': '14.0', 'LSApplicationCategoryType': 'public.app-category.utilities',
@@ -175,6 +190,9 @@ def main(argv=None):
             'NSRemovableVolumesUsageDescription': 'Analise o SSD selecionado e copie caches após sua revisão.',
             'CFBundleIconFile': 'AppIcon.icns'
         }
+        info['DiskWingBuildProfile'] = args.profile
+        info['DiskWingSourceDirty'] = dirty
+        if commit: info['DiskWingBuildCommit'] = commit
         info.update(update_settings)
         for language, descriptions in localized_usage_descriptions(info).items():
             directory = resources / (language + '.lproj')
@@ -197,10 +215,13 @@ def main(argv=None):
         # Only strip these packaging attributes from the newly generated bundle.
         for attribute in ['com.apple.FinderInfo', 'com.apple.ResourceFork']:
             subprocess.run(['/usr/bin/xattr', '-dr', attribute, str(stage)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        sign_bundle(stage, args.sign_identity)
+        sign_bundle(stage, args.sign_identity, 'com.cachessd.helper' + ('.acceptance' if args.acceptance_bundle else ''))
         if args.notary_profile:
             notarize(stage, args.notary_profile)
-        validate_output(output)
+        if args.profile != 'dev' and release_evidence.source_identity(PROJECT, args.profile) != (commit, dirty):
+            raise ValueError('Source identity changed during the candidate build.')
+        manifest_path, _ = release_evidence.package_candidate(stage, output.parent, commit=commit, dirty=dirty, version=args.version, build_number=args.build_number, profile=args.profile, developer_id=args.sign_identity.startswith('Developer ID Application: '), notarized=bool(args.notary_profile), updater=args.with_updater, acceptance=args.acceptance_bundle)
+        validate_output(output, bundle_id)
         if output.exists():
             output.rename(backup)
         try:
@@ -212,9 +233,10 @@ def main(argv=None):
         if backup.exists():
             shutil.rmtree(backup)
     finally:
-        if stage.exists():
-            shutil.rmtree(stage)
+        if stage_root.exists():
+            shutil.rmtree(stage_root)
     print(output)
+    print(manifest_path)
 
 
 if __name__ == '__main__':
