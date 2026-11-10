@@ -17,14 +17,24 @@ public enum PersonalActionPolicy {
         if let values = try? item.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]), values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus != .current { return "Baixe este arquivo no Finder antes de movê-lo. O DiskWing não baixa conteúdo da nuvem." }
         return nil
     }
-    public static func validateTree(_ source: URL, home: URL, cancellation: CancellationFlag) throws {
+    public static func validateTree(_ source: URL, home: URL, cancellation: CancellationFlag, maxEntries: Int = 1_000_000, progress: (String) -> Void = { _ in }) throws {
+        if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
+        guard maxEntries > 0 else { throw CacheSSDError.message(L10n.text("A inspeção excedeu o limite de itens. A origem foi preservada.")) }
         if let reason = reasonPreventing(source, home: home) { throw CacheSSDError.message(reason) }
         if try source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true { return }
         var failed = false
-        if let e = FileManager.default.enumerator(at: source, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in failed = true; return false }) {
-            for case let child as URL in e {
-                if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
-                if let reason = reasonPreventing(child, home: home) { throw CacheSSDError.message(reason) }
+        guard let e = FileManager.default.enumerator(at: source, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in failed = true; return false }) else { throw CacheSSDError.message(L10n.text("Não foi possível examinar todo o conteúdo. A origem foi preservada.")) }
+        var finished = false, count = 0
+        while !finished {
+            try autoreleasepool {
+                for _ in 0..<256 {
+                    if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
+                    guard let child = e.nextObject() as? URL else { finished = true; break }
+                    guard count < maxEntries else { throw CacheSSDError.message(L10n.text("A inspeção excedeu o limite de itens. A origem foi preservada.")) }
+                    if let reason = reasonPreventing(child, home: home) { throw CacheSSDError.message(reason) }
+                    count += 1
+                    if count % 200 == 0 { progress("Inspecionando \(count) itens…") }
+                }
             }
         }
         if failed { throw CacheSSDError.message(L10n.text("Não foi possível examinar todo o conteúdo. A origem foi preservada.")) }
@@ -50,7 +60,7 @@ public final class PersonalActions {
     public func trash(_ source: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
-        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation)
+        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation, progress: progress)
         guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
         let operation = try OperationContext(store: store, kind: "trash", source: source, checkpoint: checkpoint)
         do {
@@ -75,13 +85,13 @@ public final class PersonalActions {
     public func move(_ source: URL, to directory: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
-        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation)
+        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation, progress: progress)
         guard directory.standardizedFileURL == directory.resolvingSymlinksInPath(), !Paths.contains(directory, in: source) else { throw CacheSSDError.message(L10n.text("Escolha uma pasta independente e sem links.")) }
         try FileTree.validateDestination(directory)
         let final = directory.appendingPathComponent(source.lastPathComponent)
         guard !FileManager.default.fileExists(atPath: final.path) else { throw CacheSSDError.message(L10n.text("Já existe um item com esse nome. Nada foi sobrescrito.")) }
         guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
-        let size = FileTree.measure(source)
+        let size = FileTree.measure(source, cancellation: cancellation, progress: progress)
         guard size.isComplete else { throw CacheSSDError.message(L10n.text("A leitura da origem está incompleta.")) }
         guard freeBytes(directory) > max(size.logical, size.allocated) + 536_870_912 else { throw CacheSSDError.message(L10n.text("O destino não tem espaço confirmado para a cópia e a margem de segurança.")) }
         let operation = try OperationContext(store: store, kind: "personalMove", source: source, destination: final, checkpoint: checkpoint)
@@ -108,6 +118,7 @@ public final class PersonalActions {
             guard try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
             try operation.advance(.trashing)
             try operation.assertSourceIdentity()
+            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
             operation.journal.trashPath = try trashHandler(source)?.path
             try operation.advance(.completed, detail: "Cópia e metadados conferidos; origem na Lixeira")
             let record = OperationRecord(title: "Arquivo copiado e origem na Lixeira", detail: "Cópia conferida em \(final.path). Revise a Lixeira no Finder antes de liberar o espaço da origem.", recoveryPath: final.path)
