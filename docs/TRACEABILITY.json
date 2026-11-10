@@ -80,14 +80,16 @@
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
         "docs/validation/candidate-1.0.0-local.json",
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
-        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-build7-local.json",
+        "docs/validation/expanded-build7-qualification.json"
       ],
       "externalDependencies": [
         "Resource results need confirmation on additional Macs/filesystems."
       ],
       "milestone": 3,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/3",
-      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
     },
     {
       "id": "M3",
@@ -111,14 +113,16 @@
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
         "docs/validation/candidate-1.0.0-local.json",
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
-        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-build7-local.json",
+        "docs/validation/expanded-build7-qualification.json"
       ],
       "externalDependencies": [
         "Additional Macs/devices/filesystems and physical cable/power faults remain unverified."
       ],
       "milestone": 4,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4",
-      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
     },
     {
       "id": "M4",
@@ -137,14 +141,16 @@
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
         "docs/validation/candidate-1.0.0-local.json",
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
-        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-build7-local.json",
+        "docs/validation/expanded-build7-qualification.json"
       ],
       "externalDependencies": [
         "pip requires an offline wheelhouse for empty-cache installation; Homebrew/CocoaPods offline network isolation remains unverified."
       ],
       "milestone": 5,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5",
-      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
     },
     {
       "id": "M5",
@@ -191,14 +197,16 @@
         "docs/context/SESSION-2026-11-10.md",
         "docs/validation/LOCAL-INSTALLATION-2026-11-10.md",
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
-        "docs/validation/EXPANDED-FLOWS-2026-11-10.md"
+        "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-build7-local.json",
+        "docs/validation/expanded-build7-qualification.json"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
       ],
       "milestone": 7,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/7",
-      "expandedScopeStatus": "implemented_independently_reviewed_final_validation_pending"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
     },
     {
       "id": "M7",
@@ -264,7 +272,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "expanded_core_flows_final_validation",
+    "phase": "expanded_scope_local_qualified_awaiting_ci",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -610,11 +618,12 @@
           "CACHE-02"
         ],
         "acceptance": "Separate Trash/Move UI; warnings; data-volume scan entry; refresh/invalidate post-action; route vs copy status; PT/EN",
-        "status": "implemented_reviewed_final_checks_pending",
+        "status": "implemented_automated_pt_en_passed_visual_pending_locked_mac",
         "evidence": [
           "Initial full suite 223 cases/18 explicit skips/zero failures; subsequent targeted26 cases/1skip/zero failures",
           "Native APFS positive fixture exposed Foundation firmlink normalization mismatch; fix in progress, not accepted yet.",
-          "APFS alias/DirectoryEnumerator and /private/var regressions fixed; 34 targeted cases passed with real generated APFS fixture, zero skips/failures."
+          "APFS alias/DirectoryEnumerator and /private/var regressions fixed; 34 targeted cases passed with real generated APFS fixture, zero skips/failures.",
+          "ecdf1af full suite:239 discovered,216 executed,23 explicit skips,zero failures. PT/EN expanded AppModel journeys passed. Native visual CUA blocked before any window observation by locked Mac; sample process closed and fixture retained privately."
         ]
       },
       {
@@ -633,9 +642,10 @@
           "UX-02"
         ],
         "acceptance": "Different author reviews each implementation and fixes are rechecked",
-        "status": "approved_pending_exact_head_checks",
+        "status": "approved",
         "evidence": [
-          "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed."
+          "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed.",
+          "Independent final approval at ecdf1afd6562941741f055f80291b35be230ce41; no open code blockers."
         ]
       },
       {
@@ -676,26 +686,31 @@
           "QUALIFY-02"
         ],
         "acceptance": "Integrated tests, packaging, exact-head CI and independently identified artifact; installed build6 preserved",
-        "status": "pending",
-        "evidence": []
+        "status": "local_qualified_ci_pending",
+        "evidence": [
+          "docs/validation/candidate-1.0.0-build7-local.json",
+          "docs/validation/expanded-build7-qualification.json",
+          "Build7 exact archive/signature/internal temporary lifecycle/helper/resources/removal passed; no normal installation replacement",
+          "Full239/23skip/0failure; 51 packaging tests passed; nativeAPFS positive+isolated regressions34 passed"
+        ]
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
     "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Finish exact-head integrated regression, sample UI and packaging; create independently identified build7 without replacing installed build6, then PR CI/serial integration. ccache inactive until native qualification; physical/human/signing gates remain pending.",
+    "nextAction": "Run exact-head PR CI and serialize integration. Local build7 is independently reviewed and exact-archive qualified; installed build6 and its backup remain preserved. Visual sample QA is pending because the Mac is locked. ccache inactive; physical/human/signing gates remain pending.",
     "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
     "integrationBranch": "codex/scope-expansion",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
-    "lastVerifiedCodeCommit": "4db260076b602c309c3493f9b06548b0751f7356",
+    "lastVerifiedCodeCommit": "ecdf1afd6562941741f055f80291b35be230ce41",
     "mainCIVerification": "success",
     "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42778884800",
     "candidate": {
-      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
-      "buildNumber": "6",
-      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "archiveSHA256": "e9bfcfb829fc8a02011bc7827bd2511dc2c65cbe2ecb21b7f16422ac9d44e7d3",
+      "buildNumber": "7",
+      "commit": "ecdf1afd6562941741f055f80291b35be230ce41",
       "version": "1.0.0"
     },
-    "candidateEvidence": "docs/validation/candidate-1.0.0-local.json",
+    "candidateEvidence": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
     "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
     "handoffPR": "https://github.com/Gabriellimmaa/DiskWing/pull/20",
     "handoffExactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
@@ -738,6 +753,12 @@
       "runtimeConcurrentSlotsIncludingCoordinator": 4,
       "rotateSpecialists": true,
       "independentReviewRequired": true
+    },
+    "previousCandidate": {
+      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+      "buildNumber": "6",
+      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "version": "1.0.0"
     }
   }
 }

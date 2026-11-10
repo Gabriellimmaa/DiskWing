@@ -65,3 +65,32 @@ activation, Xcode setting change, normal-app replacement or physical fault is
 part of this increment. The maintainer's installed build 6 and previous backup
 remain preserved. Other-Mac/macOS14, physical faults, human keyboard/VoiceOver,
 real beta, signing/notarization and signed-update acceptance remain independent.
+
+## Final local result
+
+The independently reviewed code is ecdf1afd6562941741f055f80291b35be230ce41.
+Its full Swift suite discovered 239 cases, executed 216, explicitly skipped 23
+opt-in/worker cases and reported zero failures. All 51 packaging tests passed.
+The APFS/native and related regressions passed 34 targeted cases with no skips:
+identity-proven Data alias, private-index exclusion, leaf-link metadata without
+duplicate allocation, normal temporary-directory aliases, coverage/indexation
+and generated application journeys. Foundation's Data firmlink normalization
+and `/private/var` abbreviation defects were reproduced and corrected before
+this result. A vanished Data entry that cannot prove identity still stops the
+scan explicitly; it never becomes a falsely complete scan.
+
+The new local 1.0.0 build 7 has a clean-source
+[manifest](candidate-1.0.0-build7-local.json) and passed the
+[exact-archive qualification](expanded-build7-qualification.json): safe ZIP,
+bundle identity, real temporary internal installation, signature/helper/resource
+checks, generated acceptance flows and removal. Archive SHA-256:
+`e9bfcfb829fc8a02011bc7827bd2511dc2c65cbe2ecb21b7f16422ac9d44e7d3`.
+It is ad-hoc signed, not publicly notarized; publicV1Ready remains false.
+
+A native visual sample review was attempted but the first CUA app selection
+reported that the Mac was locked. No window/banner, minimum-size layout or
+visual PT/EN journey was observed. Only the separately launched sample process
+was closed, its exit confirmed, and its generated fixture/private record
+retained. Automated PT/EN journeys above do not substitute for this missing
+visual or human accessibility acceptance. Installed build 6 and its previous
+backup were not replaced by build 7.

@@ -4,6 +4,18 @@
 
 The maintainer authorized [expanded cache and explorer behavior](../plans/SCOPE-EXPANSION-2026-11-10.md). Implementation is proceeding in separate worktrees from main 83e0cb1, preserving the installed build 6 and backup. The new increment covers independent manual Trash eligibility (including caches), internal data-volume entry, current scan state after mutations, future-write setup for empty caches and additional native cache adapters. Earlier candidate evidence below describes the previous behavior and does not attest these changes. See TRACEABILITY.json for live task/review state.
 
+The expanded implementation is independently reviewed at ecdf1af and locally
+qualified as 1.0.0 build 7: 216 Swift cases executed, 23 explicit skips, zero
+failures; 51 packaging checks; native Yarn1.22.22/Go1.27.3 generated workflows;
+real generated APFS alias regressions and exact-archive temporary internal
+installation/removal. ccache remains inactive without qualification; Yarn/Go
+origins remain local. See [expanded evidence](../validation/EXPANDED-FLOWS-2026-11-10.md).
+Exact-head CI/integration is next. Visual sample QA is pending because the Mac
+was locked; no visual/human acceptance is inferred. The installed build6 and
+backup remain preserved.
+
+## Previous build 6 engineering handoff
+
 Updated 2026-11-10. PR12, [PR19](https://github.com/Gabriellimmaa/DiskWing/pull/19) and [PR20](https://github.com/Gabriellimmaa/DiskWing/pull/20) are merged. The engineering handoff is main 1947aec, whose [CI passed on macOS 15/26](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972). Candidate source remains 4db2600, identical to implementation merge f915039; PR20 changed only tests/documentation. Local 1.0.0 candidate build 6 is qualified and recorded in [the candidate handoff](../validation/LOCAL-CANDIDATE-2026-11-10.md). It has a local ad-hoc signature and remains ineligible for public v1 promotion. Apple Silicon/macOS 14+, Lift, MIT and PT/EN remain the approved scope.
 
 The maintainer then requested installation and launch for interface validation. The exact build 6 archive was verified and installed in the user's Applications folder on internal storage, preserving the previous 0.2.0-dev build 3 application. Its normal application process and visible DiskWing window were observed after launch. Maintainer interface feedback is pending; installation/launch is not human acceptance. See [installation evidence](../validation/LOCAL-INSTALLATION-2026-11-10.md) and [the consolidated session record](SESSION-2026-11-10.md).
