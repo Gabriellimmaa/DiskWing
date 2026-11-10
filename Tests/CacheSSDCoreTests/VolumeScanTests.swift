@@ -369,4 +369,32 @@ final class VolumeScanTests: XCTestCase {
         XCTAssertTrue(try index.execute("SELECT version FROM volume_format").isEmpty)
         XCTAssertTrue(try index.execute("SELECT name FROM sqlite_master WHERE name='volume_queue'").isEmpty)
     }
+    func testExplicitResumeRebindsSameVolumeAndInodeToANewMountSpelling() throws {
+        for n in 0..<90 { try file("file-\(n)", bytes: 1) }
+        let firstRoot = try VolumeScanRoot(url: source)
+        let selected = try VolumeScanTarget(id: firstRoot.volumeUUID, name: "Old generated name", roots: [firstRoot])
+        let index = try ScanIndex(url: database)
+        let partial = try VolumeScanner(home: root, maximumEntriesPerPass: 30).scan(selected, index: index, policy: unlimited)
+        let renamed = root.appendingPathComponent("renamed-mount")
+        try FileManager.default.moveItem(at: source, to: renamed)
+        let currentRoot = try VolumeScanRoot(url: renamed)
+        let current = try VolumeScanTarget(id: selected.id, name: "New generated name", roots: [currentRoot])
+        let report = try VolumeScanner(home: root).scan(current, index: index, resumeSessionID: partial.id, policy: unlimited)
+        XCTAssertFalse(report.isPartial); XCTAssertEqual(report.root.fileCount, 90)
+        XCTAssertEqual(try index.session(id: partial.id)?.root, renamed.path)
+        XCTAssertEqual(report.root.name, "New generated name")
+        let item = try XCTUnwrap(try index.page(sessionID: report.id, filesOnly: true).items.first)
+        XCTAssertTrue(Paths.contains(try XCTUnwrap(index.sourceLocation(sessionID: report.id, path: item.path)).url, in: renamed))
+    }
+    func testExplicitResumeCannotReclassifyAPhysicalRootRole() throws {
+        try file("kept")
+        let firstRoot = try VolumeScanRoot(url: source)
+        let selected = try VolumeScanTarget(id: firstRoot.volumeUUID, name: "Generated", roots: [firstRoot])
+        let index = try ScanIndex(url: database)
+        let partial = try VolumeScanner(home: root, maximumEntriesPerPass: 0).scan(selected, index: index, policy: unlimited)
+        let differentRole = try VolumeScanRoot(url: source, role: .system)
+        let incoherent = try VolumeScanTarget(id: selected.id, name: "Generated", roots: [differentRole])
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(incoherent, index: index, resumeSessionID: partial.id, policy: unlimited))
+        XCTAssertEqual(try index.session(id: partial.id)?.state, "paused")
+    }
 }

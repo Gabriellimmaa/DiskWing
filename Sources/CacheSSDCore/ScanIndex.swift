@@ -10,14 +10,24 @@ private final class VolumeSQLControl {
     let allowed: () -> Bool
     let owner: UInt64
     var stopped: VolumeScanStop?
+    private var lastResources: UInt64 = 0
     init(cancellation: CancellationFlag, allowed: @escaping () -> Bool) {
         self.cancellation = cancellation; self.allowed = allowed
         var thread: UInt64 = 0; pthread_threadid_np(nil, &thread); owner = thread
     }
-    func check() -> VolumeScanStop? {
+    func check(forceResources: Bool = false) -> VolumeScanStop? {
         if let stopped { return stopped }
         if cancellation.isCancelled { stopped = .cancelled }
-        else if !allowed() { stopped = .storage }
+        else {
+            let now = DispatchTime.now().uptimeNanoseconds
+            // Short entry statements reuse a recent resource observation.
+            // Transaction boundaries, directory batches and long SQL VM work
+            // force checks; cancellation itself is never throttled.
+            if forceResources || lastResources == 0 || now &- lastResources >= 10_000_000 {
+                lastResources = now
+                if !allowed() { stopped = .storage }
+            }
+        }
         return stopped
     }
 }
@@ -50,18 +60,41 @@ public final class ScanIndex: @unchecked Sendable {
     private var db: OpaquePointer?
     private let lock = NSRecursiveLock()
     private var volumeSQLControl: VolumeSQLControl?
+    private var storageValidation: ((Bool) throws -> Void)?
+    private var closed = false
+    let metadataLookupOnly: Bool
     public let url: URL
-    public init(url: URL = Paths.support.appendingPathComponent("index.sqlite")) throws {
+    public convenience init(url: URL = Paths.support.appendingPathComponent("index.sqlite")) throws {
+        try self.init(url: url, openingURL: url, expectedDatabase: nil, storageValidation: nil, prepareParent: true)
+    }
+    init(url: URL, openingURL: URL, expectedDatabase: FileIdentity?, storageValidation: ((Bool) throws -> Void)?, prepareParent: Bool, metadataLookupOnly: Bool = false) throws {
         self.url = url
-        guard url.standardizedFileURL == url.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O índice local foi redirecionado.")) }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW, nil) == SQLITE_OK else {
+        self.metadataLookupOnly = metadataLookupOnly
+        self.storageValidation = storageValidation
+        if expectedDatabase == nil { guard url.standardizedFileURL == url.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O índice local foi redirecionado.")) } }
+        try storageValidation?(true)
+        if prepareParent { try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
+        if let expectedDatabase { try Self.assertDatabase(openingURL, expected: expectedDatabase) }
+        let flags = (metadataLookupOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE) | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW | (expectedDatabase == nil ? SQLITE_OPEN_CREATE : 0)
+        guard sqlite3_open_v2(openingURL.path, &db, flags, nil) == SQLITE_OK else {
             if let db { sqlite3_close_v2(db) }; self.db = nil
             throw CacheSSDError.message(L10n.text("Não foi possível abrir o índice local."))
         }
+        try storageValidation?(true)
+        if let expectedDatabase { try Self.assertDatabase(openingURL, expected: expectedDatabase) }
         sqlite3_busy_timeout(db, 1000)
         let previousVersion = Self.integer(try execute("PRAGMA user_version").first ?? [:], "user_version")
         guard previousVersion <= 3 else { throw CacheSSDError.message(L10n.text("O índice pertence a uma versão mais recente. Atualize o aplicativo.")) }
+        let hasVolumeFormat = !(try execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='volume_format'")).isEmpty
+        if hasVolumeFormat {
+            let versions = try execute("SELECT version FROM volume_format")
+            guard versions.count == 1, Self.integer(versions[0], "version") == 1 else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
+        }
+        if metadataLookupOnly {
+            let tables = try execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sessions','entries','snapshots','folder_samples','volume_format','volume_targets','volume_queue','volume_sources','volume_hardlinks','volume_ownership','volume_phase')")
+            guard previousVersion == 3, hasVolumeFormat, tables.count == 11 else { throw CacheSSDError.message("O índice existente não possui um formato de retomada conhecido e foi preservado.") }
+            return
+        }
         try execute("PRAGMA journal_mode=WAL")
         try execute("PRAGMA synchronous=FULL")
         try execute("PRAGMA cache_size=-4096")
@@ -108,26 +141,51 @@ public final class ScanIndex: @unchecked Sendable {
             try execute("UPDATE snapshots SET state='partial' WHERE state='complete'")
         }
         try execute("PRAGMA user_version=3")
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        if expectedDatabase == nil { try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) }
     }
-    deinit { if let db { sqlite3_close_v2(db) } }
+    private static func assertDatabase(_ url: URL, expected: FileIdentity) throws {
+        let current = try FileIdentity(url)
+        guard current.device == expected.device, current.inode == expected.inode else { throw CacheSSDError.message("O arquivo do índice mudou antes da abertura.") }
+    }
+    public func close() throws {
+        lock.lock(); defer { lock.unlock() }
+        if closed { return }
+        // On an unavailable/replaced mount, close only the already opened
+        // handles; do not unlink WAL/SHM through the old pathname.
+        if let db, metadataLookupOnly || (storageValidation != nil && (try? storageValidation?(true)) == nil) {
+            var preserve: Int32 = 1
+            _ = sqlite3_file_control(db, "main", SQLITE_FCNTL_PERSIST_WAL, &preserve)
+        }
+        if let db { guard sqlite3_close(db) == SQLITE_OK else { throw CacheSSDError.message("A análise ainda está usando o índice. Aguarde antes de ejetar o disco.") } }
+        db = nil; closed = true; storageValidation = nil
+        volumeSQLControl?.stopped = .storage
+    }
+    deinit { try? close() }
 
     @discardableResult func execute(_ sql: String, _ values: [SQLValue] = []) throws -> [[String: SQLValue]] {
         lock.lock(); defer { lock.unlock() }
+        guard !closed, let db else { throw CacheSSDError.message("O índice desta análise foi fechado. Retome a análise para abrir uma nova conexão.") }
         var thread: UInt64 = 0; pthread_threadid_np(nil, &thread)
         let control = volumeSQLControl?.owner == thread ? volumeSQLControl : nil
-        let cleanup = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased().hasPrefix("ROLLBACK")
-        if !cleanup, let stopped = control?.check() { throw stopped }
+        let prefix = String(decoding: sql.utf8.drop(while: { $0 == 32 || $0 == 9 || $0 == 10 || $0 == 13 }).prefix(12), as: UTF8.self).uppercased()
+        let cleanup = prefix.hasPrefix("ROLLBACK")
+        let boundary = prefix.hasPrefix("BEGIN") || prefix.hasPrefix("COMMIT") || prefix.hasPrefix("SAVEPOINT") || prefix.hasPrefix("RELEASE")
+        if !cleanup {
+            do { try storageValidation?(boundary) }
+            catch { if control != nil { throw VolumeScanStop.storage }; throw error }
+        }
+        if !cleanup, let stopped = control?.check(forceResources: boundary) { throw stopped }
         if let control, !cleanup {
             sqlite3_progress_handler(db, 4096, { context in
                 guard let context else { return 0 }
-                return autoreleasepool { Unmanaged<VolumeSQLControl>.fromOpaque(context).takeUnretainedValue().check() == nil ? 0 : 1 }
+                return autoreleasepool { Unmanaged<VolumeSQLControl>.fromOpaque(context).takeUnretainedValue().check(forceResources: true) == nil ? 0 : 1 }
             }, Unmanaged.passUnretained(control).toOpaque())
         }
         defer { if control != nil { sqlite3_progress_handler(db, 0, nil, nil) } }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { if let stopped = control?.stopped { throw stopped }; throw failure() }
         defer { sqlite3_finalize(statement) }
+        guard !metadataLookupOnly || sqlite3_stmt_readonly(statement) != 0 else { throw CacheSSDError.message("Esta conexão consulta apenas a retomada. Abra o índice para analisar antes de gravar.") }
         for (index, value) in values.enumerated() {
             let number = Int32(index + 1)
             switch value {
@@ -158,6 +216,7 @@ public final class ScanIndex: @unchecked Sendable {
     }
     func withVolumeWorkChecks<T>(cancellation: CancellationFlag, allowed: @escaping () -> Bool, body: () throws -> T) throws -> T {
         lock.lock()
+        guard !closed else { lock.unlock(); throw CacheSSDError.message("O índice desta análise foi fechado.") }
         guard volumeSQLControl == nil else { lock.unlock(); throw CacheSSDError.message("Outra análise já está usando este índice.") }
         volumeSQLControl = VolumeSQLControl(cancellation: cancellation, allowed: allowed)
         lock.unlock()
@@ -166,12 +225,17 @@ public final class ScanIndex: @unchecked Sendable {
     }
     func checkVolumeWork() throws {
         lock.lock(); defer { lock.unlock() }
-        if let stopped = volumeSQLControl?.check() { throw stopped }
+        if let stopped = volumeSQLControl?.check(forceResources: true) { throw stopped }
     }
     func physicalDatabaseBytes() -> Int64 {
         [url.path, url.path + "-wal", url.path + "-shm"].reduce(0) { total, path in
             var metadata = stat(); return total + (lstat(path, &metadata) == 0 ? Int64(metadata.st_size) : 0)
         }
+    }
+    func storageIsAvailable() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !closed else { return false }
+        do { try storageValidation?(true); return true } catch { return false }
     }
     private func failure() -> Error { CacheSSDError.message(L10n.text("O índice não pôde concluir a operação. Verifique espaço e acesso; os arquivos analisados não foram alterados.")) }
     static func string(_ row: [String: SQLValue], _ key: String) -> String { if case .text(let value) = row[key] { return value }; return "" }

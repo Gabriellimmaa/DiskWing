@@ -98,9 +98,115 @@ public struct VolumeIndexLocation: Sendable {
     public let url: URL
     public let policy: IndexStoragePolicy
     public let storageVolumeUUID: String?
+    public let storageRoot: VolumeScanRoot
+    public var canonicalRootIdentity: VolumeRootIdentity { storageRoot.identity }
+    public func validateStorage(volumeIdentifier: (URL) -> String = IndexStoragePolicy.volumeIdentifier) throws {
+        var metadata = stat()
+        guard VolumeScanRoot.unredirected(storageRoot.url), lstat(storageRoot.url.path, &metadata) == 0,
+              Int64(metadata.st_dev) == storageRoot.identity.device, UInt64(metadata.st_ino) == storageRoot.identity.inode,
+              volumeIdentifier(storageRoot.url).caseInsensitiveCompare(storageRoot.volumeUUID) == .orderedSame,
+              FileManager.default.isWritableFile(atPath: storageRoot.url.path) else { throw CacheSSDError.message("O volume do índice mudou ou está indisponível. Nenhuma pasta substituta foi criada no Mac.") }
+    }
+    public func openIndex(createIfMissing: Bool = true, volumeIdentifier: @escaping (URL) -> String = IndexStoragePolicy.volumeIdentifier) throws -> ScanIndex {
+        try validateStorage(volumeIdentifier: volumeIdentifier)
+        guard Paths.contains(url, in: storageRoot.url), url.path != storageRoot.url.path else { throw CacheSSDError.message("O índice não pertence ao volume escolhido.") }
+        let relative = String(url.path.dropFirst(storageRoot.url.path == "/" ? 1 : storageRoot.url.path.count + 1))
+        let parts = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.allSatisfy(Paths.safeComponent), let filename = parts.last else { throw CacheSSDError.message("O caminho do índice é inválido.") }
+        var rootFD = open(storageRoot.url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard rootFD >= 0 else { throw CacheSSDError.message("O volume do índice está indisponível.") }
+        var parentFD = dup(rootFD), fileFD: Int32 = -1
+        var directoryProofs: [(Int32, String, FileIdentity)] = []
+        defer { if rootFD >= 0 { close(rootFD) }; if parentFD >= 0 { close(parentFD) }; if fileFD >= 0 { close(fileFD) }; for proof in directoryProofs { close(proof.0) } }
+        var rootMetadata = stat()
+        guard parentFD >= 0, fstat(rootFD, &rootMetadata) == 0, Int64(rootMetadata.st_dev) == storageRoot.identity.device, UInt64(rootMetadata.st_ino) == storageRoot.identity.inode else { throw CacheSSDError.message("A identidade do volume do índice mudou.") }
+        for component in parts.dropLast() {
+            try validateStorage(volumeIdentifier: volumeIdentifier)
+            if createIfMissing { guard mkdirat(parentFD, component, 0o700) == 0 || errno == EEXIST else { throw CacheSSDError.message("Não foi possível preparar a pasta privada do índice.") } }
+            let next = openat(parentFD, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard next >= 0 else { throw CacheSSDError.message("A pasta do índice está ausente ou foi redirecionada.") }
+            var metadata = stat()
+            guard fstat(next, &metadata) == 0, Int64(metadata.st_dev) == storageRoot.identity.device else { close(next); throw CacheSSDError.message("A pasta do índice pertence a outro volume.") }
+            let proofFD = dup(parentFD)
+            guard proofFD >= 0 else { close(next); throw CacheSSDError.message("Não foi possível preservar a identidade da pasta do índice.") }
+            directoryProofs.append((proofFD, component, FileIdentity(device: Int64(metadata.st_dev), inode: UInt64(metadata.st_ino))))
+            close(parentFD); parentFD = next
+        }
+        try validateStorage(volumeIdentifier: volumeIdentifier)
+        fileFD = openat(parentFD, filename, (createIfMissing ? O_RDWR : O_RDONLY) | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (createIfMissing ? O_CREAT : 0), 0o600)
+        var fileMetadata = stat(), parentMetadata = stat()
+        guard fileFD >= 0, fstat(fileFD, &fileMetadata) == 0, fileMetadata.st_mode & S_IFMT == S_IFREG, fileMetadata.st_nlink == 1,
+              Int64(fileMetadata.st_dev) == storageRoot.identity.device, fstat(parentFD, &parentMetadata) == 0 else { throw CacheSSDError.message("O índice está ausente, foi redirecionado ou não é um arquivo privado regular.") }
+        if createIfMissing { guard fchmod(fileFD, 0o600) == 0 else { throw CacheSSDError.message("Não foi possível proteger o índice privado.") } }
+        var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(fileFD, F_GETPATH, &path) == 0 else { throw CacheSSDError.message("Não foi possível confirmar o arquivo do índice.") }
+        let openingURL = URL(fileURLWithPath: String(cString: path))
+        let anchor = VolumeIndexAnchor(location: self, rootFD: rootFD, parentFD: parentFD, fileFD: fileFD,
+                                       parentIdentity: FileIdentity(device: Int64(parentMetadata.st_dev), inode: UInt64(parentMetadata.st_ino)),
+                                       fileIdentity: FileIdentity(device: Int64(fileMetadata.st_dev), inode: UInt64(fileMetadata.st_ino)), directoryProofs: directoryProofs, volumeIdentifier: volumeIdentifier)
+        rootFD = -1; parentFD = -1; fileFD = -1
+        directoryProofs = []
+        try anchor.validate(forceIdentity: true)
+        let index = try ScanIndex(url: url, openingURL: openingURL, expectedDatabase: anchor.fileIdentity, storageValidation: { force in try anchor.validate(forceIdentity: force) }, prepareParent: false, metadataLookupOnly: !createIfMissing)
+        do { if createIfMissing { try index.prepareVolumeTables() }; return index }
+        catch { try? index.close(); throw error }
+    }
+}
+
+private final class VolumeIndexAnchor {
+    let location: VolumeIndexLocation
+    let rootFD: Int32, parentFD: Int32, fileFD: Int32
+    let parentIdentity: FileIdentity, fileIdentity: FileIdentity
+    let directoryProofs: [(Int32, String, FileIdentity)]
+    let volumeIdentifier: (URL) -> String
+    init(location: VolumeIndexLocation, rootFD: Int32, parentFD: Int32, fileFD: Int32, parentIdentity: FileIdentity, fileIdentity: FileIdentity, directoryProofs: [(Int32, String, FileIdentity)], volumeIdentifier: @escaping (URL) -> String) {
+        self.location = location; self.rootFD = rootFD; self.parentFD = parentFD; self.fileFD = fileFD
+        self.parentIdentity = parentIdentity; self.fileIdentity = fileIdentity; self.volumeIdentifier = volumeIdentifier; self.directoryProofs = directoryProofs
+    }
+    deinit { close(fileFD); close(parentFD); close(rootFD); for proof in directoryProofs { close(proof.0) } }
+    func validate(forceIdentity: Bool) throws {
+        for proof in directoryProofs {
+            var metadata = stat()
+            guard fstatat(proof.0, proof.1, &metadata, AT_SYMLINK_NOFOLLOW) == 0, metadata.st_mode & S_IFMT == S_IFDIR, Int64(metadata.st_dev) == proof.2.device, UInt64(metadata.st_ino) == proof.2.inode else { throw CacheSSDError.message("Uma pasta do índice mudou ou foi redirecionada.") }
+        }
+        var root = stat(), parent = stat(), file = stat(), currentRoot = stat(), currentFile = stat()
+        let expected = location.storageRoot.identity
+        guard fstat(rootFD, &root) == 0, fstat(parentFD, &parent) == 0, fstat(fileFD, &file) == 0,
+              lstat(location.storageRoot.url.path, &currentRoot) == 0, fstatat(parentFD, location.url.lastPathComponent, &currentFile, AT_SYMLINK_NOFOLLOW) == 0,
+              Int64(root.st_dev) == expected.device, UInt64(root.st_ino) == expected.inode,
+              currentRoot.st_dev == root.st_dev, currentRoot.st_ino == root.st_ino, currentRoot.st_mode & S_IFMT == S_IFDIR,
+              Int64(parent.st_dev) == parentIdentity.device, UInt64(parent.st_ino) == parentIdentity.inode,
+              Int64(file.st_dev) == fileIdentity.device, UInt64(file.st_ino) == fileIdentity.inode,
+              currentFile.st_dev == file.st_dev, currentFile.st_ino == file.st_ino, currentFile.st_mode & S_IFMT == S_IFREG,
+              file.st_nlink == 1, volumeIdentifier(location.storageRoot.url).caseInsensitiveCompare(expected.volumeUUID) == .orderedSame else { throw CacheSSDError.message("O armazenamento do índice mudou. A conexão foi preservada sem criar substitutos.") }
+        if forceIdentity {
+            var filesystem = statfs()
+            guard VolumeScanRoot.unredirected(location.storageRoot.url), fstatfs(rootFD, &filesystem) == 0, filesystem.f_flags & UInt32(MNT_RDONLY) == 0 else { throw CacheSSDError.message("O volume do índice está indisponível ou não permite escrita.") }
+        }
+    }
 }
 
 public struct IndexStoragePolicy: Codable, Equatable, Sendable {
+    private final class UUIDAliases: @unchecked Sendable {
+        let lock = NSLock()
+        var values: [String: String] = [:]
+        func resolve(native: String, at url: URL) -> String {
+            lock.lock(); let cached = values[native]; lock.unlock()
+            if let cached { return cached }
+            var fresh = URL(fileURLWithPath: url.path, isDirectory: true)
+            fresh.removeAllCachedResourceValues()
+            // The sealed boot snapshot's native UUID can differ from the
+            // logical volume UUID used by Foundation/VolumeInfo. Key this
+            // equivalence by native UUID, never a mutable mountpoint or name.
+            let logical = (try? fresh.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? native
+            lock.lock()
+            if values.count >= 128 { values.removeAll(keepingCapacity: true) }
+            values[native] = logical
+            lock.unlock()
+            return logical
+        }
+    }
+    private static let aliases = UUIDAliases()
     public let maximumBytes: Int64?
     public let minimumFreeBytes: Int64
     public static let internalStorage = IndexStoragePolicy(maximumBytes: 536_870_912, minimumFreeBytes: 268_435_456)
@@ -111,13 +217,32 @@ public struct IndexStoragePolicy: Codable, Equatable, Sendable {
         guard statfs(url.path, &metadata) == 0 else { return "" }
         return withUnsafePointer(to: &metadata.f_fstypename) { $0.withMemoryRebound(to: CChar.self, capacity: Int(MFSNAMELEN)) { String(cString: $0) } }
     }
-    public static func volumeIdentifier(_ url: URL) -> String { (try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }
+    public static func volumeIdentifier(_ url: URL) -> String {
+        struct VolumeUUIDBuffer { var length: UInt32 = 0; var uuid: uuid_t = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) }
+        var attributes = attrlist(), result = VolumeUUIDBuffer()
+        attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT); attributes.volattr = UInt32(ATTR_VOL_INFO) | UInt32(ATTR_VOL_UUID)
+        if getattrlist(url.path, &attributes, &result, MemoryLayout<VolumeUUIDBuffer>.size, 0) == 0, result.length >= MemoryLayout<VolumeUUIDBuffer>.size {
+            let uuid = UUID(uuid: result.uuid).uuidString
+            if uuid != "00000000-0000-0000-0000-000000000000" { return aliases.resolve(native: uuid, at: url) }
+        }
+        var fresh = URL(fileURLWithPath: url.path, isDirectory: true)
+        fresh.removeAllCachedResourceValues()
+        return (try? fresh.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? ""
+    }
     public static func location(internalDirectory: URL, externalVolume: VolumeInfo? = nil, installationID: String, targetID: String,
                                 filesystemType: (URL) -> String = IndexStoragePolicy.filesystemType,
                                 volumeIdentifier: (URL) -> String = IndexStoragePolicy.volumeIdentifier,
                                 freeBytes: (URL) -> Int64 = Volumes.free) throws -> VolumeIndexLocation {
         let name = SHA256.hash(data: Data(targetID.utf8)).map { String(format: "%02x", $0) }.joined()
-        guard let volume = externalVolume else { return VolumeIndexLocation(url: internalDirectory.appendingPathComponent("volume-index-\(name).sqlite"), policy: .internalStorage, storageVolumeUUID: nil) }
+        guard let volume = externalVolume else {
+            var anchor = internalDirectory, metadata = stat()
+            while lstat(anchor.path, &metadata) != 0 {
+                guard errno == ENOENT, anchor.path != "/" else { throw CacheSSDError.message("A pasta interna dos índices está indisponível.") }
+                anchor.deleteLastPathComponent()
+            }
+            let binding = try VolumeScanRoot(url: anchor, volumeUUID: volumeIdentifier(anchor), isInternal: true)
+            return VolumeIndexLocation(url: internalDirectory.appendingPathComponent("volume-index-\(name).sqlite"), policy: .internalStorage, storageVolumeUUID: nil, storageRoot: binding)
+        }
         let root = URL(fileURLWithPath: volume.path, isDirectory: true)
         guard Paths.safeComponent(installationID), !volume.isInternal, volume.isWritable, VolumeScanRoot.unredirected(root),
               filesystemType(root).lowercased() == "apfs", volumeIdentifier(root).caseInsensitiveCompare(volume.uuid) == .orderedSame,
@@ -133,7 +258,8 @@ public struct IndexStoragePolicy: Codable, Equatable, Sendable {
             }
             guard metadata.st_mode & S_IFMT == S_IFDIR else { throw CacheSSDError.message("A pasta dos índices foi redirecionada ou não é uma pasta.") }
         }
-        return VolumeIndexLocation(url: directory.appendingPathComponent("\(name).sqlite"), policy: .externalSSD, storageVolumeUUID: volume.uuid)
+        let binding = try VolumeScanRoot(url: root, volumeUUID: volume.uuid, isInternal: false, isWritable: true)
+        return VolumeIndexLocation(url: directory.appendingPathComponent("\(name).sqlite"), policy: .externalSSD, storageVolumeUUID: volume.uuid, storageRoot: binding)
     }
 }
 

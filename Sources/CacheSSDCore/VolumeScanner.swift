@@ -16,6 +16,7 @@ extension ScanIndex {
         if hasMarker {
             let versions = try execute("SELECT version FROM volume_format")
             guard versions.count == 1, Self.integer(versions[0], "version") == 1 else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
+            if metadataLookupOnly { return }
         } else {
             guard try execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('volume_targets','volume_queue','volume_sources','volume_hardlinks','volume_ownership','volume_phase') LIMIT 1").isEmpty else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
             try execute("SAVEPOINT volume_format_creation")
@@ -217,6 +218,7 @@ public final class VolumeScanner {
                     guard let previous = try? JSONDecoder().decode(VolumeScanTarget.self, from: Data(ScanIndex.string(row, "target").utf8)), previous.schemaVersion == 1, (try? previous.validateStructure()) != nil else { continue }
                     if !retainedKnown { retainedKnown = true; continue }
                     phaseChanged(.resetting)
+                    try index.checkVolumeWork()
                     try index.execute("DELETE FROM sessions WHERE id=?", [.text(ScanIndex.string(row, "id"))])
                 }
                 time = ScanIndex.double(last, "started"); cursor = ScanIndex.string(last, "id")
@@ -228,6 +230,7 @@ public final class VolumeScanner {
     private func reset(session: UUID, rootID: String, relative: String, index: ScanIndex) throws {
         phaseChanged(.resetting)
         defer { phaseChanged(.revalidating) }
+        try index.checkVolumeWork()
         try index.resetVolumeDirectory(session: session, rootID: rootID, relative: relative)
     }
     private func revalidate(session: UUID, target: VolumeScanTarget, index: ScanIndex, cancellation: CancellationFlag, progress: (ScanProgress) -> Void) throws {
@@ -293,7 +296,7 @@ public final class VolumeScanner {
         if let resumeSessionID {
             guard let previous = try index.volumeTarget(sessionID: resumeSessionID), previous.id == target.id,
                   Set(previous.roots.map(\.volumeUUID)) == Set(target.roots.map(\.volumeUUID)),
-                  previous.roots.allSatisfy({ old in target.roots.contains { $0.volumeUUID == old.volumeUUID && $0.identity.inode == old.identity.inode } }) else { throw CacheSSDError.message("A análise não corresponde aos volumes selecionados.") }
+                  previous.roots.allSatisfy({ old in target.roots.contains { $0.id == old.id && $0.volumeUUID == old.volumeUUID && $0.role == old.role && $0.identity.inode == old.identity.inode } }) else { throw CacheSSDError.message("A análise não corresponde aos volumes selecionados.") }
             target = try VolumeScanTarget(id: target.id, name: target.name, roots: target.roots, displayRoot: target.displayRoot, dataNamespace: previous.dataNamespace)
             var collision = stat()
             guard !target.isSystemGroup || lstat(target.displayRoot.appendingPathComponent(target.dataNamespace).path, &collision) != 0 && errno == ENOENT else { throw CacheSSDError.message("O namespace da análise passou a existir no volume. Inicie uma nova análise; o índice anterior foi preservado.") }
@@ -312,7 +315,7 @@ public final class VolumeScanner {
                 try index.execute("COMMIT")
             } catch { index.abandon(id: session); throw error }
         }
-        func resourcesAllowed() -> Bool { (policy.maximumBytes.map { index.physicalDatabaseBytes() < $0 } ?? true) && freeBytes(index.url.deletingLastPathComponent()) >= policy.minimumFreeBytes }
+        func resourcesAllowed() -> Bool { index.storageIsAvailable() && (policy.maximumBytes.map { index.physicalDatabaseBytes() < $0 } ?? true) && freeBytes(index.url.deletingLastPathComponent()) >= policy.minimumFreeBytes }
         do {
           return try index.withVolumeWorkChecks(cancellation: cancellation, allowed: resourcesAllowed) {
             try pruneOlderSessions(session: session, root: target.displayRoot, index: index)
@@ -321,6 +324,7 @@ public final class VolumeScanner {
                 try index.execute("UPDATE volume_phase SET phase='revalidating' WHERE session=?", [.text(session.uuidString)])
                 try revalidate(session: session, target: target, index: index, cancellation: cancellation, progress: progress)
                 try index.execute("UPDATE sessions SET root=?,state='scanning' WHERE id=?", [.text(target.displayRoot.path), .text(session.uuidString)])
+                try index.execute("UPDATE entries SET name=? WHERE session=? AND path=''", [.text(target.name), .text(session.uuidString)])
                 try index.execute("UPDATE volume_targets SET target=? WHERE session=?", [.text(try encoded(target)), .text(session.uuidString)])
             }
             phaseChanged(.enumerating)
@@ -328,6 +332,11 @@ public final class VolumeScanner {
         var read = 0, observedBytes: Int64 = 0, paused = false
         let exclusions = [index.url.deletingLastPathComponent(), home.appendingPathComponent("Library/Application Support/CacheSSD")] + additionalExcludedRoots
         let excludedRoots = exclusions.flatMap { [$0] + (DataVolumePaths.alias(of: $0).map { [$0] } ?? []) }
+        let excludedPaths = excludedRoots.map { $0.path.lowercased() }
+        func excludedPath(_ url: URL) -> Bool {
+            let path = url.path.lowercased()
+            return excludedPaths.contains { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }
+        }
         let cacheSources = CacheCatalog.all(home: home).map { $0.source.path }
         func storageAvailable() -> Bool { (policy.maximumBytes.map { index.byteSize() < $0 } ?? true) && freeBytes(index.url.deletingLastPathComponent()) >= policy.minimumFreeBytes }
         while !cancellation.isCancelled {
@@ -343,7 +352,7 @@ public final class VolumeScanner {
             let storedKey = storedSource.map { ScanIndex.string($0, "path") }
             let directoryKey = storedKey ?? key(root: root, relative: directoryRelative, target: target)
             try index.execute("UPDATE entries SET coverage=0,issue=NULL WHERE session=? AND path=? AND directory=1", [.text(session.uuidString), .text(directoryKey)])
-            if excludedRoots.contains(where: { Paths.contains(directory, in: $0) }) {
+            if excludedPath(directory) {
                 try index.markCoverage(id: session, relative: directoryKey, coverage: .unknown, issue: "Registros privados do DiskWing; conteúdo excluído da análise")
                 try index.execute("UPDATE volume_queue SET state='done' WHERE session=? AND rootID=? AND relative=?", [.text(session.uuidString), .text(root.id), .text(directoryRelative)])
                 return true
@@ -382,7 +391,7 @@ public final class VolumeScanner {
                 let folder = type == S_IFDIR, link = type == S_IFLNK
                 var issue: String?, coverage: ScanCoverage = .complete, logical: Int64 = 0, blocks: Int64 = 0, files = 0
                 if !valid { issue = "Não foi possível ler"; coverage = .unknown }
-                else if excludedRoots.contains(where: { Paths.contains(source, in: $0) }) {
+                else if excludedPath(source) {
                     issue = "Registros privados do DiskWing; conteúdo excluído da análise"; coverage = .unknown
                 } else if Int64(metadata.st_dev) != root.identity.device {
                     let member = target.roots.contains { other in
@@ -432,6 +441,7 @@ public final class VolumeScanner {
         }
         let outstanding = ScanIndex.integer(try index.execute("SELECT COUNT(*) count FROM volume_queue WHERE session=? AND state<>'done'", [.text(session.uuidString)]).first ?? [:], "count")
         phaseChanged(.aggregating)
+        try index.checkVolumeWork()
         try index.execute("UPDATE volume_phase SET phase='aggregating' WHERE session=?", [.text(session.uuidString)])
         try index.finalizeVolume(session: session, state: cancellation.isCancelled ? "cancelled" : paused ? "paused" : outstanding > 0 ? "partial" : "complete")
         return try index.report(id: session, reachedLimit: paused || outstanding > 0)
