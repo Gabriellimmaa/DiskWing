@@ -47,16 +47,28 @@ public enum ShellIntegration {
         }
         _cachessd_route() {
           local key value output
-          local cachessd_command="${(L)${1-}}"
+          local cachessd_command="${1-}"
           local -a cachessd_route_flags
           [[ "${1-}" == *--backend* || "${1-}" == *--global-store* ]] && cachessd_route_flags+=(--omit-bun)
           [[ "${1-}" == *--link-mode* ]] && cachessd_route_flags+=(--omit-uv)
-          local cachessd_option
-          for cachessd_option in ${(z)cachessd_command}; do
-            case "$cachessd_option" in
-              --u*|--g*|--p*|--c*|npm_config_userconfig=*|npm_config_globalconfig=*|npm_config_prefix=*|npm_config_cache=*) cachessd_route_flags+=(--omit-npm); break ;;
-              --*) ;;
-              -*c*) cachessd_route_flags+=(--omit-npm); break ;;
+          local cachessd_option cachessd_name cachessd_selector
+          for cachessd_option in ${(Q)${(z)cachessd_command}}; do
+            if [[ "$cachessd_option" == --* ]]; then
+              cachessd_name="${(L)cachessd_option}"
+              cachessd_name="${cachessd_name#--}"
+              cachessd_name="${cachessd_name%%=*}"
+              if [[ -n "$cachessd_name" ]]; then
+                for cachessd_selector in userconfig globalconfig prefix cache; do
+                  if [[ "$cachessd_selector" == "$cachessd_name"* || "$cachessd_name" == "$cachessd_selector"* ]]; then
+                    cachessd_route_flags+=(--omit-npm); break 2
+                  fi
+                done
+              fi
+            elif [[ "$cachessd_option" == -*C* ]]; then
+              cachessd_route_flags+=(--omit-npm); break
+            fi
+            case "${(L)cachessd_option}" in
+              npm_config_userconfig=*|npm_config_globalconfig=*|npm_config_prefix=*|npm_config_cache=*) cachessd_route_flags+=(--omit-npm); break ;;
             esac
           done
           _cachessd_restore

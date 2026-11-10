@@ -77,10 +77,10 @@ final class CacheConfigurationTests: XCTestCase {
         let store = Store(base:root.appendingPathComponent("support"))
         try ShellIntegration.install(helper:helper,store:store,home:home)
         let integration = store.base.appendingPathComponent("integration.zsh")
-        let commands = "source '\(integration.path)'; : > '\(log.path)'; _cachessd_route 'npm --userconf=sample install'; _cachessd_route 'npm -gCsample install'; _cachessd_route 'NPM_CONFIG_GLOBALCONFIG=sample npm install'; _cachessd_route 'npm install --offline --ignore-scripts'"
+        let commands = "source '\(integration.path)'; : > '\(log.path)'; _cachessd_route 'npm --userconf=sample install'; _cachessd_route 'npm -gCsample install'; _cachessd_route 'NPM_CONFIG_GLOBALCONFIG=sample npm install'; _cachessd_route 'npm install --offline --ignore-scripts'; _cachessd_route 'npm \"--userconf=sample\" install'; _cachessd_route 'npm exec --package=sample --offline'"
         let result = try CommandRunner.run(URL(fileURLWithPath:"/bin/zsh"),["-c",commands],environment:["PATH":"/usr/bin:/bin","HOME":home.path])
         XCTAssertEqual(result.status,0,result.output)
-        XCTAssertEqual(try String(contentsOf:log).components(separatedBy:"--omit-npm").count-1,3)
+        XCTAssertEqual(try String(contentsOf:log).components(separatedBy:"--omit-npm").count-1,4)
     }
     func testRoutingDoesNotReplaceGlobalOrSelectedConfiguration() throws {
         let disk = root.appendingPathComponent("volume"), data = disk.appendingPathComponent("cache")
