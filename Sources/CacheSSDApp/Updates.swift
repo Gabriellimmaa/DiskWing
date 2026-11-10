@@ -12,15 +12,17 @@ import Sparkle
     @Published var enabled = false
     var operationInProgress: () -> Bool = { true }
     private let store: Store
+    private let disabled: Bool
+    private var updateLease: UpdateSessionLease?
 #if DISKWING_UPDATER
     private var controller: SPUStandardUpdaterController?
     private var observation: AnyCancellable?
     private var deferredInstall: (() -> Void)?
     private var timer: Timer?
-    private var updateLease: OperationLease?
 #endif
     init(store: Store, disabled: Bool = false) {
         self.store = store
+        self.disabled = disabled
         super.init()
         guard !disabled else { return }
 #if DISKWING_UPDATER
@@ -49,7 +51,8 @@ import Sparkle
     }
     func check() {
 #if DISKWING_UPDATER
-        guard available, !operationInProgress(), !sessionInProgress else { return }
+        guard available, !sessionInProgress, UpdatePolicy.canCheck(automatic: false, consent: enabled, state: UpdateSafetyState(workInProgress: operationInProgress())) else { return }
+        guard (try? requireIdle()) != nil else { return }
         start(); controller?.checkForUpdates(nil)
 #endif
     }
@@ -57,21 +60,33 @@ import Sparkle
     private var started = false
     private func start() {
         guard !started else { return }; started = true
-        controller?.updater.automaticallyDownloadsUpdates = false
-        controller?.updater.sendsSystemProfile = false
+        controller?.updater.automaticallyChecksForUpdates = enabled
+        controller?.updater.automaticallyDownloadsUpdates = UpdatePolicy.automaticDownloads
+        controller?.updater.sendsSystemProfile = UpdatePolicy.systemProfiling
         controller?.startUpdater()
     }
-    private func requireIdle() throws {
-        guard !operationInProgress(), !store.operations().contains(where: \.isPending), store.unreadableOperationRecords().isEmpty, store.pendingConfigurationRecords().isEmpty else { throw CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
-        if updateLease == nil { updateLease = try OperationLease(store: store) }
-    }
 #endif
+    /// Kept outside the optional Sparkle compilation so the GUI bridge's lock
+    /// ordering and failure cleanup are directly testable without a feed.
+    func requireIdle() throws {
+        guard !disabled else { throw CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
+        do {
+            if let updateLease { try updateLease.revalidate() }
+            else { updateLease = try UpdateSessionLease(store: store, isBusy: { [weak self] in self?.operationInProgress() ?? true }) }
+        } catch { updateLease = nil; throw error }
+    }
 }
 
 #if DISKWING_UPDATER
 extension Updates: SPUUpdaterDelegate {
-    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws { try requireIdle() }
+    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
+        guard UpdatePolicy.canCheck(automatic: updateCheck != .updates, consent: enabled, state: UpdateSafetyState(workInProgress: operationInProgress())) else { throw CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
+        try requireIdle()
+    }
     func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws { try requireIdle() }
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        if deferredInstall == nil { updateLease = nil }
+    }
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         guard (try? requireIdle()) == nil else { return false }
         deferredInstall = installHandler
