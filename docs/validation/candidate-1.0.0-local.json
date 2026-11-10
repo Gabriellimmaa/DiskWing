@@ -155,7 +155,16 @@
     "exactHeadStatus": "success",
     "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
     "mainRun": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42779554478",
-    "mainStatus": "success"
+    "mainStatus": "success",
+    "handoff": {
+      "pullRequest": "https://github.com/Gabriellimmaa/DiskWing/pull/20",
+      "head": "d3692d104091d27a1e6322c1f6eaace51e1585d9",
+      "exactHeadRun": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
+      "mainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
+      "mainRun": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
+      "status": "success",
+      "runtimeSourcesResourcesPackagingUnchanged": true
+    }
   },
   "supersededBuilds": [
     {
@@ -184,5 +193,37 @@
       "macos-26"
     ],
     "optionalUpdaterCompiledOnBoth": true
+  },
+  "localInstallation": {
+    "date": "2026-11-10",
+    "status": "installed_and_launched",
+    "candidate": {
+      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+      "buildNumber": "6",
+      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "version": "1.0.0"
+    },
+    "applicationIdentifier": "com.cachessd.app",
+    "destination": "current user Applications directory on internal storage",
+    "archiveHashVerified": true,
+    "installedHelperHashVerified": true,
+    "installedSignatureVerified": true,
+    "previousApplication": {
+      "version": "0.2.0-dev",
+      "buildNumber": "3",
+      "preserved": true
+    },
+    "launchObservation": {
+      "normalApplicationProcessObserved": true,
+      "onScreenWindowObserved": true,
+      "title": "DiskWing",
+      "width": 1240,
+      "height": 785,
+      "scope": "Observed after the authorized launch; no claim about future foreground state."
+    },
+    "maintainerInterfaceFeedback": "pending",
+    "humanAcceptanceAttested": false,
+    "personalMigrationsInitiatedByAssistant": false,
+    "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
   }
 }

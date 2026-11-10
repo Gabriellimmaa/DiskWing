@@ -27,7 +27,9 @@
       "validation": "issues_and_milestones_verified",
       "evidence": [
         "docs/ROADMAP.md",
-        "docs/TRACEABILITY.json"
+        "docs/TRACEABILITY.json",
+        "docs/context/SESSION-2026-11-10.md",
+        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
       ],
       "externalDependencies": [],
       "milestone": 1,
@@ -176,7 +178,9 @@
         "docs/validation/bundle-acceptance.json",
         "docs/validation/AUTONOMOUS-2026-11-10.md",
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
-        "docs/validation/candidate-1.0.0-local.json"
+        "docs/validation/candidate-1.0.0-local.json",
+        "docs/context/SESSION-2026-11-10.md",
+        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
@@ -192,7 +196,7 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/8",
       "acceptance": "Internal installation remains usable without SSD; production requires Developer ID/notarization; signed Sparkle updates and removal preserve configuration. No signing keys in Git.",
       "implementation": "tooling_implemented",
-      "validation": "exact_full_archive_candidate6_internal_lifecycle_and_dual_os_ci_passed_signed_distribution_pending",
+      "validation": "exact_candidate_installed_and_launched_on_internal_storage_maintainer_feedback_and_signed_distribution_pending",
       "evidence": [
         "build.py",
         "scripts/install_local.py",
@@ -208,7 +212,9 @@
         "docs/validation/bundle-acceptance.json",
         "docs/validation/AUTONOMOUS-2026-11-10.md",
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
-        "docs/validation/candidate-1.0.0-local.json"
+        "docs/validation/candidate-1.0.0-local.json",
+        "docs/context/SESSION-2026-11-10.md",
+        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
       ],
       "externalDependencies": [
         "Developer ID Application identity and notarization profile unavailable.",
@@ -247,7 +253,7 @@
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
     "maxActiveWorkers": 3,
-    "phase": "local_candidate_complete_external_gates_pending",
+    "phase": "local_candidate_installed_awaiting_maintainer_feedback_and_external_gates",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -451,6 +457,39 @@
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/18"
       },
       {
+        "id": "LOCAL-INSTALL-01",
+        "requirement": "M7",
+        "priority": "maintainer_validation",
+        "classification": "explicitly_authorized",
+        "title": "Install and open the exact local candidate on internal storage",
+        "owner": "coordinator",
+        "dependsOn": [
+          "QA-01",
+          "RELEASE-01"
+        ],
+        "acceptance": "Exact archive/helper/version/signature verified; prior app preserved; normal installed application and visible window observed",
+        "status": "complete_local",
+        "evidence": [
+          "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+        ]
+      },
+      {
+        "id": "LOCAL-UI-01",
+        "requirement": "M6",
+        "priority": "maintainer_validation",
+        "classification": "human_feedback",
+        "title": "Collect maintainer interface feedback on installed build 6",
+        "owner": "maintainer",
+        "dependsOn": [
+          "LOCAL-INSTALL-01"
+        ],
+        "acceptance": "Record actual feedback with screen/language/window context, separately from public accessibility and beta acceptance",
+        "status": "awaiting_maintainer_feedback",
+        "evidence": [
+          "Installation/launch observed; no maintainer approval or interface results supplied yet."
+        ]
+      },
+      {
         "id": "EXTERNAL-01",
         "requirement": "M8",
         "priority": "release_gate",
@@ -466,11 +505,11 @@
         "evidence": []
       }
     ],
-    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42779554478",
-    "lastIntegratedCommit": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
-    "nextAction": "Verify final documentation merge/main; then resume when external signing/update keys, physical Macs/macOS14, accessibility reviewers, disposable fault device and ten real participants are available. Production rebuild must receive its own affected qualification.",
-    "lastVerifiedMainCommit": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
-    "integrationBranch": "feature/autonomous-delivery",
+    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
+    "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
+    "nextAction": "Collect maintainer interface feedback on the explicitly installed/opened build 6; preserve installation, prior backup and immutable archive. Inspect real Git/CI state before resuming. External signing/update keys, another Mac/macOS14, human PT/EN accessibility, disposable physical-fault device and ten real participants remain pending. Functional fixes/production rebuild need a new candidate and affected qualification.",
+    "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
+    "integrationBranch": "main",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
     "lastVerifiedCodeCommit": "4db260076b602c309c3493f9b06548b0751f7356",
     "mainCIVerification": "success",
@@ -481,6 +520,42 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateEvidence": "docs/validation/candidate-1.0.0-local.json"
+    "candidateEvidence": "docs/validation/candidate-1.0.0-local.json",
+    "implementationMerge": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
+    "handoffPR": "https://github.com/Gabriellimmaa/DiskWing/pull/20",
+    "handoffExactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
+    "sessionContext": "docs/context/SESSION-2026-11-10.md",
+    "localInstallation": {
+      "date": "2026-11-10",
+      "status": "installed_and_launched",
+      "candidate": {
+        "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+        "buildNumber": "6",
+        "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+        "version": "1.0.0"
+      },
+      "applicationIdentifier": "com.cachessd.app",
+      "destination": "current user Applications directory on internal storage",
+      "archiveHashVerified": true,
+      "installedHelperHashVerified": true,
+      "installedSignatureVerified": true,
+      "previousApplication": {
+        "version": "0.2.0-dev",
+        "buildNumber": "3",
+        "preserved": true
+      },
+      "launchObservation": {
+        "normalApplicationProcessObserved": true,
+        "onScreenWindowObserved": true,
+        "title": "DiskWing",
+        "width": 1240,
+        "height": 785,
+        "scope": "Observed after the authorized launch; no claim about future foreground state."
+      },
+      "maintainerInterfaceFeedback": "pending",
+      "humanAcceptanceAttested": false,
+      "personalMigrationsInitiatedByAssistant": false,
+      "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+    }
   }
 }

@@ -20,7 +20,7 @@ The machine-readable source of requirement IDs, issues, acceptance criteria, val
 
 M0–M5 have code and local validation evidence, including actual temporary native workflows and a one-million-entry explorer benchmark. M6 has PT/EN, native keyboard/accessibility-tree smoke and pending full VoiceOver acceptance. M7 has verified local installation/packaging and optional Sparkle compilation; Developer ID/notarization and end-to-end updates remain unverified. M8 has the protocol and readiness validator, with human recruitment and seven-day observation still pending.
 
-See [implementation evidence](validation/IMPLEMENTATION-2026-11-10.md) and [all nine GitHub milestones](https://github.com/Gabriellimmaa/DiskWing/milestones). Public v1 readiness is false until the independent gates pass. Historical plans remain unchanged.
+PR12/19/20 are merged; engineering handoff main 1947aec passed macOS 15/26 CI. Local candidate 1.0.0 build 6 was subsequently installed and opened on the maintainer's Mac at their explicit request, preserving the previous application. Maintainer interface feedback is pending. See [the consolidated cycle](context/SESSION-2026-11-10.md), [installation record](validation/LOCAL-INSTALLATION-2026-11-10.md), [initial implementation evidence](validation/IMPLEMENTATION-2026-11-10.md) and [all nine GitHub milestones](https://github.com/Gabriellimmaa/DiskWing/milestones). Public v1 readiness is false until the independent gates pass. Historical plans remain unchanged.
 
 ## Follow-on qualification and next priorities
 
@@ -30,12 +30,12 @@ The follow-on portable acceptance kit adds self-contained bundled checks, a real
 
 The next independent gates, in order of prerequisites, are:
 
-1. Review/CI for the portable acceptance kit, then another Apple Silicon Mac's disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7). The packaged helper/lifecycle runner prepares repeatable generated samples; [the manual handoff](acceptance/SECOND_MAC.md) records the independent human checks without treating automated results as completion.
-2. Hands-on keyboard/VoiceOver and both-language acceptance across the two core flows, keeping user data untouched (M6).
-3. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent and recovery (M7). Credentials/hosting are external prerequisites; no public release is implicit.
-4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness.
+1. Collect the maintainer's interface feedback on installed build 6 (M6); preserve the installation and backup while review is in progress. This is not yet a completed human acceptance result.
+2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a larger build number and its own affected qualification; protected signing/update keys remain external prerequisites.
+3. Another Apple Silicon Mac/macOS 14 disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7), plus hands-on keyboard/VoiceOver and both-language acceptance across the two core flows (M6). The packaged helper/lifecycle runner and [manual handoff](acceptance/SECOND_MAC.md) keep generated checks distinct from independent human evidence.
+4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness. Private participant outreach requires specific authorization.
 
-Physical cable/power faults must use a separate disposable test device, never the development SSD. Additional filesystems and multi-gigabyte sequential copy throughput remain open qualification work.
+Physical cable/power faults must use a separate disposable test device, never the development SSD. A fully written 4 GiB same-volume copy/cancellation was qualified locally; physical cross-device throughput, additional devices/filesystems and cable/power faults remain open qualification work.
 
 ## Baseline
 
