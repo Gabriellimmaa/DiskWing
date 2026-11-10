@@ -22,15 +22,18 @@ public final class MigrationEngine {
     private let checkpoint: (OperationJournal) throws -> Void
     private let adapterInspector: (CacheDescriptor) -> AdapterStatus
     private let configurationCheckpoint: (ConfigurationChange) throws -> Void
+    private let nativeExecutableOverrides: [String: URL]
     public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, volumeProvider: @escaping (String) -> VolumeInfo? = { Volumes.find(uuid: $0) }, verifyNative: Bool = true,
                 busyCheck: @escaping BusyCheck = { try BusyInspector.inspect(paths: $0, tool: $1) },
                 checkpoint: @escaping (OperationJournal) throws -> Void = { _ in },
                 adapterInspector: ((CacheDescriptor) -> AdapterStatus)? = nil,
-                configurationCheckpoint: @escaping (ConfigurationChange) throws -> Void = { _ in }) {
+                configurationCheckpoint: @escaping (ConfigurationChange) throws -> Void = { _ in },
+                nativeExecutableOverrides: [String: URL] = [:]) {
         self.store = store; self.home = home; self.volumeProvider = volumeProvider; self.verifyNative = verifyNative; self.checkpoint = checkpoint
         self.busyCheck = busyCheck
         self.adapterInspector = adapterInspector ?? { CacheAdapters.inspect($0, home: home, directory: home) }
         self.configurationCheckpoint = configurationCheckpoint
+        self.nativeExecutableOverrides = nativeExecutableOverrides
     }
 
     public func migrate(toolID: String, removeLocal: Bool, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
@@ -258,7 +261,12 @@ public final class MigrationEngine {
     private func nativeValidation(_ tool: CacheDescriptor, root: URL) throws {
         var command: URL?, arguments: [String] = []
         switch tool.id {
-        case "npm": command = ToolLocator.locate("npm"); arguments = ["config", "get", "cache"]
+        case "npm":
+            command = ToolLocator.locate("npm")
+            // npm config get rejects UUID-containing values as protected. A script
+            // owned by this validation reports npm's effective environment instead.
+            // This never verifies/cleans the cache or executes project lifecycle hooks.
+            arguments = ["run-script", "--silent", "--ignore-scripts", "--offline", "--audit=false", "--fund=false", "--update-notifier=false", "--workspaces=false", "--script-shell=/bin/sh", "diskwing-cache-path"]
         case "bun": command = ToolLocator.locate("bun"); arguments = ["pm", "cache"]
         case "pip": command = ToolLocator.locate("python3"); arguments = ["-m", "pip", "cache", "info"]
         case "cocoapods": command = ToolLocator.locate("pod"); arguments = ["cache", "list", "--short"]
@@ -277,6 +285,12 @@ public final class MigrationEngine {
             arguments = ["--version", "--no-daemon"]
         default: break
         }
+        // Explicit callers can supply a launcher for an already installed runtime.
+        // Normal application/CLI construction never supplies an override.
+        if let executable = nativeExecutableOverrides[tool.id] {
+            guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw CacheSSDError.message(L10n.text("\(tool.name) não foi localizado para validar a migração.")) }
+            command = executable
+        }
         guard let command else { throw CacheSSDError.message(L10n.text("\(tool.name) não foi localizado para validar a migração.")) }
         var env = ToolLocator.environment(adding: ["HOME": home.path, tool.environmentKey: root.path])
         if tool.id == "go" { env["GOTOOLCHAIN"] = "local" }
@@ -285,8 +299,15 @@ public final class MigrationEngine {
         let validation = store.base.appendingPathComponent("validation-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: validation, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: validation) }
-        // Bun's package-manager commands require a project, even when only querying the cache.
-        try Data("{\"name\":\"cachessd-validation\",\"version\":\"0.0.0\",\"private\":true}".utf8).write(to: validation.appendingPathComponent("package.json"))
+        // Only application-owned generated files are executable here. No package
+        // is installed, and no user project or its lifecycle hooks are evaluated.
+        var package: [String: Any] = ["name": "cachessd-validation", "version": "0.0.0", "private": true]
+        if tool.id == "npm" {
+            package["scripts"] = ["diskwing-cache-path": "\"$npm_node_execpath\" diskwing-cache-path.cjs"]
+            try Data("process.stdout.write(process.env.npm_config_cache || '');\n".utf8).write(to: validation.appendingPathComponent("diskwing-cache-path.cjs"))
+        }
+        // Bun's package-manager commands also require a generated project.
+        try JSONSerialization.data(withJSONObject: package, options: .sortedKeys).write(to: validation.appendingPathComponent("package.json"))
         if tool.id == "go" {
             // The Go command can initialize telemetry even for `env`. Give this
             // explicit validation a fresh home/config; it never reads user opt-in state.
