@@ -142,4 +142,22 @@ final class VolumeScanStorageTests: XCTestCase {
         XCTAssertThrowsError(try selected.openIndex(createIfMissing: false))
         XCTAssertEqual(try FileTree.hash(selected.url), before)
     }
+    func testSystemTemporarySpellingCanOpenAndReopenThePrivateIndex() throws {
+        let fixture = Paths.physicalURL(FileManager.default.temporaryDirectory).appendingPathComponent("DiskWing-index-system-alias-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let directory = fixture.appendingPathComponent("new-private-store")
+        let selected = try IndexStoragePolicy.location(internalDirectory: directory, installationID: "generated", targetID: "default-temp")
+        let rawPrefix = selected.url.path.hasPrefix(selected.storageRoot.url.path + "/")
+        XCTAssertTrue(rawPrefix, "Physical URL spelling should remain bound before Foundation normalization")
+        let index = try selected.openIndex()
+        try index.close()
+        let reopened = try selected.openIndex(createIfMissing: false)
+        XCTAssertTrue(try reopened.sessions().isEmpty)
+        try reopened.close()
+        let retained = fixture.appendingPathComponent("retained-store")
+        try FileManager.default.moveItem(at: directory, to: retained)
+        try FileManager.default.createSymbolicLink(at: directory, withDestinationURL: retained)
+        XCTAssertThrowsError(try selected.openIndex(createIfMissing: false), "A real custom symlink remains forbidden even when the target identity matches")
+    }
 }

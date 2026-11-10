@@ -109,7 +109,11 @@ public struct VolumeIndexLocation: Sendable {
     }
     public func openIndex(createIfMissing: Bool = true, volumeIdentifier: @escaping (URL) -> String = IndexStoragePolicy.volumeIdentifier) throws -> ScanIndex {
         try validateStorage(volumeIdentifier: volumeIdentifier)
-        guard Paths.contains(url, in: storageRoot.url), url.path != storageRoot.url.path else { throw CacheSSDError.message("O índice não pertence ao volume escolhido.") }
+        // Both paths were constructed from this bound root. Do not ask
+        // Foundation to standardize an absent leaf: it may abbreviate only
+        // the existing /private/var parent and manufacture a scope mismatch.
+        let rootPath = storageRoot.url.path, prefix = rootPath == "/" ? "/" : rootPath + "/"
+        guard url.isFileURL, url.path.hasPrefix(prefix), url.path != rootPath else { throw CacheSSDError.message("O índice não pertence ao volume escolhido.") }
         let relative = String(url.path.dropFirst(storageRoot.url.path == "/" ? 1 : storageRoot.url.path.count + 1))
         let parts = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard parts.allSatisfy(Paths.safeComponent), let filename = parts.last else { throw CacheSSDError.message("O caminho do índice é inválido.") }
