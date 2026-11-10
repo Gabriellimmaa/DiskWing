@@ -170,4 +170,93 @@ import CacheSSDCore
         XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent("settings.json").path))
         XCTAssertEqual(try Data(contentsOf: rc), sentinel)
     }
+    func reviewed(_ action: ReviewAction, on model: AppModel, releaseSource: Bool = false) async throws {
+        model.notice = nil; model.errorMessage = nil; model.review = action; model.releaseLocal = releaseSource
+        model.execute(action)
+        try await wait(until: { !model.busy && !model.inventoryRunning })
+        XCTAssertNil(model.errorMessage)
+        if let error = model.errorMessage { throw CacheSSDError.message(error) }
+    }
+    func testExplorerMoveRecoverResolveJourneyInBothLanguages() async throws {
+        defer { L10n.preference = "system" }
+        for language in ["pt-BR", "en"] {
+            let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+            let session = try XCTUnwrap(context.container), model = AppModel(context: context)
+            model.setLanguage(language); model.chooseFolder()
+            try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+            model.search = "sample-001.txt"; try await wait(until: { !model.indexLoading })
+            let item = try XCTUnwrap(model.visibleItems.first)
+            let expected = try FileTree.digest(item.url, workspace: context.store.base)
+            model.selectedPath = item.path; model.reviewMove(item)
+            let move = try XCTUnwrap(model.review)
+            try await reviewed(move, on: model)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: item.path))
+            let completed = try XCTUnwrap(context.store.operations().first { $0.kind == "personalMove" })
+            let destination = URL(fileURLWithPath: try XCTUnwrap(completed.destination))
+            XCTAssertEqual(try FileTree.digest(destination, workspace: context.store.base), expected)
+            // Emulate the durable pending checkpoint at restart. Preserve the
+            // simulated Trash original and force recovery from the verified copy.
+            if let path = completed.trashPath {
+                try FileManager.default.moveItem(at: URL(fileURLWithPath: path), to: session.appendingPathComponent("preserved-journey-original.txt"))
+            }
+            var pending = completed; pending.phase = .interrupted
+            try context.store.writeDurably(pending, name: "operation-\(pending.id.uuidString).json")
+            let reopenedContext = try AppContext.resumeSamples(session: session), reopened = AppModel(context: reopenedContext)
+            XCTAssertEqual(reopened.preferences.language, language); XCTAssertEqual(reopened.section, .overview)
+            XCTAssertEqual(reopened.pendingRecoveryCount, 1)
+            let recovery = try XCTUnwrap(reopened.recoveries.first { $0.id == pending.id })
+            XCTAssertTrue(recovery.canRestoreSource)
+            try await reviewed(.recover(recovery), on: reopened)
+            XCTAssertEqual(try FileTree.digest(item.url, workspace: context.store.base), expected)
+            XCTAssertEqual(try FileTree.digest(destination, workspace: context.store.base), expected)
+            // Also cover a stale checkpoint after restored source publication:
+            // the visible resolve action closes the record without deleting copies.
+            pending = try context.store.read(OperationJournal.self, name: "operation-\(pending.id.uuidString).json")
+            pending.phase = .interrupted
+            try context.store.writeDurably(pending, name: "operation-\(pending.id.uuidString).json")
+            let finalContext = try AppContext.resumeSamples(session: session), finalModel = AppModel(context: finalContext)
+            let toResolve = try XCTUnwrap(finalModel.recoveries.first { $0.id == pending.id })
+            XCTAssertFalse(toResolve.canRestoreSource)
+            try await reviewed(.resolve(toResolve), on: finalModel)
+            XCTAssertEqual(finalModel.pendingRecoveryCount, 0)
+            XCTAssertEqual(try FileTree.digest(item.url, workspace: context.store.base), expected)
+            XCTAssertEqual(try FileTree.digest(destination, workspace: context.store.base), expected)
+        }
+    }
+    func testCacheReleaseRestoreLocalDisableJourneyInBothLanguages() async throws {
+        defer { L10n.preference = "system" }
+        for language in ["pt-BR", "en"] {
+            let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+            let model = AppModel(context: context); model.setLanguage(language)
+            let rc = context.home.appendingPathComponent(".zshrc"), original = "export DISKWING_SAMPLE_PROJECT=1\n"
+            try Data(original.utf8).write(to: rc)
+            try await reviewed(.integration, on: model)
+            XCTAssertTrue(model.settings.shellIntegrationEnabled)
+            model.refreshInventory(); try await wait(until: { !model.inventoryRunning })
+            let tool = try XCTUnwrap(model.tools.first { $0.id == "npm" })
+            let expected = try FileTree.digest(tool.source, tool: tool.id, workspace: context.store.base)
+            XCTAssertTrue(model.adapterStatuses[tool.id]?.canReleaseSource == true)
+            try await reviewed(.migration(tool), on: model, releaseSource: true)
+            XCTAssertEqual(FileTree.measure(tool.source).logical, 0)
+            let location = try XCTUnwrap(model.settings.locations[tool.id]), volume = try XCTUnwrap(model.selectedVolume)
+            let copy = tool.payload(at: URL(fileURLWithPath: volume.path).appendingPathComponent(location.relativePath))
+            XCTAssertEqual(try FileTree.digest(copy, tool: tool.id, workspace: context.store.base), expected)
+            try await reviewed(.restore(tool), on: model)
+            XCTAssertNil(model.settings.locations[tool.id])
+            XCTAssertEqual(try FileTree.digest(tool.source, tool: tool.id, workspace: context.store.base), expected)
+            XCTAssertEqual(try FileTree.digest(copy, tool: tool.id, workspace: context.store.base), expected)
+            model.setLocalOnly()
+            XCTAssertFalse(model.settings.useExternal)
+            try XCTUnwrap(context.samples).setVolumeConnected(false)
+            XCTAssertTrue(CacheRouter.decisions(settings: model.settings, volumes: context.volumes()).allSatisfy { $0.mode == "local" })
+            try await reviewed(.disableIntegration, on: model)
+            XCTAssertFalse(model.settings.shellIntegrationEnabled)
+            XCTAssertFalse(model.settings.useExternal)
+            let finalRC = try String(contentsOf: rc)
+            XCTAssertTrue(finalRC.contains(original)); XCTAssertFalse(finalRC.contains("CacheSSD managed integration"))
+            XCTAssertEqual(try FileTree.digest(tool.source, tool: tool.id, workspace: context.store.base), expected)
+            XCTAssertEqual(model.preferences.language, language)
+        }
+    }
+
 }
