@@ -51,6 +51,20 @@ public enum CacheAdapters {
               let raw = content.split(whereSeparator: { $0.isWhitespace }).first, raw.hasPrefix("go1.") else { return nil }
         return String(raw.dropFirst(2))
     }
+    static func expandedVersionIsQualified(toolID: String, version: String?) -> Bool {
+        guard let version, let qualified = qualifiedVersions[toolID] else { return false }
+        return qualified == version
+    }
+    static func runtimeAllowsRouting(toolID: String, home: URL, directory: URL) -> Bool {
+        switch toolID {
+        case "yarn": return expandedVersionIsQualified(toolID: toolID, version: yarnClassicVersion(home: home))
+        case "go": return expandedVersionIsQualified(toolID: toolID, version: goVersion(home: home))
+        case "ccache":
+            guard qualifiedVersions[toolID] != nil, let tool = CacheCatalog.find(toolID, home: home) else { return false }
+            return inspect(tool, home: home, directory: directory).state == "native-available"
+        default: return true
+        }
+    }
     public static func inspect(_ tool: CacheDescriptor, home: URL = FileManager.default.homeDirectoryForCurrentUser, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)) -> AdapterStatus {
         func status(_ state: String, _ reason: String, version: String? = nil, path: String? = nil) -> AdapterStatus {
             AdapterStatus(toolID: tool.id, adapterVersion: self.version, version: version, effectiveCachePath: path, state: state, explanation: reason, canReleaseSource: state == "native-available" && tool.canReleaseLocal && version != nil && qualifiedVersions[tool.id] == version)
@@ -76,6 +90,7 @@ public enum CacheAdapters {
         let range = NSRange(result.output.startIndex..., in: result.output)
         let match = regex?.firstMatch(in: result.output, range: range).flatMap { Range($0.range, in: result.output) }.map { String(result.output[$0]) }
         let custom = CacheRouter.hasCustomPreference(toolID: tool.id, directory: directory, home: home) || ProcessInfo.processInfo.environment[tool.environmentKey] != nil || (tool.id == "npm" && ProcessInfo.processInfo.environment["NPM_CONFIG_CACHE"] != nil)
+        if tool.id == "ccache", !custom, !expandedVersionIsQualified(toolID: tool.id, version: match) { return status("unqualified-version", "Esta versão ainda não foi qualificada para usar o SSD. O cache local e a configuração serão preservados.", version: match) }
         var query: [String] = []
         switch tool.id {
         case "npm": query = ["config", "get", "cache"]
@@ -98,9 +113,10 @@ public enum CacheAdapters {
     static func assess(_ tool: CacheDescriptor, version: String?, effectiveRoot: String?, custom: Bool, queried: Bool) -> AdapterStatus {
         let expected = tool.destinationChild.isEmpty ? tool.source : tool.source.deletingLastPathComponent()
         let matches = effectiveRoot.map { Paths.physicalURL(URL(fileURLWithPath:$0)).path == Paths.physicalURL(expected).path } ?? false
-        let state = custom || effectiveRoot != nil && !matches ? "custom-configuration" : queried && !matches ? "configuration-unverified" : "native-available"
+        let discoveredState = custom || effectiveRoot != nil && !matches ? "custom-configuration" : queried && !matches ? "configuration-unverified" : "native-available"
+        let state = discoveredState == "native-available" && ["yarn", "go", "ccache"].contains(tool.id) && !expandedVersionIsQualified(toolID: tool.id, version: version) ? "unqualified-version" : discoveredState
         let verified = queried && state == "native-available" && matches
-        let reason = state == "custom-configuration" ? "O destino efetivo é personalizado. A configuração e a origem foram preservadas." : state == "configuration-unverified" ? "Não foi possível confirmar o destino efetivo. A origem foi preservada." : tool.canReleaseLocal ? "Ferramenta disponível. Revise origem e destino; a qualificação em projetos reais depende da versão testada." : "Novas execuções podem usar SSD; a origem local é preservada por possíveis referências ou configurações de instalações existentes."
+        let reason = state == "custom-configuration" ? "O destino efetivo é personalizado. A configuração e a origem foram preservadas." : state == "configuration-unverified" ? "Não foi possível confirmar o destino efetivo. A origem foi preservada." : state == "unqualified-version" ? "Esta versão ainda não foi qualificada para usar o SSD. O cache local e a configuração serão preservados." : tool.canReleaseLocal ? "Ferramenta disponível. Revise origem e destino; a qualificação em projetos reais depende da versão testada." : "Novas execuções podem usar SSD; a origem local é preservada por possíveis referências ou configurações de instalações existentes."
         return AdapterStatus(toolID:tool.id, adapterVersion:self.version, version:version, effectiveCachePath:effectiveRoot, state:state, explanation:reason, canReleaseSource:verified && tool.canReleaseLocal && version != nil && qualifiedVersions[tool.id] == version)
     }
     public static func gradle(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {

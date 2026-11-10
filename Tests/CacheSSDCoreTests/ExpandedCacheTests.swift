@@ -52,6 +52,9 @@ final class ExpandedCacheTests: XCTestCase {
         for id in ["yarn", "go", "ccache"] {
             let descriptor = try tool(id), expected = descriptor.destinationChild.isEmpty ? descriptor.source : descriptor.source.deletingLastPathComponent()
             XCTAssertFalse(CacheAdapters.assess(descriptor, version: "999.0.0", effectiveRoot: expected.path, custom: false, queried: true).canReleaseSource)
+            XCTAssertEqual(CacheAdapters.assess(descriptor, version: "999.0.0", effectiveRoot: expected.path, custom: false, queried: true).state, "unqualified-version")
+            XCTAssertFalse(CacheAdapters.expandedVersionIsQualified(toolID: id, version: "999.0.0"))
+            XCTAssertFalse(CacheAdapters.expandedVersionIsQualified(toolID: id, version: nil))
         }
     }
     func testYarnDiscoveryDoesNotCreateAbsentUserCache() throws {
@@ -142,8 +145,10 @@ final class ExpandedCacheTests: XCTestCase {
         XCTAssertEqual(store.settings().locations[descriptor.id]?.relativePath, original.relativePath)
     }
     func testFutureConfigurationRefusesUnsupportedToolsBeforeCreatingDestination() throws {
-        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in self.volume }, verifyNative: false, busyCheck: { _, _ in [] }, adapterInspector: { self.nativeStatus($0, state: "missing-tool") })
-        XCTAssertThrowsError(try engine.prepareFutureCache(toolID: "go"))
+        for state in ["missing-tool", "unqualified-version", "custom-configuration", "unsupported-version"] {
+            let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in self.volume }, verifyNative: false, busyCheck: { _, _ in [] }, adapterInspector: { self.nativeStatus($0, state: state) })
+            XCTAssertThrowsError(try engine.prepareFutureCache(toolID: "go"), state)
+        }
         XCTAssertTrue(store.settings().locations.isEmpty)
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: disk.path).isEmpty)
     }

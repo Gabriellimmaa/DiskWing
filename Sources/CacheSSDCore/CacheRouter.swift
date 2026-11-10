@@ -46,7 +46,7 @@ public enum CacheRouter {
     }
     public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil, yarnGlobalConfigurations: [URL]? = nil) -> [String: String] {
         Dictionary(uniqueKeysWithValues: decisions(settings: settings, volumes: volumes ?? Volumes.list()).filter {
-            ($0.toolID != "yarn" || CacheAdapters.yarnClassicVersion(home: home) != nil) &&
+            CacheAdapters.runtimeAllowsRouting(toolID: $0.toolID, home: home, directory: directory) &&
             !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations, pipGlobalConfigurations: pipGlobalConfigurations, yarnGlobalConfigurations: yarnGlobalConfigurations) &&
             processEnvironment[$0.environmentKey] == nil &&
             !($0.toolID == "npm" && processEnvironment["NPM_CONFIG_CACHE"] != nil)
