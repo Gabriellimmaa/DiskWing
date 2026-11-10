@@ -89,14 +89,14 @@ public enum AcceptanceRunner {
                     let actions = PersonalActions(home: home, store: store, trashHandler: { item in
                         let trash = root.appendingPathComponent("fixture-trash")
                         try fm.moveItem(at: item, to: trash); return trash
-                    }, checkpoint: { if $0.phase == .completed { throw failure() } })
+                    }, busyCheck: { _, _ in [] }, checkpoint: { if $0.phase == .completed { throw failure() } })
                     var interrupted = false
                     do { _ = try actions.move(source, to: destination) } catch { interrupted = true }
                     try require(interrupted && !fm.fileExists(atPath: source.path))
                     guard let journal = store.operations().first(where: { $0.kind == "personalMove" }) else { throw failure() }
                     // Preserve the simulated Trash original; recover from the verified copy.
                     try fm.moveItem(at: root.appendingPathComponent("fixture-trash"), to: root.appendingPathComponent("preserved-original"))
-                    try RecoveryManager(store: store, home: home).restoreSource(id: journal.id)
+                    try RecoveryManager(store: store, home: home, permittedRoot: root, busyCheck: { _, _ in [] }).restoreSource(id: journal.id)
                     try require(try FileTree.digest(source, workspace: root) == expected)
                     try require(try FileTree.digest(destination.appendingPathComponent("sample"), workspace: root) == expected)
                 case "cache-copy-restore-local-fallback":
@@ -107,7 +107,7 @@ public enum AcceptanceRunner {
                     try fm.createDirectory(at: disk, withIntermediateDirectories: true)
                     let volume = VolumeInfo(uuid: "GENERATED-ACCEPTANCE-VOLUME", name: "Generated", path: disk.path, totalBytes: Volumes.free(at: parent), freeBytes: Volumes.free(at: parent), isInternal: false, isWritable: true)
                     var settings = store.settings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
-                    let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false)
+                    let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] })
                     _ = try engine.migrate(toolID: "npm", removeLocal: false)
                     try require(try FileTree.digest(tool.source, workspace: root) == expected)
                     try require(CacheRouter.decisions(settings: store.settings(), volumes: [volume]).first(where: { $0.toolID == "npm" })?.mode == "ssd")

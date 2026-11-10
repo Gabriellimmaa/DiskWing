@@ -172,13 +172,17 @@ final class SampleAvailability: @unchecked Sendable {
         if isSamples { return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: CacheAdapters.qualifiedVersions[tool.id], effectiveCachePath: tool.source.path, state: "native-available", explanation: "Cache gerado para teste. Nenhuma ferramenta instalada será executada.", canReleaseSource: tool.canReleaseLocal) }
         return CacheAdapters.inspect(tool, home: home)
     }
+    private var operationBusyCheck: BusyCheck {
+        if isSamples { return { _, _ in [] } }
+        return { try BusyInspector.inspect(paths: $0, tool: $1) }
+    }
     func migrationEngine() -> MigrationEngine {
         let provider: (String) -> VolumeInfo?
         if let root = container, let availability = samples?.availability {
             let home = home
             provider = { uuid in Self.sampleVolumes(root: root, home: home, connected: availability.connected).first { $0.uuid == uuid } }
         } else { provider = { Volumes.find(uuid: $0) } }
-        return MigrationEngine(store: store, home: home, volumeProvider: provider, verifyNative: !isSamples)
+        return MigrationEngine(store: store, home: home, volumeProvider: provider, verifyNative: !isSamples, busyCheck: operationBusyCheck)
     }
     func personalActions() -> PersonalActions {
         guard let root = container else { return PersonalActions(home: home, store: store) }
@@ -207,9 +211,9 @@ final class SampleAvailability: @unchecked Sendable {
             try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
             try validate()
             try FileManager.default.moveItem(at: source, to: path); return path
-        })
+        }, busyCheck: operationBusyCheck)
     }
-    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: container) }
+    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: container, busyCheck: operationBusyCheck) }
     func reveal(_ urls: [URL]) throws { try require(urls); if let samples { samples.record("reveal"); return }; NSWorkspace.shared.activateFileViewerSelecting(urls) }
     func open(_ url: URL) throws { try require([url]); if let samples { samples.record("open"); return }; NSWorkspace.shared.open(url) }
     func openPrivacy() { if let samples { samples.record("privacy"); return }; NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!) }
