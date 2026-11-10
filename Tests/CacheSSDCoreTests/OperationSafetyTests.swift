@@ -214,6 +214,56 @@ final class OperationSafetyTests: XCTestCase {
         }
     }
 
+    private func verifyChangeDuringFinalBusyCheck(moving: Bool, cancelling: Bool) throws {
+        let child = try file("home/Downloads/final-busy-\(UUID().uuidString)/child.txt")
+        let source = child.deletingLastPathComponent(), destination = try target(), token = CancellationFlag()
+        let expected = try FileTree.digest(source), directoryIdentity = try FileIdentity(source)
+        let finalInspection = moving ? 3 : 2
+        var inspected = 0, reachedTrashCheckpoint = false, published = false, trashed = false
+        let actions = PersonalActions(home: home, store: store, trashHandler: { item in
+            trashed = true; return try self.fakeTrash(item)
+        }, busyCheck: { paths, tool in
+            XCTAssertEqual(paths.map(\.path), [source.path]); XCTAssertNil(tool)
+            inspected += 1
+            if inspected == finalInspection {
+                XCTAssertTrue(reachedTrashCheckpoint)
+                if moving { XCTAssertTrue(published) }
+                if cancelling { token.cancel() }
+                else {
+                    try Data("updated child while inspecting processes".utf8).write(to: child)
+                    XCTAssertEqual(try FileIdentity(source), directoryIdentity, "Changing a child must leave the folder identity unchanged")
+                }
+            }
+            return []
+        }, checkpoint: { journal in
+            if journal.phase == .trashing { reachedTrashCheckpoint = true }
+            if journal.phase == .published { published = true }
+        })
+        if moving { XCTAssertThrowsError(try actions.move(source, to: destination, cancellation: token)) }
+        else { XCTAssertThrowsError(try actions.trash(source, cancellation: token)) }
+        XCTAssertEqual(inspected, finalInspection); XCTAssertTrue(reachedTrashCheckpoint); XCTAssertFalse(trashed)
+        let sourceExists = FileManager.default.fileExists(atPath: source.path)
+        XCTAssertTrue(sourceExists)
+        if sourceExists {
+            XCTAssertEqual(try String(contentsOf: child), cancelling ? "original bytes" : "updated child while inspecting processes")
+        }
+        if moving { XCTAssertEqual(try FileTree.digest(destination.appendingPathComponent(source.lastPathComponent)), expected) }
+        let journal = try XCTUnwrap(store.operations().first(where: { $0.source == source.path }))
+        XCTAssertEqual(journal.phase, cancelling ? .cancelled : .interrupted)
+    }
+    func testMoveCancellationDuringFinalBusyInspectionKeepsBothCopies() throws {
+        try verifyChangeDuringFinalBusyCheck(moving: true, cancelling: true)
+    }
+    func testTrashCancellationDuringFinalBusyInspectionPreservesSource() throws {
+        try verifyChangeDuringFinalBusyCheck(moving: false, cancelling: true)
+    }
+    func testMoveChildMutationDuringFinalBusyInspectionKeepsBothCopies() throws {
+        try verifyChangeDuringFinalBusyCheck(moving: true, cancelling: false)
+    }
+    func testTrashChildMutationDuringFinalBusyInspectionPreservesSource() throws {
+        try verifyChangeDuringFinalBusyCheck(moving: false, cancelling: false)
+    }
+
     private enum InspectionFailure: Error { case unavailable }
     func testBusyInspectionErrorsPropagateWithoutChangingPersonalOrCacheSources() throws {
         let source = try personalSource(), destination = try target(), expected = try FileTree.digest(source)

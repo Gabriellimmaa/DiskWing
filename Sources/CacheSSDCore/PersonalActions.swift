@@ -72,9 +72,11 @@ public final class PersonalActions {
             let digest = try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress)
             operation.journal.sourceDigest = digest
             try operation.advance(.trashing)
+            // Process inspection can be slow; source checks must follow it.
+            guard !cancellation.isCancelled, try busyCheck([source], nil).isEmpty else { throw CacheSSDError.message(L10n.text("A origem mudou ou a operação foi cancelada.")) }
             try operation.assertSourceIdentity()
             guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress) == digest,
-                  try busyCheck([source], nil).isEmpty else { throw CacheSSDError.message(L10n.text("A origem mudou ou a operação foi cancelada.")) }
+                  !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("A origem mudou ou a operação foi cancelada.")) }
             let result = try trashHandler(source)
             operation.journal.trashPath = result?.path
             try operation.advance(.published)
@@ -119,9 +121,11 @@ public final class PersonalActions {
             try operation.assertSourceIdentity()
             guard try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
             try operation.advance(.trashing)
+            // Process inspection can be slow; source checks must follow it.
+            guard !cancellation.isCancelled, try busyCheck([source], nil).isEmpty else { throw CacheSSDError.message(L10n.text("A origem passou a ser utilizada ou a cópia foi cancelada.")) }
             try operation.assertSourceIdentity()
-            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
-            guard try busyCheck([source], nil).isEmpty else { throw CacheSSDError.message(L10n.text("A origem passou a ser utilizada ou a cópia foi cancelada.")) }
+            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation, workspace: directory, progress: progress) == digest,
+                  !cancellation.isCancelled else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
             operation.journal.trashPath = try trashHandler(source)?.path
             try operation.advance(.completed, detail: "Cópia e metadados conferidos; origem na Lixeira")
             let record = OperationRecord(title: "Arquivo copiado e origem na Lixeira", detail: "Cópia conferida em \(final.path). Revise a Lixeira no Finder antes de liberar o espaço da origem.", recoveryPath: final.path)
