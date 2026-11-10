@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Require Apple Silicon
         run: test "$(uname -m)" = arm64
       - name: Create isolated fixture location
@@ -45,7 +46,7 @@ jobs:
       - name: Packaging boundary tests
         run: python3 -m unittest discover -s Tests/Packaging -v
       - name: Build ad-hoc development bundle
-        run: python3 build.py
+        run: python3 build.py --profile dev --version 0.2.0-dev --build-number 3
       - name: Verify signature and approved icon
         run: |
           codesign --verify --deep --strict dist/DiskWing.app
@@ -54,9 +55,28 @@ jobs:
           dist/DiskWing.app/Contents/MacOS/CacheSSDHelper self-check
           plutil -lint dist/DiskWing.app/Contents/Resources/en.lproj/InfoPlist.strings
           plutil -lint dist/DiskWing.app/Contents/Resources/pt-BR.lproj/InfoPlist.strings
-      - name: Qualify a disposable internal installation and removal
+      - name: Qualify the exact archived candidate with a disposable internal lifecycle
         run: |
-          python3 scripts/qualify_bundle.py dist/DiskWing.app --workspace "$RUNNER_TEMP/diskwing-tests" --output "$RUNNER_TEMP/diskwing-bundle-report.json"
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          from scripts.release_evidence import read_json_file, sha256
+          manifests = list(Path('dist').glob('*.manifest.json'))
+          if len(manifests) != 1: raise SystemExit('Expected exactly one build manifest.')
+          manifest = read_json_file(manifests[0])
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if manifest['candidate']['commit'] != head or manifest.get('sourceDirty') is not False:
+              raise SystemExit('Candidate must come from the clean checked-out commit.')
+          archive = manifests[0].parent / manifest['archive']['fileName']
+          expected = {'commit': head, 'version': '0.2.0-dev', 'buildNumber': '3', 'archiveSHA256': sha256(archive)}
+          private = Path(os.environ['RUNNER_TEMP'])
+          expected_path = private / 'diskwing-expected-candidate.json'
+          fd = os.open(expected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          with os.fdopen(fd, 'w') as file: json.dump(expected, file)
+          subprocess.run([sys.executable, 'scripts/qualify_candidate.py', str(manifests[0]),
+                          '--expected-candidate', str(expected_path), '--workspace', str(private / 'diskwing-tests'),
+                          '--output', str(private / 'diskwing-candidate-report.json')], check=True)
+          PY
       - name: Preserve sanitized build and qualification reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -64,7 +84,7 @@ jobs:
           name: qualification-${{ matrix.os }}
           path: |
             dist/*.manifest.json
-            ${{ runner.temp }}/diskwing-bundle-report.json
+            ${{ runner.temp }}/diskwing-candidate-report.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -79,6 +99,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Compile the optional updater integration
         env:
           DISKWING_ENABLE_UPDATER: '1'
@@ -92,6 +113,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exercise a real one-million-entry fixture
         env:
           DISKWING_RUN_SCALE_TESTS: '1'
@@ -118,6 +140,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Qualify disposable filesystems and bounded copy verification
         env:
           DISKWING_RUN_FILESYSTEM_TESTS: '1'
@@ -148,6 +171,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exercise a real 4 GiB written file and cancellation
         env:
           DISKWING_RUN_LARGE_COPY_TESTS: '1'
