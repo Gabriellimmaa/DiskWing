@@ -2,6 +2,8 @@
 
 Approved scope: complete disk exploration **and** reviewed cache/SSD management in the first public version. Apple Silicon first, macOS 14+, Portuguese and English, local data, explicit review, preserved browser/project/SDK data. Historical plans remain in plans/.
 
+The maintainer's [2026-11-10 expansion](plans/SCOPE-EXPANSION-2026-11-10.md) adds explicit manual Trash for eligible application caches and additional home content, separate from the stricter Move policy; internal data-volume discovery; future-write setup with an empty/absent cache; and additional per-tool cache adapters. These are active implementation requirements, not capabilities attested by the installed build 6. Graphical applications require their own supported mechanisms and evidence rather than inheriting terminal coverage.
+
 The machine-readable source of requirement IDs, issues, acceptance criteria, validation state and external dependencies is [TRACEABILITY.json](TRACEABILITY.json). Implementation, isolated tests, native checks, cross-machine validation and beta are different states. Do not close a milestone solely because code exists.
 
 | ID | Delivery | Completion evidence |

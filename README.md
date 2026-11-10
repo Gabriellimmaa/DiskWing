@@ -12,12 +12,15 @@ DiskWing is an open source macOS utility for exploring disk usage and reviewing 
 
 - Explore a paginated private SQLite index, search the entire selected scope, filter/order sizes, inspect the largest files, and reveal items in Finder.
 - Distinguish logical size from allocated blocks, with progress, cancellation, and partial-result indicators.
-- Review migrations for npm, Bun, CocoaPods, pip, Homebrew, Gradle, and uv; verify copies before releasing supported local caches.
+- Review migrations for npm, Bun, CocoaPods, pip, Homebrew, Gradle, uv, Yarn Classic, Go build cache and ccache; compatibility and source release remain version/configuration-specific.
+- Prepare future SSD writes even when the local cache is empty or absent; review terminal integration separately.
 - Route new zsh commands to the available cache location. Without the selected SSD, new commands fall back to local defaults.
-- Review personal-file actions, operation history, and recovery locations.
+- Send selected eligible home content, including application caches, to macOS Trash with review, application-data warnings and recovery records. Generic file relocation keeps a separate, stricter policy.
 - Opt into folder-change tracking, comparable growth snapshots and rate-limited notifications. Select Portuguese or English.
 
-Opening DiskWing never starts a cache migration. Chrome profiles, history, cookies, passwords, and browser caches are outside the migration catalog. SDKs, emulator data, projects, and local npx executables stay in place. Bun and uv source caches are retained because installed environments may depend on links to them.
+Opening DiskWing never starts a cache migration. Chrome profiles, history, cookies, passwords, and browser caches are outside the migration catalog. SDKs, emulator data, projects, and local npx executables stay in place. Bun, uv and Yarn Classic source caches are retained because installed environments/projects may reference them. Go sources are also retained while effective-source verification remains conservative. New adapters require an exactly qualified version for activation and routing; ccache remains inactive until native qualification.
+
+The internal-storage shortcut scans the accessible APFS data volume rather than treating the sealed system root as the entire Mac. Other filesystems and inaccessible/limited areas remain explicit. Manual Trash currently operates inside the home folder and preserves structural roots, known credentials/profiles, protected installations, DiskWing records, links and cloud placeholders. Trash is not emptied by the app and does not immediately free space.
 
 ## Build
 

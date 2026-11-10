@@ -249,6 +249,7 @@ public final class RecoveryManager {
             guard let digest = journal.sourceDigest, try FileTree.digest(quarantine, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == digest else {
                 throw CacheSSDError.message(L10n.text("A origem em recuperação está incompleta. Preserve-a e revise a cópia no SSD."))
             }
+            try validateSource(journal, source: source)
             try FileTree.publishWithoutReplacing(quarantine, to: source)
         } else {
             let availableTrash = journal.trashPath.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
@@ -261,6 +262,9 @@ public final class RecoveryManager {
             guard try FileTree.digest(copy, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw CacheSSDError.message(L10n.text("A cópia mudou. Ela foi preservada para revisão manual.")) }
             let size = FileTree.measure(copy, cancellation: cancellation, progress: progress)
             guard size.isComplete, Volumes.free(at: source.deletingLastPathComponent()) > size.logical + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço confirmado para restaurar a cópia.")) }
+            // Inspection/digest work can outlive a parent-path replacement.
+            // Recheck the absent destination before creating recovery staging.
+            try validateSource(journal, source: source)
             let temp = source.deletingLastPathComponent().appendingPathComponent(".CacheSSD-recovery-\(journal.id.uuidString)")
             guard !FileManager.default.fileExists(atPath: temp.path) else { throw CacheSSDError.message(L10n.text("Há uma restauração parcial. Revise-a antes de tentar novamente.")) }
             journal.staging = temp.path
@@ -268,6 +272,7 @@ public final class RecoveryManager {
             try FileTree.copyItem(copy, to: temp, tool: journal.toolID ?? "", cancellation: cancellation, progress: progress)
             guard try FileTree.digest(temp, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == expected,
                   !exists(source) else { throw CacheSSDError.message(L10n.text("A restauração mudou ou a origem reapareceu. As cópias foram mantidas.")) }
+            try validateSource(journal, source: source)
             try FileTree.publishWithoutReplacing(temp, to: source)
         }
         journal.phase = .resolved; journal.updatedAt = Date(); journal.detail = "Origem restaurada; cópias de recuperação preservadas"
@@ -402,6 +407,12 @@ public final class RecoveryManager {
     }
 
     private func validateSource(_ journal: OperationJournal, source: URL) throws {
+        if journal.kind == "trash", journal.toolID == nil {
+            // Trash validates the original components, including an absent
+            // leaf's existing ancestors, before Foundation can rewrite them.
+            if let reason = PersonalActionPolicy.reasonPreventingTrash(source, home: home, storeBase: store.base) { throw CacheSSDError.message(reason) }
+            return
+        }
         guard source.standardizedFileURL == source.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("A origem contém um caminho redirecionado.")) }
         if let toolID = journal.toolID {
             guard CacheCatalog.find(toolID, home: home)?.source == source else { throw CacheSSDError.message(L10n.text("A origem não corresponde ao cache reconhecido.")) }

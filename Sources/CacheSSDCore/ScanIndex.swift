@@ -302,23 +302,35 @@ public final class IndexedScanner {
         let root = Paths.physicalURL(requested), id = UUID(), started = Date()
         let rootPrefix = root.path == "/" ? "/" : root.path + "/"
         let volume = volumeIdentifier(root)
+        let scanHome = DataVolumePaths.alias(of: home).flatMap { Paths.contains(root, in: DataVolumePaths.dataRoot) ? $0 : nil } ?? home
+        let privateRoot = index.url.deletingLastPathComponent()
+        let excludedRoots = [privateRoot] + (DataVolumePaths.alias(of: privateRoot).map { [$0] } ?? [])
         let categories = CacheCatalog.all(home: home).map { $0.source.path }
         func category(_ path: String) -> ContentCategory {
-            Self.category(path, home: home, cacheSources: categories)
+            if scanHome != home, Paths.contains(URL(fileURLWithPath: path), in: scanHome) {
+                let relative = String(path.dropFirst(scanHome.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                let canonical = relative.isEmpty ? home : home.appendingPathComponent(relative)
+                return Self.category(canonical.path, home: home, cacheSources: categories)
+            }
+            return Self.category(path, home: home, cacheSources: categories)
         }
         try index.begin(root: root, id: id, volume: volume, started: started)
         var count = 1, logical: Int64 = 0, allocated: Int64 = 0, files = 0, maxDepth = 0, limited = false
         var unreadable: [String] = [], mounts: [String] = [], seen = Set<String>(), last = Date.distantPast
         var enumerationError: Error?
         func relativePath(_ url: URL) -> String? {
-            if url.path == root.path { return "" }
-            guard url.path.hasPrefix(rootPrefix) else { return nil }
-            return String(url.path.dropFirst(rootPrefix.count))
+            guard let scoped = DataVolumePaths.scopedScanEntry(url, within: root) else { return nil }
+            if scoped.path == root.path { return "" }
+            guard scoped.path.hasPrefix(rootPrefix) else { return nil }
+            return String(scoped.path.dropFirst(rootPrefix.count))
         }
         func markUnavailable(_ url: URL) {
             if unreadable.count < 200 { unreadable.append(url.path) }
-            guard let relative = relativePath(url) else { return }
-            do { try index.markCoverage(id: id, relative: relative, coverage: .unknown, issue: "Sem acesso; tamanho desconhecido") }
+            let relative = relativePath(url)
+            // An inaccessible/vanished emitted leaf cannot authorize an alias.
+            // Mark its proven ancestor, or the known root, as partial instead.
+            let unavailable = relative ?? relativePath(url.deletingLastPathComponent()) ?? ""
+            do { try index.markCoverage(id: id, relative: unavailable, coverage: relative == nil ? .partial : .unknown, issue: "Sem acesso; tamanho desconhecido") }
             catch { enumerationError = error }
         }
         do {
@@ -329,12 +341,13 @@ public final class IndexedScanner {
             while !enumerationDone {
               try autoreleasepool {
                for _ in 0..<256 {
-                guard let url = e.nextObject() as? URL else { enumerationDone = true; break }
+                guard let emitted = e.nextObject() as? URL else { enumerationDone = true; break }
                 if cancellation.isCancelled {
-                    if let parent = relativePath(url.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
+                    if let parent = relativePath(emitted.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
                     enumerationDone = true; break
                 }
-                if Paths.contains(url, in: index.url.deletingLastPathComponent()) { if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { e.skipDescendants() }; continue }
+                guard let url = DataVolumePaths.scopedScanEntry(emitted, within: root) else { throw CacheSSDError.message(L10n.text("A leitura saiu do escopo selecionado.")) }
+                if excludedRoots.contains(where: { Paths.contains(url, in: $0) }) { if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { e.skipDescendants() }; continue }
                 if count >= maxEntries {
                     if let parent = relativePath(url.deletingLastPathComponent()) { try index.markCoverage(id: id, relative: parent, coverage: .partial) }
                     limited = true; enumerationDone = true; break

@@ -14,12 +14,12 @@ enum AppSection: String, CaseIterable, Identifiable {
 }
 
 enum ReviewAction: Identifiable {
-    case migration(CacheDescriptor), trash(ScanItem), move(ScanItem, URL), integration, disableIntegration, restore(CacheDescriptor), eject(VolumeInfo), xcodeLocal, recover(RecoveryAssessment), resolve(RecoveryAssessment)
+    case migration(CacheDescriptor), prepareCache(CacheDescriptor), trash(ScanItem), move(ScanItem, URL), integration, disableIntegration, restore(CacheDescriptor), eject(VolumeInfo), xcodeLocal, recover(RecoveryAssessment), resolve(RecoveryAssessment)
     var id: String {
-        switch self { case .migration(let t): return "migration-" + t.id; case .trash(let i): return "trash-" + i.path; case .move(let i, _): return "move-" + i.path; case .integration: return "integration"; case .disableIntegration: return "disable"; case .restore(let t): return "restore-" + t.id; case .eject(let v): return "eject-" + v.uuid; case .xcodeLocal: return "xcodeLocal"; case .recover(let r): return "recover-" + r.id.uuidString; case .resolve(let r): return "resolve-" + r.id.uuidString }
+        switch self { case .migration(let t): return "migration-" + t.id; case .prepareCache(let t): return "prepare-cache-" + t.id; case .trash(let i): return "trash-" + i.path; case .move(let i, _): return "move-" + i.path; case .integration: return "integration"; case .disableIntegration: return "disable"; case .restore(let t): return "restore-" + t.id; case .eject(let v): return "eject-" + v.uuid; case .xcodeLocal: return "xcodeLocal"; case .recover(let r): return "recover-" + r.id.uuidString; case .resolve(let r): return "resolve-" + r.id.uuidString }
     }
     var title: String {
-        switch self { case .migration(let t): return L10n.text("Migrar cache de \(t.name)"); case .trash: return L10n.text("Enviar à Lixeira"); case .move: return L10n.text("Mover com cópia conferida"); case .integration: return L10n.text("Integrar com o terminal"); case .disableIntegration: return L10n.text("Desativar integração"); case .restore(let t): return L10n.text("Restaurar cache de \(t.name)"); case .eject: return L10n.text("Preparar para ejetar"); case .xcodeLocal: return L10n.text("Usar local padrão do Xcode"); case .recover(let value): return value.journal.kind == "restore" ? L10n.text("Concluir restauração") : L10n.text("Restaurar origem"); case .resolve: return L10n.text("Encerrar registro mantendo cópias") }
+        switch self { case .migration(let t): return L10n.text("Migrar cache de \(t.name)"); case .prepareCache(let t): return L10n.text("Preparar novos caches de \(t.name)"); case .trash: return L10n.text("Enviar à Lixeira"); case .move: return L10n.text("Mover com cópia conferida"); case .integration: return L10n.text("Integrar com o terminal"); case .disableIntegration: return L10n.text("Desativar integração"); case .restore(let t): return L10n.text("Restaurar cache de \(t.name)"); case .eject: return L10n.text("Preparar para ejetar"); case .xcodeLocal: return L10n.text("Usar local padrão do Xcode"); case .recover(let value): return value.journal.kind == "restore" ? L10n.text("Concluir restauração") : L10n.text("Restaurar origem"); case .resolve: return L10n.text("Encerrar registro mantendo cópias") }
     }
 }
 
@@ -38,6 +38,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private var lastBackgroundScan = Date.distantPast
     private var pendingRoots = Set<String>()
     @Published var report: ScanReport?
+    @Published private(set) var analysisNeedsRefresh = false
     @Published var breadcrumbs: [ScanItem] = []
     @Published var selectedPath: String?
     @Published var search = "" { didSet { if oldValue != search { indexOffset = 0; reloadIndex() } } }
@@ -85,7 +86,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     var operationHint: String? {
         switch activeAction {
-        case .migration, .restore, .eject: return L10n.text("Mantenha o SSD conectado")
+        case .migration, .prepareCache, .restore, .eject: return L10n.text("Mantenha o SSD conectado")
         case .move: return L10n.text("Aguarde a conferência da cópia")
         default: return nil
         }
@@ -98,6 +99,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var currentFolder: ScanItem? { breadcrumbs.last }
     var currentScopeAvailable: Bool { report.map { context.scopeAvailable($0.root.url) } ?? false }
     var selectedVolume: VolumeInfo? { volumes.first { $0.uuid == settings.selectedVolumeUUID } }
+    var integrationIsCurrent: Bool { settings.shellIntegrationEnabled && ShellIntegration.isCurrent(store: store) }
     var destinationIssue: String? {
         guard let volume = selectedVolume else { return nil }
         do { let url = URL(fileURLWithPath: volume.path); try context.require([url]); try FileTree.validateDestination(url); return nil }
@@ -158,6 +160,13 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         panel.prompt = L10n.text("Analisar pasta"); panel.message = L10n.text("A análise lê nomes e tamanhos. Nenhum arquivo será alterado.")
         if panel.runModal() == .OK, let url = panel.url { scan(url) }
     }
+    func scanInternalStorage() {
+        guard let root = context.internalDataRoot() else {
+            errorMessage = L10n.text("O volume de dados interno não pôde ser identificado. Escolha uma pasta para analisar.")
+            return
+        }
+        scan(root)
+    }
     func scan(_ url: URL, focus: Bool = true) {
         guard !isScanning && !busy else { return }
         do { try context.requireStorage(); try context.require([url]) } catch { errorMessage = error.localizedDescription; return }
@@ -180,6 +189,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 }.value
                 if focus || report?.root.path == pair.1.root.path {
                     index = pair.0; report = pair.1
+                    analysisNeedsRefresh = false
                     let restored = focus ? [] : previousPaths.compactMap { try? pair.0.item(sessionID: pair.1.id, path: $0) }
                     breadcrumbs = restored.isEmpty ? [pair.1.root] : restored
                     indexedSessionID = pair.1.id
@@ -233,7 +243,25 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func cachePolicyReason(_ item: ScanItem) -> String? {
         guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
-        return PersonalActionPolicy.reasonPreventing(item.url, home: home)
+        guard !analysisNeedsRefresh else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
+        return PersonalActionPolicy.reasonPreventing(context.actionURL(item.url), home: home)
+    }
+    func trashPolicyReason(_ item: ScanItem) -> String? {
+        guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
+        guard !analysisNeedsRefresh else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
+        return PersonalActionPolicy.reasonPreventingTrash(context.actionURL(item.url), home: home, storeBase: store.base)
+    }
+    func trashWarning(_ item: ScanItem) -> String? {
+        PersonalActionPolicy.trashWarning(context.actionURL(item.url), home: home).map { L10n.message($0) }
+    }
+    private func refreshAnalysisAfterMutation(_ action: ReviewAction) {
+        switch action {
+        case .trash, .move, .migration, .prepareCache, .restore, .recover:
+            guard let root = report?.root.url else { return }
+            analysisNeedsRefresh = true; selectedPath = nil; pageRequest = UUID(); indexLoading = false
+            if context.scopeAvailable(root) { scan(root, focus: false) }
+        default: break
+        }
     }
     func sizeText(_ item: ScanItem, allocated: Bool = false) -> String {
         let bytes = allocated ? item.allocatedBytes : item.logicalBytes
@@ -245,10 +273,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func cacheStatus(_ tool: CacheDescriptor) -> String? {
         guard settings.locations[tool.id] != nil else { return nil }
-        guard settings.shellIntegrationEnabled else { return L10n.text("Migrado; integração pendente") }
+        guard let adapter = adapterStatuses[tool.id] else { return L10n.text("Destino preparado; verificação pendente") }
+        guard adapter.state == "native-available" else { return L10n.text("Direcionamento indisponível; configuração preservada") }
+        guard integrationIsCurrent else { return L10n.text("Destino preparado; integração pendente") }
         guard settings.useExternal else { return L10n.text("Novas execuções usam o Mac") }
         let available = CacheRouter.decisions(settings: settings, volumes: volumes).first { $0.toolID == tool.id }?.mode == "ssd"
-        return available ? L10n.text("Cópia no SSD disponível") : L10n.text("Cache local: SSD indisponível")
+        return available ? L10n.text("Destino no SSD disponível") : L10n.text("Cache local: SSD indisponível")
     }
     func recoveryTitle(_ value: RecoveryAssessment) -> String {
         switch value.journal.kind {
@@ -289,7 +319,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private func validateAction(_ action: ReviewAction) throws {
         try context.requireStorage()
         switch action {
-        case .migration(let tool), .restore(let tool):
+        case .migration(let tool), .prepareCache(let tool), .restore(let tool):
             guard tools.contains(where: { $0.id == tool.id && $0.source == tool.source }) else { throw AppContext.sampleFailure() }
             try context.require([tool.source])
             if let volume = selectedVolume { try context.require([URL(fileURLWithPath: volume.path)]) }
@@ -320,14 +350,23 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     let record = try await Task.detached(priority: .userInitiated) {
                         try engine.migrate(toolID: tool.id, removeLocal: remove, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } }
                     }.value
-                    notice = record.detail + L10n.text(". Ative a integração com o terminal para direcionar novos comandos.")
+                    notice = L10n.message(record.detail).trimmingCharacters(in: CharacterSet(charactersIn: ".")) + (integrationIsCurrent ? L10n.text(". Novas execuções em terminais com a integração atualizada podem usar o SSD.") : L10n.text(". Direcionamento pendente: ative a integração e abra um novo terminal."))
+                case .prepareCache(let tool):
+                    let record = try await Task.detached(priority: .userInitiated) {
+                        try engine.prepareFutureCache(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } }
+                    }.value
+                    notice = L10n.message(record.detail).trimmingCharacters(in: CharacterSet(charactersIn: ".")) + (integrationIsCurrent ? L10n.text(". Novas execuções em terminais com a integração atualizada podem usar o SSD.") : L10n.text(". Direcionamento pendente: ative a integração e abra um novo terminal."))
                 case .restore(let tool):
                     try await Task.detached(priority: .userInitiated) { try engine.restore(toolID: tool.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value
                     notice = L10n.text("Cache restaurado no Mac. A cópia do SSD foi preservada.")
                 case .trash(let item):
-                    let record = try await Task.detached { try personal.trash(item.url, expectedIdentity: item.fileIdentity, cancellation: token) }.value; notice = record.detail
+                    let source = context.actionURL(item.url)
+                    try context.require([source])
+                    let record = try await Task.detached { try personal.trash(source, expectedIdentity: item.fileIdentity, cancellation: token) }.value; notice = record.detail
                 case .move(let item, let target):
-                    let record = try await Task.detached { try personal.move(item.url, to: target, expectedIdentity: item.fileIdentity, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value; notice = record.detail
+                    let source = context.actionURL(item.url)
+                    try context.require([source])
+                    let record = try await Task.detached { try personal.move(source, to: target, expectedIdentity: item.fileIdentity, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value; notice = record.detail
                 case .recover(let assessment):
                     try await Task.detached { try recovery.restoreSource(id: assessment.id, cancellation: token) { text in Task { @MainActor in self.operationMessage = text } } }.value
                     notice = L10n.text("Origem recuperada. As demais cópias foram preservadas.")
@@ -356,8 +395,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                     }
                 }
                 reloadRecords(); refreshVolumes(); operationMessage = nil; activeAction = nil; cancellation = nil
-                switch action { case .migration, .restore: refreshInventory(); default: break }
-            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; reloadRecords(); refreshVolumes(); errorMessage = error.localizedDescription }
+                switch action { case .migration, .prepareCache, .restore, .trash, .move, .recover: refreshInventory(); default: break }
+                refreshAnalysisAfterMutation(action)
+            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; reloadRecords(); refreshVolumes(); errorMessage = error.localizedDescription; refreshAnalysisAfterMutation(action) }
         }
     }
     func reloadRecords() {

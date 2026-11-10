@@ -10,6 +10,8 @@ final class NativeWorkflowTests: XCTestCase {
     var disk: URL!
     var store: Store!
     var environment: [String: String]!
+    var nativeExecutableOverrides: [String: URL] = [:]
+    var cocoaPodsRuntimeProfile: [String: String] = [:]
     override func setUpWithError() throws {
         guard ProcessInfo.processInfo.environment["DISKWING_RUN_INSTALL_TESTS"] == "1" else { throw XCTSkip("Set DISKWING_RUN_INSTALL_TESTS=1 for real disposable native workflows") }
         let parent = ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
@@ -49,7 +51,7 @@ final class NativeWorkflowTests: XCTestCase {
     func migrate(_ tool: CacheDescriptor) throws -> [String:String] {
         let volume = VolumeInfo(uuid:"NATIVE-FIXTURE",name:"Disposable SSD",path:disk.path,totalBytes:1_000_000_000_000,freeBytes:Volumes.free(at:disk),isInternal:false,isWritable:true)
         var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
-        _ = try MigrationEngine(store:store,home:home,volumeProvider:{ _ in volume },verifyNative:true).migrate(toolID:tool.id,removeLocal:false)
+        _ = try MigrationEngine(store:store,home:home,volumeProvider:{ _ in volume },verifyNative:true,nativeExecutableOverrides:nativeExecutableOverrides).migrate(toolID:tool.id,removeLocal:false)
         let route = try XCTUnwrap(CacheRouter.decisions(settings:store.settings(),volumes:[volume]).first { $0.toolID == tool.id })
         XCTAssertEqual(route.mode,"ssd")
         var env = environment!; env[tool.environmentKey] = try XCTUnwrap(route.path)
@@ -65,14 +67,22 @@ final class NativeWorkflowTests: XCTestCase {
     }
     func record(_ id: String, executable: URL, versionArgs: [String] = ["--version"], offline: String, workflow: String) throws {
         let result = try run(executable,versionArgs)
-        let regex = try NSRegularExpression(pattern:#"\b\d+\.\d+(?:\.\d+)?"#)
+        let regex = try NSRegularExpression(pattern:id == "cocoapods" ? #"(?m)^\d+\.\d+(?:\.\d+)?\s*$"# : #"\b\d+\.\d+(?:\.\d+)?"#)
         let match = regex.firstMatch(in:result.output,range:NSRange(result.output.startIndex...,in:result.output)).flatMap { Range($0.range,in:result.output) }
-        let version = match.map { String(result.output[$0]) } ?? "unknown"
+        let version = match.map { String(result.output[$0]).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "unknown"
         if let output = ProcessInfo.processInfo.environment["DISKWING_NATIVE_REPORT_DIR"] {
             let destination = URL(fileURLWithPath:output)
             try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:true)
-            let data: [String:Any] = ["toolID":id,"version":version,"adapterVersion":CacheAdapters.version,"workflow":workflow,"offline":offline,
+            var data: [String:Any] = ["toolID":id,"version":version,"adapterVersion":CacheAdapters.version,"workflow":workflow,"offline":offline,
                                       "sourceRetained":true,"absentVolumeRouting":"local","absentVolumeWorkflow":true,"date":ISO8601DateFormatter().string(from:Date())]
+            if let commit = ProcessInfo.processInfo.environment["DISKWING_NATIVE_TESTED_COMMIT"] { data["testedCommit"] = commit }
+            if id == "npm" {
+                data["originalCacheUnavailableDuringSSDReuse"] = true
+                data["localCacheRecreatedDuringSSDReuse"] = false
+                data["localNpxPreserved"] = true
+                data["transactionalSourceRelease"] = false
+            }
+            if id == "cocoapods", !cocoaPodsRuntimeProfile.isEmpty { data["runtimeProfile"] = cocoaPodsRuntimeProfile }
             try JSONSerialization.data(withJSONObject:data,options:[.prettyPrinted,.sortedKeys]).write(to:destination.appendingPathComponent(id+".json"))
         }
     }
@@ -84,14 +94,48 @@ final class NativeWorkflowTests: XCTestCase {
     }
     func testNpmActualInstallAndOfflineReuseAfterMigration() throws {
         let tool = try source("npm"), npm = try executable("npm")
+        let npx = home.appendingPathComponent(".npm/_npx/generated-executable")
+        try FileManager.default.createDirectory(at: npx.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let npxBytes = Data("Generated local npx executable must remain local.".utf8); try npxBytes.write(to: npx)
         try nodeProject()
         _ = try run(npm,["install","--ignore-scripts","--no-audit","--no-fund"]); try verifyNode()
         let external = try migrate(tool)
+        let holding = root.appendingPathComponent("held-generated-npm-cache")
+        try FileManager.default.moveItem(at: tool.source, to: holding)
+        defer { if FileManager.default.fileExists(atPath: holding.path), !FileManager.default.fileExists(atPath: tool.source.path) { try? FileManager.default.moveItem(at: holding, to: tool.source) } }
+        let heldDigest = try FileTree.digest(holding)
         try reset(["node_modules"])
         _ = try run(npm,["install","--offline","--ignore-scripts","--no-audit","--no-fund"],env:external); try verifyNode()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tool.source.path), "The SSD install must not fall back to a newly created local cache")
+        XCTAssertEqual(try FileTree.digest(holding), heldDigest)
+        XCTAssertEqual(try Data(contentsOf: npx), npxBytes)
+        try FileManager.default.moveItem(at: holding, to: tool.source)
         try reset(["node_modules"])
         _ = try run(npm,["install","--offline","--ignore-scripts","--no-audit","--no-fund"]); try verifyNode()
-        try record("npm",executable:npm,offline:"native --offline succeeded",workflow:"pinned package install and execution")
+        XCTAssertEqual(try Data(contentsOf: npx), npxBytes)
+        try record("npm",executable:npm,offline:"native --offline succeeded with generated original cache held unavailable",workflow:"pinned package install and execution; generated source held unavailable for SSD offline reuse; local npx sentinel preserved; held source restored for local offline fallback; no transactional source release")
+    }
+    func testNpmUUIDDestinationValidationPreservesUnindexedCacheContent() throws {
+        let tool = try source("npm")
+        _ = try executable("npm")
+        let relative = "content-v2/sha512/00/00/" + String(repeating: "0", count: 124)
+        let sentinel = tool.source.appendingPathComponent(relative)
+        try FileManager.default.createDirectory(at: sentinel.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let bytes = Data("Generated cache entry: validation must not garbage-collect it.".utf8)
+        try bytes.write(to: sentinel)
+        let shadow = root.appendingPathComponent("node_modules/.bin/node")
+        try FileManager.default.createDirectory(at: shadow.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexit 97\n".utf8).write(to: shadow)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: shadow.path)
+        let before = try FileTree.digest(tool.source)
+        let external = try migrate(tool)
+        let destination = try XCTUnwrap(external[tool.environmentKey])
+        XCTAssertTrue(destination.contains("MacCaches/CacheSSD/"))
+        XCTAssertNotNil(UUID(uuidString: URL(fileURLWithPath: destination).deletingLastPathComponent().lastPathComponent))
+        XCTAssertEqual(try Data(contentsOf: sentinel), bytes)
+        XCTAssertEqual(try FileTree.digest(tool.source), before)
+        let copied = URL(fileURLWithPath: destination).appendingPathComponent(tool.destinationChild).appendingPathComponent(relative)
+        XCTAssertEqual(try Data(contentsOf: copied), bytes, "Native validation must preserve copied entries rather than invoking npm cache verify")
     }
     func testBunActualInstallAndOfflineReuseAfterMigration() throws {
         let tool = try source("bun"), bun = try executable("bun")
@@ -133,7 +177,7 @@ final class NativeWorkflowTests: XCTestCase {
         try record("homebrew",executable:brew,offline:"not established; fetch reuse only",workflow:"bottle download reused; no global formula installation")
     }
     func testCocoaPodsActualTemporaryPodInstallAfterMigration() throws {
-        let tool = try source("cocoapods"), pod = try executable("pod")
+        let tool = try source("cocoapods"), pod = try cocoaPodsExecutable()
         try Data("install! 'cocoapods', :integrate_targets => false\nplatform :ios, '13.0'\ntarget 'DiskWingFixture' do\n  pod 'Result', '5.0.0'\nend\n".utf8).write(to:project.appendingPathComponent("Podfile"))
         _ = try run(pod,["install"])
         let external = try migrate(tool)
@@ -143,6 +187,69 @@ final class NativeWorkflowTests: XCTestCase {
         try reset(["Pods"])
         _ = try run(pod,["install","--no-repo-update"])
         try record("cocoapods",executable:pod,offline:"not established; cached install without repo update only",workflow:"temporary Podfile install without modifying an Xcode project")
+    }
+    /// Optional explicit profile: reuse installed code with a compatible installed
+    /// Ruby, never repair gems, change symlinks or replace the user's default launcher.
+    func cocoaPodsExecutable() throws -> URL {
+        let values = ProcessInfo.processInfo.environment
+        guard values["DISKWING_NATIVE_COCOAPODS_RUBY"] != nil || values["DISKWING_NATIVE_COCOAPODS_LIBEXEC"] != nil else { return try executable("pod") }
+        let ruby = URL(fileURLWithPath: try XCTUnwrap(values["DISKWING_NATIVE_COCOAPODS_RUBY"], "Explicit CocoaPods profile requires Ruby and libexec"))
+        let gemHome = URL(fileURLWithPath: try XCTUnwrap(values["DISKWING_NATIVE_COCOAPODS_LIBEXEC"], "Explicit CocoaPods profile requires Ruby and libexec"))
+        let script = gemHome.appendingPathComponent("bin/pod")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: ruby.path))
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: script.path))
+        let defaultPod = try executable("pod"), defaultProbe = try run(defaultPod, ["--version"], success: false)
+        let runtime = try run(ruby, ["--version"]).output
+        let regex = try NSRegularExpression(pattern: #"\b\d+\.\d+\.\d+"#)
+        let match = regex.firstMatch(in: runtime, range: NSRange(runtime.startIndex..., in: runtime)).flatMap { Range($0.range, in: runtime) }
+        let descriptor = try XCTUnwrap(CacheCatalog.find("cocoapods", home: home))
+        let applicationStatus = CacheAdapters.inspect(descriptor, home: home, directory: project)
+        cocoaPodsRuntimeProfile = ["launcher": "explicit existing Ruby plus existing CocoaPods libexec", "rubyVersion": match.map { String(runtime[$0]) } ?? "unknown",
+                                  "cleanFixtureLauncher": defaultProbe.status == 0 ? "available" : "unavailable without the inherited installed Ruby gem paths",
+                                  "applicationInheritedEnvironmentState": applicationStatus.state,
+                                  "installedCodeReadOnly": "true", "globalInstallationChanged": "false"]
+        if defaultProbe.output.contains("ffi (= 1.17.0)"), defaultProbe.output.contains("ruby/3.4.5") {
+            cocoaPodsRuntimeProfile["cleanFixtureLauncherIssue"] = "Installed ffi 1.17.0 requires Ruby below 3.4; the clean Homebrew launcher selects Ruby 3.4.5"
+        }
+        func quoted(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let launcher = root.appendingPathComponent("pod-profile")
+        let text = "#!/bin/sh\nunset GEM_PATH RUBYOPT RUBYLIB\nexport GEM_HOME=\(quoted(gemHome.path))\nexport GEM_SPEC_CACHE=\"$HOME/.gem/specs\"\nexec \(quoted(ruby.path)) \(quoted(script.path)) \"$@\"\n"
+        try Data(text.utf8).write(to: launcher)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launcher.path)
+        nativeExecutableOverrides["cocoapods"] = launcher
+        return launcher
+    }
+    func testUnavailableCleanCocoaPodsLauncherPreservesSourceAndSettings() throws {
+        let selected = ProcessInfo.processInfo.environment["DISKWING_NATIVE_COCOAPODS_UNAVAILABLE_LAUNCHER"]
+        let pod = try selected.map { URL(fileURLWithPath: $0) } ?? executable("pod")
+        let probe = try run(pod, ["--version"], success: false)
+        guard probe.status != 0 else { throw XCTSkip("Clean CocoaPods launcher is available; unavailable-launcher refusal fixture does not apply") }
+        let tool = try source("cocoapods")
+        let original = tool.source.appendingPathComponent("generated-preserve")
+        let bytes = Data("Generated source must survive a native runtime failure.".utf8); try bytes.write(to: original)
+        // Application discovery inherits the user's existing Ruby gem paths and
+        // may succeed. Reproduce only the unavailable clean profile explicitly.
+        func quoted(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let unavailable = root.appendingPathComponent("pod-unavailable-clean-profile")
+        let launcher = "#!/bin/sh\nunset GEM_HOME GEM_PATH RUBYOPT RUBYLIB\nexport GEM_SPEC_CACHE=\"$HOME/.gem/specs\"\nexec \(quoted(pod.path)) \"$@\"\n"
+        try Data(launcher.utf8).write(to: unavailable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: unavailable.path)
+        let volume = VolumeInfo(uuid: "NATIVE-FIXTURE", name: "Generated SSD", path: disk.path, totalBytes: 1_000_000_000_000, freeBytes: Volumes.free(at: disk), isInternal: false, isWritable: true)
+        var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: true, nativeExecutableOverrides: ["cocoapods": unavailable])
+        XCTAssertThrowsError(try engine.migrate(toolID: tool.id, removeLocal: false))
+        XCTAssertEqual(try Data(contentsOf: original), bytes)
+        XCTAssertNil(store.settings().locations[tool.id])
+        if let directory = ProcessInfo.processInfo.environment["DISKWING_NATIVE_REPORT_DIR"] {
+            let output = URL(fileURLWithPath: directory)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            var report: [String: Any] = ["toolID": "cocoapods", "profile": selected == nil ? "selected launcher with clean fixture environment" : "explicit preexisting unavailable launcher with clean fixture environment",
+                                         "nativeExitStatus": probe.status, "sourceRetained": true, "routeCreated": false,
+                                         "applicationInheritedEnvironmentState": CacheAdapters.inspect(tool, home: home, directory: project).state,
+                                         "productionDefaultChanged": false, "date": ISO8601DateFormatter().string(from: Date())]
+            if let commit = ProcessInfo.processInfo.environment["DISKWING_NATIVE_TESTED_COMMIT"] { report["testedCommit"] = commit }
+            try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("cocoapods-unavailable-clean-profile.json"))
+        }
     }
     func testGradleActualJavaBuildAndOfflineReuseAfterMigration() throws {
         let tool = try source("gradle")

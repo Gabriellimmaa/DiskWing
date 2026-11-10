@@ -60,6 +60,9 @@ enum SampleWorkspace {
             try fm.createDirectory(at: tool.source, withIntermediateDirectories: true)
             try Data("generated cache payload".utf8).write(to: tool.source.appendingPathComponent("fixture-artifact"))
         }
+        let appCache = home.appendingPathComponent("Library/Caches/com.example.DiskWingSample")
+        try fm.createDirectory(at: appCache, withIntermediateDirectories: true)
+        try Data("generated application cache".utf8).write(to: appCache.appendingPathComponent("cache.db"))
         try fm.createDirectory(at: root.appendingPathComponent("sample-ssd"), withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent("personal-destination"), withIntermediateDirectories: true)
         let helper = root.appendingPathComponent("sample-helper")

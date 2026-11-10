@@ -81,10 +81,14 @@ struct OverviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 27) {
-                PageHeader(title: L10n.text("Entenda o espaço do seu Mac."), subtitle: L10n.text("Encontre o que ocupa espaço e revise suas opções antes de alterar qualquer arquivo."))
+                PageHeader(title: L10n.text("Mais espaço no Mac, caches no SSD."), subtitle: L10n.text("Direcione caches compatíveis para o SSD e explore o armazenamento para escolher o que enviar à Lixeira."))
                 ForEach(model.volumes) { volume in DriveView(volume: volume) }
                 VStack(alignment: .leading, spacing: 14) {
                     Text(L10n.text("Por onde começar")).font(.title3.weight(.semibold))
+                    Button { model.scanInternalStorage() } label: {
+                        Label(L10n.text("Analisar armazenamento interno"), systemImage: "internaldrive")
+                    }.disabled(model.busy || model.isScanning).accessibilityIdentifier("scan-internal-storage")
+                    Text(L10n.text("Analisa os arquivos acessíveis do volume de dados. O sistema protegido e outros volumes são escopos separados; áreas sem acesso aparecem como parciais.")).font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 12) {
                         QuickScan(title: L10n.text("Pasta pessoal"), detail: L10n.text("Uma visão dos seus arquivos"), symbol: "house", url: model.home)
                         QuickScan(title: L10n.text("Downloads"), detail: L10n.text("Instaladores e arquivos baixados"), symbol: "arrow.down.circle", url: model.home.appendingPathComponent("Downloads"))
@@ -95,7 +99,7 @@ struct OverviewView: View {
                 HStack(alignment: .top, spacing: 16) {
                     Image(systemName: "externaldrive.badge.plus").font(.system(size: 33, weight: .light)).foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(L10n.text("O SSD também pode receber caches.")).font(.title3.weight(.semibold))
+                        Text(L10n.text("Preserve os caches compatíveis no SSD.")).font(.title3.weight(.semibold))
                         Text(L10n.text("Ferramentas compatíveis podem usar o disco externo nas novas execuções. Sem ele, os caches locais voltam a ser usados e podem precisar de novos downloads.")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button(L10n.text("Explorar caches compatíveis")) { model.section = .caches }
                     }
@@ -158,7 +162,10 @@ struct ExplorerView: View {
                             Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true)).frame(maxWidth: .infinity, alignment: .leading)
                             Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale))).frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Label(!model.currentScopeAvailable ? L10n.text("Análise indisponível") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: !model.currentScopeAvailable || report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(!model.currentScopeAvailable || report.isPartial ? Palette.orange : Palette.accent)
+                        Label(model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : !model.currentScopeAvailable ? L10n.text("Análise indisponível") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: model.analysisNeedsRefresh || !model.currentScopeAvailable || report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(model.analysisNeedsRefresh || !model.currentScopeAvailable || report.isPartial ? Palette.orange : Palette.accent)
+                        if model.analysisNeedsRefresh {
+                            Button(L10n.text("Atualizar análise")) { model.scan(report.root.url, focus: false) }.disabled(model.busy || model.isScanning)
+                        }
                     }
                 }
             }.padding(.horizontal, compact ? 20 : 28).padding(.vertical, compact ? 16 : 24)
@@ -234,7 +241,7 @@ struct ItemMenu: View {
         if item.isDirectory { Button(L10n.text("Analisar esta pasta")) { model.scan(item.url) }.disabled(model.isScanning || model.busy) }
         Divider()
         Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.cachePolicyReason(item) != nil || model.busy || model.isScanning)
-        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.cachePolicyReason(item) != nil || model.busy || model.isScanning)
+        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.trashPolicyReason(item) != nil || model.busy || model.isScanning)
     }
 }
 
@@ -251,7 +258,7 @@ struct InspectorView: View {
                     Text(L10n.message(item.category.rawValue)).foregroundStyle(.secondary)
                     Text(item.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Divider()
-                    if let reason = model.cachePolicyReason(item) { Text(L10n.message(reason)).font(.callout).foregroundStyle(.secondary) }
+                    if let reason = model.cachePolicyReason(item) { Text(L10n.text("Movimentação: \(L10n.message(reason))")).font(.callout).foregroundStyle(.secondary) }
                     else { Text(L10n.text("Revise o conteúdo antes de escolher uma ação. O tamanho não indica se um arquivo é dispensável.")).font(.callout).foregroundStyle(.secondary) }
                     Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }.frame(maxWidth: .infinity, alignment: .leading)
                     if item.isDirectory {
@@ -260,6 +267,11 @@ struct InspectorView: View {
                     }
                     if model.cachePolicyReason(item) == nil {
                         Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.busy || model.isScanning)
+                    }
+                    if let reason = model.trashPolicyReason(item) {
+                        Text(L10n.message(reason)).font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        if let warning = model.trashWarning(item) { Text(warning).font(.caption).foregroundStyle(Palette.orange) }
                         Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.busy || model.isScanning)
                     }
                     if item.category == .cache || item.category == .developer { Button(L10n.text("Ver integrações de cache")) { model.section = .caches } }
@@ -286,10 +298,13 @@ struct CachesView: View {
                 }.padding(18).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
                 if let issue = model.destinationIssue { Label(issue, systemImage:"exclamationmark.circle").font(.callout).foregroundStyle(Palette.orange) }
                 HStack {
-                    Label(model.settings.shellIntegrationEnabled ? L10n.text("Integração com o terminal ativada") : L10n.text("Integração com o terminal ainda não ativada"), systemImage: model.settings.shellIntegrationEnabled ? "checkmark.circle" : "terminal").font(.callout)
+                    Label(model.integrationIsCurrent ? L10n.text("Integração preparada para novos terminais") : model.settings.shellIntegrationEnabled ? L10n.text("Atualização da integração pendente") : L10n.text("Integração com o terminal ainda não ativada"), systemImage: model.integrationIsCurrent ? "checkmark.circle" : "terminal").font(.callout)
                     Spacer()
                     if !model.settings.shellIntegrationEnabled { Button(L10n.text("Revisar integração…")) { model.review = .integration }.disabled(model.busy) }
-                    else { Toggle(L10n.text("Usar SSD nas novas execuções"), isOn: $model.settings.useExternal).onChange(of: model.settings.useExternal) { model.saveSettings() }.toggleStyle(.switch).controlSize(.small).disabled(model.busy) }
+                    else {
+                        Button(L10n.text("Revisar atualização da integração…")) { model.review = .integration }.disabled(model.busy)
+                        Toggle(L10n.text("Usar SSD nas novas execuções"), isOn: $model.settings.useExternal).onChange(of: model.settings.useExternal) { model.saveSettings() }.toggleStyle(.switch).controlSize(.small).disabled(model.busy)
+                    }
                 }
                 HStack {
                     Text(L10n.text("\(ByteText.format(model.candidates)) encontrados nos caches locais")).font(.title3.weight(.semibold))
@@ -331,6 +346,7 @@ struct CacheRow: View {
             Text(model.toolSizes[tool.id].map { $0.missing ? L10n.text("Ausente") : !$0.complete ? L10n.text("Desconhecido") : ByteText.format($0.logical) } ?? L10n.text("—")).font(.callout.weight(.medium)).monospacedDigit().frame(width: 100, alignment: .trailing)
             Menu {
                 Button(L10n.text("Revisar migração…")) { model.review = .migration(tool) }.disabled(model.selectedVolume == nil || model.destinationIssue != nil || (model.toolSizes[tool.id]?.logical ?? 0) == 0 || model.toolSizes[tool.id]?.complete != true || model.adapterStatuses[tool.id]?.state != "native-available")
+                Button(L10n.text("Preparar novos caches no SSD…")) { model.review = .prepareCache(tool) }.disabled(model.selectedVolume == nil || model.destinationIssue != nil || model.settings.locations[tool.id] != nil || model.adapterStatuses[tool.id]?.state != "native-available" || !(model.toolSizes[tool.id].map { $0.missing || $0.complete && $0.logical == 0 } ?? false))
                 Button(L10n.text("Mostrar cache local")) { model.reveal([tool.source]) }
                 if model.settings.locations[tool.id] != nil { Button(L10n.text("Restaurar cópia ao Mac…")) { model.review = .restore(tool) } }
             } label: { Text(L10n.text("Ações")) }.menuStyle(.borderlessButton).frame(width: 75).disabled(model.busy || model.isScanning)
@@ -505,7 +521,15 @@ struct ReviewSheet: View {
                 if tool.canReleaseLocal && model.adapterStatuses[tool.id]?.canReleaseSource != true { Text(L10n.text("A versão ou configuração desta ferramenta ainda não permite liberar a origem. Copie mantendo o cache local.")).font(.caption).foregroundStyle(Palette.orange) }
                 if !tool.canReleaseLocal { Text(L10n.text("Nesta versão, a origem de \(tool.name) é mantida porque instalações existentes podem depender de links para esse cache. A cópia no SSD atende novas execuções compatíveis.")).font(.caption).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Feche a ferramenta antes de continuar. Sem SSD, os caches podem ser baixados novamente. Os executáveis locais do npx não são removidos.")).font(.caption).foregroundStyle(.secondary)
-            case .trash(let item): fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item)); Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo.")).font(.caption).foregroundStyle(.secondary)
+            case .prepareCache(let tool):
+                fact(L10n.text("Ferramenta"), tool.name)
+                fact(L10n.text("Destino"), model.selectedVolume?.name ?? L10n.text("SSD não conectado"))
+                Text(L10n.text("Prepara uma pasta vazia no SSD para novas gravações. Nenhum cache local será criado ou removido. O direcionamento exige a integração atualizada em um novo terminal.")).font(.callout)
+            case .trash(let item):
+                fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
+                if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
+                Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)
             case .move(let item, let destination): fact(L10n.text("Origem"), item.path); fact(L10n.text("Pasta de destino"), destination.path); Text(L10n.text("A cópia ficará no destino e a origem na Lixeira. Só esvazie a Lixeira depois de revisar a cópia. Se o destino for externo, o arquivo dependerá dele para ser acessado.")).font(.caption).foregroundStyle(.secondary)
             case .integration: fact(L10n.text("Arquivo atualizado"), L10n.text("Configuração do terminal zsh")); Text(L10n.text("Uma cópia da configuração atual ficará nos registros do DiskWing. Uma configuração antiga reconhecida de temporários em disco externo será substituída pelo padrão do macOS. Abra um novo terminal após ativar.")).font(.callout)
             case .disableIntegration: Text(L10n.text("Abra um novo terminal após desativar. Caches existentes e cópias no SSD serão preservados."))
@@ -528,6 +552,7 @@ struct ReviewSheet: View {
     private var description: String {
         switch action {
         case .migration: return L10n.text("Confira a origem e o destino. A migração copia o conteúdo, verifica sua integridade e valida a ferramenta antes de liberar a origem.")
+        case .prepareCache: return L10n.text("Escolha onde serão gravados os próximos caches desta ferramenta.")
         case .trash: return L10n.text("Este item será enviado à Lixeira do macOS. Revise seu conteúdo antes de confirmar.")
         case .move: return L10n.text("O aplicativo confere a cópia antes de enviar a origem à Lixeira. Nada existente no destino será sobrescrito.")
         case .integration: return L10n.text("Ative o direcionamento nas novas execuções do terminal. A ausência do SSD devolve os padrões locais.")

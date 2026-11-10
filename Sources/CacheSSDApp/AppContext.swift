@@ -168,9 +168,31 @@ final class SampleAvailability: @unchecked Sendable {
         // an unavailable simulated device or absent root is a different state.
         allows(url) && (!isSamples || !scanVolumeIdentifier()(url).isEmpty) && FileManager.default.fileExists(atPath: url.path)
     }
+    func internalDataRoot() -> URL? {
+        // The sealed system and writable data are separate APFS filesystems.
+        // Scanning / cannot be used as a proxy for the user's data volume.
+        if isSamples { return home }
+        let data = URL(fileURLWithPath: "/System/Volumes/Data", isDirectory: true)
+        let values = try? data.resourceValues(forKeys: [.isDirectoryKey, .volumeIsInternalKey])
+        if values?.isDirectory == true, values?.volumeIsInternal == true,
+           DataVolumePaths.isUnredirectedExistingPath(data) { return data }
+        return nil
+    }
+    func actionURL(_ url: URL) -> URL {
+        if isSamples { return url }
+        return DataVolumePaths.canonicalHomeItem(url, home: home)
+    }
     func inspect(_ tool: CacheDescriptor) -> AdapterStatus {
-        if isSamples { return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: CacheAdapters.qualifiedVersions[tool.id], effectiveCachePath: tool.source.path, state: "native-available", explanation: "Cache gerado para teste. Nenhuma ferramenta instalada será executada.", canReleaseSource: tool.canReleaseLocal) }
+        if isSamples { return Self.sampleAdapterStatus(tool) }
         return CacheAdapters.inspect(tool, home: home)
+    }
+    nonisolated private static func sampleAdapterStatus(_ tool: CacheDescriptor) -> AdapterStatus {
+        let version = CacheAdapters.qualifiedVersions[tool.id]
+        let qualified = version != nil
+        return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: version, effectiveCachePath: tool.source.path,
+                             state: qualified ? "native-available" : "unqualified-version",
+                             explanation: qualified ? "Cache gerado para teste. Nenhuma ferramenta instalada será executada." : "Esta versão ainda não foi qualificada para usar o SSD. O cache local e a configuração serão preservados.",
+                             canReleaseSource: qualified && tool.canReleaseLocal && tool.id != "go")
     }
     private var operationBusyCheck: BusyCheck {
         if isSamples { return { _, _ in [] } }
@@ -182,7 +204,11 @@ final class SampleAvailability: @unchecked Sendable {
             let home = home
             provider = { uuid in Self.sampleVolumes(root: root, home: home, connected: availability.connected).first { $0.uuid == uuid } }
         } else { provider = { Volumes.find(uuid: $0) } }
-        return MigrationEngine(store: store, home: home, volumeProvider: provider, verifyNative: !isSamples, busyCheck: operationBusyCheck)
+        let inspector: ((CacheDescriptor) -> AdapterStatus)?
+        if isSamples {
+            inspector = { Self.sampleAdapterStatus($0) }
+        } else { inspector = nil }
+        return MigrationEngine(store: store, home: home, volumeProvider: provider, verifyNative: !isSamples, busyCheck: operationBusyCheck, adapterInspector: inspector)
     }
     func personalActions() -> PersonalActions {
         guard let root = container else { return PersonalActions(home: home, store: store) }

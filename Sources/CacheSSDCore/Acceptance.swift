@@ -72,7 +72,7 @@ public enum AcceptanceRunner {
                 try beforeCheck(id)
                 switch id {
                 case "bundled-resources-pt-en":
-                    L10n.preference = "en"; try require(L10n.text("Nome") == "Name" && CacheAdapters.qualifiedVersions.count == 7)
+                    L10n.preference = "en"; try require(L10n.text("Nome") == "Name" && CacheAdapters.hasValidBundledQualifications)
                     L10n.preference = "pt-BR"; try require(L10n.text("Nome") == "Nome")
                 case "indexed-explorer":
                     let source = home.appendingPathComponent("Downloads/sample/nested")

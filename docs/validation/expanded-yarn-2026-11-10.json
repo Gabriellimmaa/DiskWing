@@ -1,0 +1,12 @@
+{
+  "adapterVersion": 1,
+  "date": "2026-11-10T18:05:33Z",
+  "localFallback": true,
+  "newWritesOnSSD": true,
+  "qualificationType": "native_workflow_with_generated_data",
+  "scope": "generated fixtures only; no physical disconnect or human acceptance",
+  "sourceRetained": true,
+  "toolID": "yarn",
+  "versionOutput": "1.22.22",
+  "workflow": "Classic PnP origin retained and executable; migrated cache reused offline; new dependency written on SSD; absent-volume local cache reused"
+}

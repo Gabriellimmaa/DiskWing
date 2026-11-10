@@ -1,0 +1,29 @@
+{
+  "acceptanceOnly": false,
+  "architecture": "arm64",
+  "archive": {
+    "bytes": 1328424,
+    "fileName": "DiskWing-1.0.0-8-b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7.zip"
+  },
+  "builtAt": "2026-11-10T18:16:32.652924+00:00",
+  "candidate": {
+    "archiveSHA256": "b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7",
+    "buildNumber": "8",
+    "commit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
+    "version": "1.0.0"
+  },
+  "helperSHA256": "d44c0b78dbfba903c63b49826068614788d156f9255dda826dcc1ef3d52da07e",
+  "minimumMacOS": "14.0",
+  "profile": "candidate",
+  "schemaVersion": 1,
+  "sourceDirty": false,
+  "suite": "diskwing-candidate-v1",
+  "verification": {
+    "developerID": false,
+    "gatekeeperAccepted": false,
+    "notarizationAccepted": false,
+    "notarizationStapled": false,
+    "signatureVerified": true,
+    "updaterEnabled": false
+  }
+}

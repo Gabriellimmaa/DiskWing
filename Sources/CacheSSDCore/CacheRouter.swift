@@ -11,10 +11,17 @@ public struct RouteDecision: Codable, Sendable {
 public enum CacheRouter {
     public static func commandExclusions(_ arguments: [String]) -> Set<String> {
         var result = Set<String>()
+        let isGoCommand = arguments.first.map { URL(fileURLWithPath: $0).lastPathComponent == "go" } ?? false
         for raw in arguments {
             let value = raw.lowercased()
             if value.hasPrefix("--backend") || value.hasPrefix("--global-store") { result.insert("bun") }
             if value.hasPrefix("--link-mode") { result.insert("uv") }
+            if ["--cache-folder", "--cachefolder", "--use-yarnrc", "--no-default-rc", "--cwd", "--enable-pnp", "--pnp"].contains(where: { value == $0 || value.hasPrefix($0 + "=") }) { result.insert("yarn") }
+            if isGoCommand && (raw == "-C" || raw.hasPrefix("-C=")) { result.insert("go") }
+            if ["--dir", "--config-path", "--set-config", "--set", "--directory"].contains(where: { value == $0 || value.hasPrefix($0 + "=") }) || raw == "-d" || raw.hasPrefix("-d/") || raw == "-o" { result.insert("ccache") }
+            if value.hasPrefix("gocache=") || value.hasPrefix("goenv=") || value.hasPrefix("gocacheprog=") { result.insert("go") }
+            if value.hasPrefix("cache_dir=") || value.hasPrefix("ccache_") && value.contains("=") { result.insert("ccache") }
+            if value.hasPrefix("yarn_") && value.contains("=") { result.insert("yarn") }
             if value.hasPrefix("--") {
                 let option = String(value.dropFirst(2).split(separator:"=",maxSplits:1).first ?? "")
                 if !option.isEmpty && ["userconfig","globalconfig","prefix","cache"].contains(where: { $0.hasPrefix(option) || option.hasPrefix($0) }) { result.insert("npm") }
@@ -37,14 +44,15 @@ public enum CacheRouter {
             return RouteDecision(toolID: tool.id, mode: "ssd", environmentKey: tool.environmentKey, path: root.path)
         }
     }
-    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil) -> [String: String] {
+    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil, yarnGlobalConfigurations: [URL]? = nil) -> [String: String] {
         Dictionary(uniqueKeysWithValues: decisions(settings: settings, volumes: volumes ?? Volumes.list()).filter {
-            !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations, pipGlobalConfigurations: pipGlobalConfigurations) &&
+            CacheAdapters.runtimeAllowsRouting(toolID: $0.toolID, home: home, directory: directory) &&
+            !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations, pipGlobalConfigurations: pipGlobalConfigurations, yarnGlobalConfigurations: yarnGlobalConfigurations) &&
             processEnvironment[$0.environmentKey] == nil &&
             !($0.toolID == "npm" && processEnvironment["NPM_CONFIG_CACHE"] != nil)
         }.compactMap { d in d.path.map { (d.environmentKey, $0) } })
     }
-    public static func hasCustomPreference(toolID: String, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment environment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil) -> Bool {
+    public static func hasCustomPreference(toolID: String, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment environment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil, yarnGlobalConfigurations: [URL]? = nil) -> Bool {
         if let tool = CacheCatalog.find(toolID, home: home), environment[tool.environmentKey] != nil { return true }
         if toolID == "npm", environment.keys.contains(where: { ["npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig", "npm_config_prefix"].contains($0.lowercased()) }) { return true }
         if ["pip","uv"].contains(toolID), environment["XDG_CONFIG_HOME"] != nil { return true }
@@ -53,6 +61,13 @@ public enum CacheRouter {
         if toolID == "uv", environment["UV_LINK_MODE"] == "symlink" { return true }
         if toolID == "bun", FileManager.default.fileExists(atPath: home.appendingPathComponent(".bun/install/cache/links").path) { return true }
         if ["uv", "pip"].contains(toolID), environment["XDG_CACHE_HOME"] != nil { return true }
+        if toolID == "yarn" {
+            // Do not send PnP or an upgraded Yarn runtime to a cache chosen for Classic.
+            if environment.keys.contains(where: { ["yarn_cache_folder", "yarn_config", "yarn_rc_filename", "yarn_ignore_path", "yarn_plugnplay_override", "npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig", "npm_config_prefix"].contains($0.lowercased()) }) { return true }
+            if ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "PREFIX", "DESTDIR"].contains(where: { environment[$0] != nil }) { return true }
+        }
+        if toolID == "go", ["GOENV", "GOCACHEPROG"].contains(where: { environment[$0] != nil }) { return true }
+        if toolID == "ccache", ["CCACHE_CONFIGPATH", "CCACHE_CONFIGDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"].contains(where: { environment[$0] != nil }) { return true }
         guard directory.isFileURL else { return true }
         var folders: [URL] = [home]
         var current = directory.standardizedFileURL, reachedRoot = false
@@ -81,11 +96,33 @@ public enum CacheRouter {
         case "uv": files = folders.flatMap { [$0.appendingPathComponent("uv.toml"), $0.appendingPathComponent("pyproject.toml")] } + [home.appendingPathComponent(".config/uv/uv.toml")]
         case "pip": files = [home.appendingPathComponent(".pip/pip.conf"), home.appendingPathComponent(".config/pip/pip.conf"), home.appendingPathComponent("Library/Application Support/pip/pip.conf")] + (pipGlobalConfigurations ?? [URL(fileURLWithPath:"/Library/Application Support/pip/pip.conf"), URL(fileURLWithPath:"/etc/pip.conf")]); if let venv = environment["VIRTUAL_ENV"] { files.append(URL(fileURLWithPath: venv).appendingPathComponent("pip.conf")) }; if let config = environment["PIP_CONFIG_FILE"] { files.append(URL(fileURLWithPath: config)) }
         case "cocoapods": files = [home.appendingPathComponent(".cocoapods/config.yaml")]
+        case "yarn":
+            for folder in folders {
+                if [".yarnrc.yml", ".pnp.js", ".pnp.cjs"].contains(where: { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }) { return true }
+            }
+            files = folders.flatMap { [$0.appendingPathComponent(".yarnrc"), $0.appendingPathComponent(".npmrc"), $0.appendingPathComponent("package.json")] }
+            files += [home.appendingPathComponent(".config/yarn/config"), home.appendingPathComponent(".config/yarn"), home.appendingPathComponent(".yarn/config")]
+            if let configured = yarnGlobalConfigurations { files += configured }
+            else {
+                files += ["/etc/yarn/config", "/etc/yarnrc", "/etc/npmrc", "/opt/homebrew/etc/yarnrc", "/usr/local/etc/yarnrc", "/opt/homebrew/etc/npmrc", "/usr/local/etc/npmrc"].map { URL(fileURLWithPath: $0) }
+                if let node = ToolLocator.locate("node", home: home) {
+                    for executable in [node, node.resolvingSymlinksInPath()] {
+                        let prefix = executable.deletingLastPathComponent().deletingLastPathComponent()
+                        files += [prefix.appendingPathComponent("etc/yarnrc"), prefix.appendingPathComponent("etc/npmrc")]
+                    }
+                }
+            }
+        case "go": files = [home.appendingPathComponent("Library/Application Support/go/env"), home.appendingPathComponent(".config/go/env")]
+        case "ccache": files = folders.map { $0.appendingPathComponent("ccache.conf") } + [home.appendingPathComponent(".ccache/ccache.conf"), home.appendingPathComponent("Library/Caches/ccache/ccache.conf"), home.appendingPathComponent("Library/Preferences/ccache/ccache.conf"), home.appendingPathComponent(".config/ccache/ccache.conf"), URL(fileURLWithPath: "/opt/homebrew/etc/ccache.conf"), URL(fileURLWithPath: "/usr/local/etc/ccache.conf"), URL(fileURLWithPath: "/etc/ccache.conf")]
         default: return false
         }
         for file in Set(files) {
             var info = stat()
             if lstat(file.path, &info) != 0 { if errno == ENOENT { continue }; return true }
+            // Classic also tries this legacy rc filename, ignoring EISDIR when
+            // it is the ordinary Yarn configuration/global-install directory.
+            if toolID == "yarn", file.path == home.appendingPathComponent(".config/yarn").path,
+               info.st_mode & S_IFMT == S_IFDIR { continue }
             guard info.st_mode & S_IFMT == S_IFREG, info.st_flags & UInt32(SF_DATALESS) == 0, info.st_size <= 1_048_576 else { return true }
             let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { return true }
@@ -95,10 +132,19 @@ public enum CacheRouter {
             let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             let data = try? handle.read(upToCount: 1_048_577); try? handle.close()
             guard let data, data.count <= 1_048_576, let text = String(data: data, encoding: .utf8) else { return true }
+            if toolID == "yarn", file.lastPathComponent == "package.json" {
+                guard let manifest = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return true }
+                if let manager = manifest["packageManager"] as? String, manager.hasPrefix("yarn@"), !manager.hasPrefix("yarn@1.") { return true }
+                if let install = manifest["installConfig"] as? [String: Any], install["pnp"] as? Bool == true { return true }
+                continue
+            }
             var section = ""
             for raw in text.split(separator: "\n") {
                 let line = raw.trimmingCharacters(in: .whitespaces).lowercased()
                 if line.hasPrefix("#") || line.hasPrefix(";") { continue }
+                // CCACHE_DIR also selects cache-specific configuration. Never drop unrelated
+                // compiler/namespace/remote settings when switching to a new cache root.
+                if toolID == "ccache", !line.isEmpty { return true }
                 if line.hasPrefix("[") { section = line.trimmingCharacters(in: CharacterSet(charactersIn: "[] ")); continue }
                 let key = line.split(whereSeparator: { $0 == "=" || $0 == ":" }).first?.trimmingCharacters(in: .whitespaces) ?? ""
                 if toolID == "npm" && ["cache", "userconfig", "globalconfig", "prefix"].contains(key) { return true }
@@ -108,6 +154,10 @@ public enum CacheRouter {
                 if toolID == "uv" && key == "link-mode" && line.contains("symlink") && (file.lastPathComponent != "pyproject.toml" || section.hasPrefix("tool.uv")) { return true }
                 if toolID == "pip" && ["cache-dir", "no-cache-dir"].contains(key) { return true }
                 if toolID == "cocoapods" && key == "cache_root" { return true }
+                if toolID == "yarn" && ["cache-folder", "cache_folder", "yarn-path", "plugnplay", "pnp", "use-yarnrc", "userconfig", "globalconfig", "prefix"].contains(where: { line.contains($0) }) { return true }
+                if toolID == "yarn", file.lastPathComponent == ".npmrc", key == "cache" { return true }
+                if toolID == "go" && ["gocache", "gocacheprog"].contains(key) { return true }
+                if toolID == "ccache" && key == "cache_dir" { return true }
             }
         }
         return false

@@ -1,0 +1,124 @@
+{
+  "casesDiscovered": 49,
+  "casesExecuted": 48,
+  "explicitSkips": [
+    {
+      "reason": "runtime unavailable; not qualified or activated",
+      "toolID": "ccache"
+    }
+  ],
+  "failures": 0,
+  "records": {
+    "bun": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:05:37Z",
+      "offline": "native --offline succeeded",
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "bun",
+      "version": "1.3.3",
+      "workflow": "pinned package install and execution; original cache retained"
+    },
+    "cocoapods": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:05:49Z",
+      "offline": "not established; cached install without repo update only",
+      "runtimeProfile": {
+        "applicationInheritedEnvironmentState": "native-available",
+        "cleanFixtureLauncher": "available",
+        "globalInstallationChanged": "false",
+        "installedCodeReadOnly": "true",
+        "launcher": "explicit existing Ruby plus existing CocoaPods libexec",
+        "rubyVersion": "3.3.6"
+      },
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "cocoapods",
+      "version": "1.16.2",
+      "workflow": "temporary Podfile install without modifying an Xcode project"
+    },
+    "cocoapods-unavailable-clean-profile": {
+      "applicationInheritedEnvironmentState": "native-available",
+      "date": "2026-11-10T18:07:05Z",
+      "nativeExitStatus": 1,
+      "productionDefaultChanged": false,
+      "profile": "explicit preexisting unavailable launcher with clean fixture environment",
+      "routeCreated": false,
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "cocoapods"
+    },
+    "gradle": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:06:33Z",
+      "offline": "native --offline build succeeded",
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "gradle",
+      "version": "9.2.0",
+      "workflow": "temporary Java project compiles pinned Maven dependency"
+    },
+    "homebrew": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:06:48Z",
+      "offline": "not established; fetch reuse only",
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "homebrew",
+      "version": "6.0.17",
+      "workflow": "bottle download reused; no global formula installation"
+    },
+    "npm": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:06:53Z",
+      "localCacheRecreatedDuringSSDReuse": false,
+      "localNpxPreserved": true,
+      "offline": "native --offline succeeded with generated original cache held unavailable",
+      "originalCacheUnavailableDuringSSDReuse": true,
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "npm",
+      "transactionalSourceRelease": false,
+      "version": "10.9.2",
+      "workflow": "pinned package install and execution; generated source held unavailable for SSD offline reuse; local npx sentinel preserved; held source restored for local offline fallback; no transactional source release"
+    },
+    "pip": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:07:01Z",
+      "offline": "--no-index miss expected; wheelhouse required",
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "pip",
+      "version": "26.2.1",
+      "workflow": "isolated --target install and import"
+    },
+    "uv": {
+      "absentVolumeRouting": "local",
+      "absentVolumeWorkflow": true,
+      "adapterVersion": 1,
+      "date": "2026-11-10T18:07:08Z",
+      "offline": "native --offline succeeded",
+      "sourceRetained": true,
+      "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed",
+      "toolID": "uv",
+      "version": "0.13.7",
+      "workflow": "isolated --target install/import in copy mode; original cache retained"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Generated homes/projects/caches; same-filesystem source/destination with injected availability; no personal migration, global tool change or physical unplug. CocoaPods runtime profiles are separate from inherited application availability.",
+  "suite": "expanded-scope-native-followup",
+  "testedCommit": "29278464a81f5840916cfeb184e0775aa1910fed"
+}
