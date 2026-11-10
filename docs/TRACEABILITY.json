@@ -839,7 +839,7 @@
         "nextAction": "Repeat against final integrated candidate source; preserve physical cable and human gates.",
         "implementationCommit": "d67bb0e21a5bbd4a86a3c1b5baf8657a9743bff1",
         "reviewer": "coordinator",
-        "validation": "93 affected tests independently repeated. Native APFS Finder Trash, volume rename/detach/remount, conflict preservation and exclusive-rename recovery passed; native ExFAT Trash refusal passed. No existing disk was renamed/detached."
+        "validation": "93 affected tests independently repeated. Native APFS Finder Trash, volume rename/detach/remount, conflict preservation and exclusive-rename recovery passed; native ExFAT Trash refusal passed. No existing disk was renamed/detached. HFS+ native Finder Trash/remount/conflict/recovery also passed (7.04s)."
       },
       {
         "id": "UX-APP-01",
@@ -855,14 +855,20 @@
           "Sources/CacheSSDCore/Treemap.swift",
           "Sources/CacheSSDCore/Resources/en.json"
         ],
-        "status": "implemented_targeted_tests_passed_independent_review_pending",
+        "status": "implemented_independently_reviewed_native_UI_pending",
         "evidence": [],
         "nextAction": "Independent review of final fixes, integrate close/open APIs; full suite and PT/EN native sample checks; build separately identified candidate >8.",
-        "validation": "44 app/localization/treemap/storage cases passed with generated SSD fixtures. Explicit source/index absence, close/eject/cancel/reconnect, read-only queue discovery after relaunch, fresh-versus-resume, nested selection and bounded outstanding tree reads covered. Default temporary graphical fixture alias awaits cache fixup; final native PT/EN pass remains pending."
+        "validation": "44 app/localization/treemap/storage cases passed with generated SSD fixtures. Explicit source/index absence, close/eject/cancel/reconnect, read-only queue discovery after relaunch, fresh-versus-resume, nested selection and bounded outstanding tree reads covered. Default temporary graphical fixture alias awaits cache fixup; final native PT/EN pass remains pending.",
+        "reviewedCommits": [
+          "89e2494",
+          "461e15482a5ad4d3ccc40f6bc75f1383dc048671",
+          "9df022bdb07f2f2bb8d56f3707616bd9ba15fae3"
+        ],
+        "reviewEvidence": "docs/validation/CACHE-VOLUME-REVIEW-2026-11-10.md"
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
-    "lastIntegratedCommit": "77e5055",
+    "lastIntegratedCommit": "9df022bdb07f2f2bb8d56f3707616bd9ba15fae3",
     "nextAction": "Finish graphical native acceptance and final volume benchmark, independent reviews, PT/EN native samples, exact new candidate and CI/PR. Preserve installed build8 and backups; no personal migrations.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "integrationBranch": "codex/cache-volume-ux",
