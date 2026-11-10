@@ -32,8 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         .defaultSize(width: 1240, height: 810)
         .commands {
-            CommandGroup(replacing: .newItem) { if let model = launch.model { Button(L10n.text("Analisar pasta…")) { model.chooseFolder() }.keyboardShortcut("o") } }
-            CommandGroup(after: .toolbar) { if let model = launch.model { Button(L10n.text("Atualizar análise")) { if let root = model.report?.root.url { model.scan(root) } }.keyboardShortcut("r").disabled(model.isScanning || model.busy) } }
+            CommandGroup(replacing: .newItem) {
+                Button(L10n.text("Analisar pasta…")) { launch.model?.chooseFolder() }.keyboardShortcut("o").disabled(launch.model.map { $0.busy || $0.isScanning } ?? true)
+            }
+            CommandGroup(after: .toolbar) {
+                Button(L10n.text("Atualizar análise")) { if let model = launch.model, let root = model.report?.root.url { model.scan(root) } }.keyboardShortcut("r").disabled(launch.model.map { $0.isScanning || $0.busy } ?? true)
+            }
             CommandMenu(L10n.text("Navegar")) {
                 if let model = launch.model {
                     Button(L10n.text("Visão geral")) { model.section = .overview }.keyboardShortcut("1")
