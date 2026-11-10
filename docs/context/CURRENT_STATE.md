@@ -1,6 +1,6 @@
 # Current state
 
-Updated 2026-11-10. [PR #10](https://github.com/Gabriellimmaa/DiskWing/pull/10) merged to main at 6e95e499; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42755083061). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
+Updated 2026-11-10. [PR #11](https://github.com/Gabriellimmaa/DiskWing/pull/11) merged to main at 1cdcaabf; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42758794618). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
 
 ## Implemented
 
@@ -13,9 +13,10 @@ Updated 2026-11-10. [PR #10](https://github.com/Gabriellimmaa/DiskWing/pull/10) 
 - Optional FSEvents tracking, rescans at least fifteen minutes apart, Low Power Mode pause, optional growth alerts limited to one per root/day. No folders are watched by default.
 - Seven versioned native cache adapters. Exact qualified versions are bundled; unknown/custom versions preserve the source. Bun/uv originals always remain local. Absolute Bun links within its own cache become relative in the copy.
 - Portuguese/English selection, native keyboard navigation, review/recovery screens and optional notification permission requested only from the alert control.
+- Portable packaged acceptance helper and disposable internal installation/removal runner, with private non-overwriting reports tied to the helper SHA-256. Human/other-Mac/release gates remain explicit and unverified. See [acceptance handoff](../acceptance/SECOND_MAC.md).
 - Internal-disk installer preserving the previous application; portable ad-hoc build and optional pinned Sparkle 2 build. HTTPS/public-key/Developer-ID checks, nested signing and notarization tooling exist; actual public signing remains unverified.
 
-The current validation records are [initial implementation evidence](../validation/IMPLEMENTATION-2026-11-10.md) and [subsequent filesystem/copy qualification](../validation/FILESYSTEMS-2026-11-10.md), linked to [requirements](../TRACEABILITY.json) and nine GitHub issues/milestones. Original import hashes in the migration manifest describe the historical import, not subsequent source revisions.
+The current validation records are [initial implementation evidence](../validation/IMPLEMENTATION-2026-11-10.md), [subsequent filesystem/copy qualification](../validation/FILESYSTEMS-2026-11-10.md) and [portable acceptance evidence](../validation/ACCEPTANCE-KIT-2026-11-10.md), linked to [requirements](../TRACEABILITY.json) and nine GitHub issues/milestones. Original import hashes in the migration manifest describe the historical import, not subsequent source revisions.
 
 ## Remaining release gates
 
@@ -27,8 +28,8 @@ No personal cache migration, terminal activation, Xcode preference change, login
 
 ## Next execution order
 
-1. Review the filesystem/copy increment and its CI; keep the installed application on the merged base until intentionally updated.
-2. Repeat disposable filesystem and install/restore/disable/removal checks on another Apple Silicon Mac; complete hands-on VoiceOver, keyboard and PT/EN acceptance with generated samples.
+1. Review the portable acceptance increment and its CI; the installed application remains unchanged until intentionally updated.
+2. Run the packaged kit and disposable filesystem checks on another Apple Silicon Mac, then complete actual install/restore/disable/removal, VoiceOver, keyboard and PT/EN acceptance with generated samples. Record the private manual template; an automated pass does not attest another physical machine.
 3. Provide a Developer ID Application identity and notarization profile, then qualify a hosted signed update with both valid and invalid signatures, consent and interrupted-operation behavior. No release feed or credentials are created implicitly.
 4. Recruit five general users and five developers under docs/beta/PROTOCOL.md, record independent success and actual seven-day follow-up, resolve critical findings and run the readiness validator.
 

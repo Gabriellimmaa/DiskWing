@@ -153,7 +153,15 @@
       "evidence": [
         "Tests/CacheSSDCoreTests/LocalizationTests.swift",
         "docs/ACCESSIBILITY.md",
-        "docs/validation/IMPLEMENTATION-2026-11-10.md"
+        "docs/validation/IMPLEMENTATION-2026-11-10.md",
+        "docs/acceptance/SECOND_MAC.md",
+        "docs/acceptance/REVIEW_TEMPLATE.json",
+        "Sources/CacheSSDCore/Acceptance.swift",
+        "Tests/CacheSSDCoreTests/AcceptanceTests.swift",
+        "scripts/qualify_bundle.py",
+        "Tests/Packaging/test_qualification.py",
+        "docs/validation/ACCEPTANCE-KIT-2026-11-10.md",
+        "docs/validation/bundle-acceptance.json"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
@@ -169,12 +177,20 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/8",
       "acceptance": "Internal installation remains usable without SSD; production requires Developer ID/notarization; signed Sparkle updates and removal preserve configuration. No signing keys in Git.",
       "implementation": "tooling_implemented",
-      "validation": "ad_hoc_arm64_bundle_internal_install_and_sparkle_api_build_passed",
+      "validation": "ad_hoc_bundle_and_disposable_internal_lifecycle_qualified_human_release_gates_pending",
       "evidence": [
         "build.py",
         "scripts/install_local.py",
         "Sources/CacheSSDApp/Updates.swift",
-        "docs/DISTRIBUTION.md"
+        "docs/DISTRIBUTION.md",
+        "docs/acceptance/SECOND_MAC.md",
+        "docs/acceptance/REVIEW_TEMPLATE.json",
+        "Sources/CacheSSDCore/Acceptance.swift",
+        "Tests/CacheSSDCoreTests/AcceptanceTests.swift",
+        "scripts/qualify_bundle.py",
+        "Tests/Packaging/test_qualification.py",
+        "docs/validation/ACCEPTANCE-KIT-2026-11-10.md",
+        "docs/validation/bundle-acceptance.json"
       ],
       "externalDependencies": [
         "Developer ID Application identity and notarization profile unavailable.",

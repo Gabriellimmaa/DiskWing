@@ -12,6 +12,17 @@ let command = args.first ?? "help"
 let store = Store()
 do {
     switch command {
+    case "acceptance-check":
+        guard args.count == 5, args[1] == "--workspace", args[3] == "--output" else { throw CacheSSDError.message("Use acceptance-check --workspace EXISTING_FIXTURE_DIRECTORY --output NEW_REPORT.json. Only generated fixtures are changed.") }
+        let output = URL(fileURLWithPath: args[4]).standardizedFileURL
+        var existing = stat()
+        guard lstat(output.path, &existing) != 0, errno == ENOENT,
+              Paths.physicalURL(output.deletingLastPathComponent()).standardizedFileURL.path == output.deletingLastPathComponent().standardizedFileURL.path,
+              FileManager.default.isWritableFile(atPath: output.deletingLastPathComponent().path) else { throw CacheSSDError.message("Choose a new report filename in an existing writable directory without links.") }
+        let report = try AcceptanceRunner.run(workspace: URL(fileURLWithPath: args[2]), helper: URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL)
+        try report.write(to: output)
+        try printJSON(report)
+        if !report.passed { exit(1) }
     case "self-check":
         L10n.preference = "en"
         guard !L10n.english.isEmpty, L10n.text("Nome") == "Name", CacheAdapters.qualifiedVersions.count == 7 else { throw CacheSSDError.message("Required application resources are unavailable.") }
@@ -74,6 +85,8 @@ do {
     default:
         print("""
         CacheSSD Helper
+          acceptance-check --workspace PASTA --output NOVO.json
+                                       Verifica amostras isoladas; não atesta beta
           volumes                      Lista discos e espaço livre
           scan PASTA                   Analisa metadados; não altera arquivos
           index PASTA                  Indexa metadados em SQLite local

@@ -97,4 +97,15 @@ final class VerificationTests: XCTestCase {
         XCTAssertThrowsError(try FileTree.copy(source,to:source.appendingPathComponent("recursive")))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:source.path),["keep"])
     }
+    func testVerificationWorkspaceAcceptsSystemTemporaryDirectoryAliases() throws {
+        let directory = Paths.physicalURL(FileManager.default.temporaryDirectory).appendingPathComponent("DiskWing-digest-alias-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fixture = directory.appendingPathComponent("source")
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        try Data("generated".utf8).write(to: fixture.appendingPathComponent("file"))
+        let alias = URL(fileURLWithPath: directory.path, isDirectory: true).standardizedFileURL
+        XCTAssertEqual(try FileTree.digest(fixture, workspace: alias), try FileTree.digest(fixture, workspace: Paths.physicalURL(directory)))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), ["source"])
+    }
 }

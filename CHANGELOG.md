@@ -2,6 +2,7 @@
 
 ## 0.2.0-dev — unreleased
 
+- Added packaged generated-data acceptance, a disposable internal installation/removal runner and a private second-Mac/PT/EN/VoiceOver review template; resolved temporary-directory aliases before verification database opens.
 - Added streamed, cancellable file copies and disk-backed verification preserving legacy digests, with disposable APFS recovery/space/read-only and ExFAT refusal qualification.
 - Added shared operation leases, durable checkpoints, source identity/metadata checks, guided recovery and abrupt-process-exit verification.
 - Replaced bounded visible-tree search with a private paginated SQLite index, full-scope search, filters and streamed cancellable exports.

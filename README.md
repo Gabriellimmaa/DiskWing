@@ -75,3 +75,5 @@ Internal CacheSSD module names, bundle identifiers, on-disk formats, and integra
 Please read [contributing](CONTRIBUTING.md) and [security](SECURITY.md). Code and original project assets are MIT licensed; bundled Manrope font files retain their SIL Open Font License. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 Copy/migration destinations must support extended security to preserve metadata. APFS is locally qualified; ExFAT is refused. A 256 MiB free-space floor and bounded verification workspace can stop an operation while preserving its source. See [filesystem qualification](docs/validation/FILESYSTEMS-2026-11-10.md).
+
+For portable packaged checks and the private second-Mac review template, see [acceptance handoff](docs/acceptance/SECOND_MAC.md). Automated checks do not complete the human beta.

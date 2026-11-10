@@ -15,6 +15,7 @@ Historical chats may retain an obsolete recorded working directory. Run subseque
 - Packaging tests: python3 -m unittest discover -s Tests/Packaging -v.
 - Installed-tool checks: DISKWING_RUN_NATIVE_TESTS=1 swift test -j 2. Actual disposable installs: DISKWING_RUN_INSTALL_TESTS=1 swift test -j 2 --filter NativeWorkflowTests. See docs/TESTING.md for prerequisites.
 - Disposable filesystem images/copy benchmark: explicit opt-in commands and safety boundaries in docs/TESTING.md. Never use the developer SSD as a fault-injection target.
+- Portable packaged acceptance and temporary internal install/remove rehearsal: docs/acceptance/SECOND_MAC.md. Generated fixtures only; reports cannot attest another Mac or human acceptance.
 - Optional fixtures location: CACHESSD_TEST_TEMP=/path/to/test-temp.
 
 ## Data preservation

@@ -21,3 +21,5 @@ Run python3 scripts/release_readiness.py .local/beta/evidence.json. At least fiv
 The maintainer separately verifies Developer ID, stapled notarization, a signed update and rejection of an invalid signature, fresh install/restore/disable/removal on a second Mac, PT/EN, keyboard and VoiceOver. Evidence references and reviewer/date belong in the private review file. The script checks declarations and eligibility; it cannot authenticate an interview or replace manual review.
 
 Keep a release candidate prerelease until these gates pass. Do not publish v1.0, tags, participants, or a Sparkle feed simply because this script exists.
+
+Before enrollment, use the [portable acceptance handoff](../acceptance/SECOND_MAC.md) to prepare candidate/build hashes and the other-Mac/PT/EN/VoiceOver/lifecycle review. Automated reports and an empty manual template are not participant observations and must never be imported as beta successes.

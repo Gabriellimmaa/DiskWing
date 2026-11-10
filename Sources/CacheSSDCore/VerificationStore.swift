@@ -16,7 +16,10 @@ final class VerificationStore {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     init(workspace: URL? = nil, maxEntries: Int = 1_000_000, maxBytes: Int64 = 536_870_912, minimumFree: Int64 = 268_435_456) throws {
-        let base = workspace ?? ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
+        let requested = workspace ?? ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
+        // SQLite NOFOLLOW also checks parent components. macOS can expose its
+        // legitimate temporary directory through /var -> /private/var.
+        let base = Paths.physicalURL(requested)
         self.maxEntries = maxEntries; self.maxBytes = maxBytes; self.minimumFree = minimumFree
         folder = base.appendingPathComponent(".DiskWing-verification-\(UUID().uuidString)")
         encoder.outputFormatting = [.sortedKeys]

@@ -54,8 +54,12 @@ Cases cover real cross-volume APFS copy/recovery with bytes, ACLs, resource fork
 
 After a process crash, inspect the durable operation record first. A leftover .DiskWing-verification-* folder is disposable scratch, never a recovery source. Remove only a confirmed owned scratch folder after the operation has stopped; do not remove operation/configuration journals or staging copies to free space blindly.
 
+## Portable packaged acceptance
+
+See [another-Mac handoff](acceptance/SECOND_MAC.md) for the packaged helper command, temporary internal installation/removal runner and private manual-review template. The helper runs generated explorer/copy/recovery/cache/shell fixtures without Swift or Python. The lifecycle runner needs Python 3 and internal fixture storage. Normal user settings, installed apps and personal files are never used. Reports retain pending human/release gates and do not make the beta ready. A regression test exercises real system temporary-directory aliases in addition to the configured fixture volume.
+
 ## Public CI
 
-CI runs isolated Swift tests, Python packaging/readiness tests, an arm64 production bundle and signature/icon/resource checks. The separate updater job compiles the exact Sparkle dependency. The explorer scale job requires a manual dispatch with run_scale enabled. A separate filesystems job requires run_filesystems and runs the disposable image/copy tests; default CI never mounts images. Native workflows require explicit local opt-in and suitable tool availability. Default CI never installs personal tooling or publishes releases.
+CI runs isolated Swift tests, Python packaging/readiness tests, an arm64 production bundle, signature/icon/resource checks and a real disposable internal installation/helper/removal exercise. The separate updater job compiles the exact Sparkle dependency. The explorer scale job requires a manual dispatch with run_scale enabled. A separate filesystems job requires run_filesystems and runs the disposable image/copy tests; default CI never mounts images. Native workflows require explicit local opt-in and suitable tool availability. Default CI never installs personal tooling or publishes releases.
 
 Developer ID, Apple notarization, runtime updater consent/signature rejection, VoiceOver, other Macs, real cable removal and the human beta remain independent acceptance gates. See [current evidence](validation/IMPLEMENTATION-2026-11-10.md). Raw machine-specific logs stay in ignored .local/ storage.

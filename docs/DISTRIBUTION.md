@@ -19,6 +19,10 @@ Use Sparkle's generate_keys and generate_appcast from the resolved artifact. Kee
 
 Update checks are optional, off by default and initiated by a manual check or explicit automatic-check consent. Automatic download/install and system profiling are disabled. The standard Sparkle UI requires installation consent. Operations/recovery and updates exclude each other in the app; cross-process operation leases are checked before update/relaunch. Quit requests during an active scan/copy are deferred by cancellation refusal. A CLI operation or power failure still requires the documented recovery journal review.
 
+## Rehearsal before another-Mac acceptance
+
+Use [the portable acceptance kit](acceptance/SECOND_MAC.md) and scripts/qualify_bundle.py to rehearse an internal installation in its own generated directory, run the installed helper and remove only that temporary app. It leaves the normal installed application and support records untouched. Ad-hoc signature integrity, simulated local fallback and generated-home shell disable are automated evidence; actual second-Mac GUI/Gatekeeper/new-terminal/removal and signed-update checks still need a reviewer.
+
 ## Removal
 
 1. In Settings, review Disable terminal integration; open a new terminal and verify native local defaults. Existing terminals/processes retain their environment until reopened.
