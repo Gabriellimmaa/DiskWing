@@ -91,6 +91,12 @@ final class ExpandedCacheTests: XCTestCase {
             XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "yarn", directory: home, home: home, processEnvironment: [key: "/generated/custom"], yarnGlobalConfigurations: []))
         }
     }
+    func testYarnConfigurationDirectoryDoesNotActAsAnInvalidRCFile() throws {
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/yarn/global"), withIntermediateDirectories: true)
+        XCTAssertFalse(CacheRouter.hasCustomPreference(toolID: "yarn", directory: home, home: home, processEnvironment: [:], yarnGlobalConfigurations: []))
+        try put(home.appendingPathComponent(".config/yarn/config"), "cache-folder /generated/custom\n")
+        XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "yarn", directory: home, home: home, processEnvironment: [:], yarnGlobalConfigurations: []))
+    }
     func testCcachePreservesAnyUserAndAncestorConfiguration() throws {
         let project = home.appendingPathComponent("Documents/project/nested")
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
