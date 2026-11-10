@@ -259,6 +259,7 @@ struct CachesView: View {
                         if let uuid = model.settings.selectedVolumeUUID, !model.volumes.contains(where: { $0.uuid == uuid }) { Text(L10n.text("Disco desconectado")).tag(uuid) }
                     }.frame(maxWidth: 330).disabled(model.busy)
                 }.padding(18).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+                if let issue = model.destinationIssue { Label(issue, systemImage:"exclamationmark.circle").font(.callout).foregroundStyle(Palette.orange) }
                 HStack {
                     Label(model.settings.shellIntegrationEnabled ? L10n.text("Integração com o terminal ativada") : L10n.text("Integração com o terminal ainda não ativada"), systemImage: model.settings.shellIntegrationEnabled ? "checkmark.circle" : "terminal").font(.callout)
                     Spacer()
@@ -304,7 +305,7 @@ struct CacheRow: View {
             Spacer(minLength: 8)
             Text(model.toolSizes[tool.id].map { $0.missing ? L10n.text("Ausente") : !$0.complete ? L10n.text("Desconhecido") : ByteText.format($0.logical) } ?? L10n.text("—")).font(.callout.weight(.medium)).monospacedDigit().frame(width: 100, alignment: .trailing)
             Menu {
-                Button(L10n.text("Revisar migração…")) { model.review = .migration(tool) }.disabled(model.selectedVolume == nil || (model.toolSizes[tool.id]?.logical ?? 0) == 0 || model.toolSizes[tool.id]?.complete != true || model.adapterStatuses[tool.id]?.state != "native-available")
+                Button(L10n.text("Revisar migração…")) { model.review = .migration(tool) }.disabled(model.selectedVolume == nil || model.destinationIssue != nil || (model.toolSizes[tool.id]?.logical ?? 0) == 0 || model.toolSizes[tool.id]?.complete != true || model.adapterStatuses[tool.id]?.state != "native-available")
                 Button(L10n.text("Mostrar cache local")) { NSWorkspace.shared.activateFileViewerSelecting([tool.source]) }
                 if model.settings.locations[tool.id] != nil { Button(L10n.text("Restaurar cópia ao Mac…")) { model.review = .restore(tool) } }
             } label: { Text(L10n.text("Ações")) }.menuStyle(.borderlessButton).frame(width: 75).disabled(model.busy || model.isScanning)

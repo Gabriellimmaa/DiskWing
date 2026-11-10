@@ -40,3 +40,5 @@ Leia [AGENTS.md](AGENTS.md), o [contexto consolidado](docs/context/PROJECT_CONTE
 Os nomes internos CacheSSD e os formatos persistidos foram mantidos para preservar configurações. A migração do repositório não ativa migrações de caches pessoais. Licença MIT, com a fonte Manrope sob a licença OFL incluída.
 
 A versão pública depende de assinatura Developer ID, notarização, validação em outro Mac e beta com cinco usuários gerais e cinco desenvolvedores durante sete dias. A implementação dessas estruturas não comprova essas etapas. Consulte [distribuição](docs/DISTRIBUTION.md) e [protocolo da beta](docs/beta/PROTOCOL.md).
+
+O destino das cópias e migrações precisa preservar permissões e metadados. APFS foi validado localmente; exFAT é recusado. A conferência exige ao menos 256 MiB livres e pode interromper a operação preservando a origem. Veja a [validação dos sistemas de arquivos](docs/validation/FILESYSTEMS-2026-11-10.md).

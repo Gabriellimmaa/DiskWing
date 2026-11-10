@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-10",
+  "hostScope": "One Apple Silicon development Mac; disposable disk images only",
+  "scenarios": [
+    {
+      "date": "2026-11-10T04:48:05Z",
+      "diskReservationMiB": 433,
+      "filesystem": "APFS",
+      "originalPreserved": true,
+      "result": "passed",
+      "scenario": "apfs-low-space-refusal",
+      "scope": "Disposable disk image; no physical cable removal"
+    },
+    {
+      "bytesACLResourceForkModeNanosecondMtimeVerified": true,
+      "date": "2026-11-10T04:47:58Z",
+      "filesystem": "APFS",
+      "originalPreserved": true,
+      "result": "passed",
+      "scenario": "apfs-move-recovery",
+      "scope": "Disposable disk image; no physical cable removal",
+      "verifiedCopyPreserved": true
+    },
+    {
+      "date": "2026-11-10T04:48:07Z",
+      "filesystem": "APFS",
+      "originalPreserved": true,
+      "result": "passed",
+      "scenario": "apfs-readonly-refusal",
+      "scope": "Disposable disk image; no physical cable removal"
+    },
+    {
+      "date": "2026-11-10T04:48:00Z",
+      "destinationUnchanged": true,
+      "filesystem": "ExFAT",
+      "originalPreserved": true,
+      "result": "passed",
+      "scenario": "exfat-safe-refusal",
+      "scope": "Disposable disk image; no physical cable removal"
+    }
+  ],
+  "physicalDisconnectTested": false,
+  "secondMacTested": false
+}

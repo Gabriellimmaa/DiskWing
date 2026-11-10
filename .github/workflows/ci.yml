@@ -10,6 +10,10 @@ on:
         description: Run the disposable one-million-entry benchmark
         type: boolean
         default: false
+      run_filesystems:
+        description: Run disposable APFS/ExFAT images and the copy resource benchmark
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,3 +71,19 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-scale"
           CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter ScaleTests
+
+  filesystems:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_filesystems
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Qualify disposable filesystems and bounded copy verification
+        env:
+          DISKWING_RUN_FILESYSTEM_TESTS: '1'
+          DISKWING_RUN_COPY_SCALE_TESTS: '1'
+        run: |
+          mkdir -p "$RUNNER_TEMP/diskwing-filesystems"
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-filesystems" swift test -j 2 --filter 'FilesystemQualificationTests|CopyScaleTests'

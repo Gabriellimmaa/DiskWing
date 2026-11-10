@@ -41,10 +41,16 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/2",
       "acceptance": "Unreadable shell files are preserved; all mutations share a lease; incomplete measurement is explicit; durable checkpoints and guided recovery survive injected failures.",
       "implementation": "implemented",
-      "validation": "isolated_and_subprocess_crash_tests_passed",
+      "validation": "isolated_crash_streamed_copy_and_disposable_apfs_exfat_tests_passed",
       "evidence": [
         "Tests/CacheSSDCoreTests/OperationSafetyTests.swift",
-        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift"
+        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift",
+        "Tests/CacheSSDCoreTests/VerificationTests.swift",
+        "Tests/CacheSSDCoreTests/FilesystemQualificationTests.swift",
+        "Tests/CacheSSDCoreTests/CopyScaleTests.swift",
+        "docs/validation/FILESYSTEMS-2026-11-10.md",
+        "docs/validation/filesystems.json",
+        "docs/validation/copy-scale.json"
       ],
       "externalDependencies": [
         "Physical power-loss/cable-removal and another Mac remain unverified."
@@ -80,13 +86,19 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/4",
       "acceptance": "Disposable files/folders retain data and metadata; conflicts, space, cloud data and interruption are checked; source is recoverable via verified copy or Trash.",
       "implementation": "implemented",
-      "validation": "disposable_metadata_conflict_recovery_and_identity_tests_passed",
+      "validation": "isolated_crash_streamed_copy_and_disposable_apfs_exfat_tests_passed",
       "evidence": [
         "Tests/CacheSSDCoreTests/OperationSafetyTests.swift",
-        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift"
+        "Tests/CacheSSDCoreTests/CrashRecoveryTests.swift",
+        "Tests/CacheSSDCoreTests/VerificationTests.swift",
+        "Tests/CacheSSDCoreTests/FilesystemQualificationTests.swift",
+        "Tests/CacheSSDCoreTests/CopyScaleTests.swift",
+        "docs/validation/FILESYSTEMS-2026-11-10.md",
+        "docs/validation/filesystems.json",
+        "docs/validation/copy-scale.json"
       ],
       "externalDependencies": [
-        "Additional filesystem metadata and very large copy throughput remain to be qualified."
+        "Additional Macs/devices/filesystems, multi-gigabyte sequential throughput and physical cable/power faults remain unverified."
       ],
       "milestone": 4,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4"

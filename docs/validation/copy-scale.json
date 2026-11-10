@@ -1,0 +1,12 @@
+{
+  "copyVerified": true,
+  "date": "2026-11-10T04:47:51Z",
+  "digestCompatibility": "legacy sorted JSON",
+  "directories": 201,
+  "files": 20001,
+  "logicalBytes": 67348864,
+  "originalPreserved": true,
+  "peakResidentBytes": 140115968,
+  "scope": "Same-volume generated fixture; filesystem-image cases run separately",
+  "seconds": 44.18562293052673
+}

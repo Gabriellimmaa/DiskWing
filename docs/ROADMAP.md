@@ -22,6 +22,19 @@ M0–M5 have code and local validation evidence, including actual temporary nati
 
 See [implementation evidence](validation/IMPLEMENTATION-2026-11-10.md) and [all nine GitHub milestones](https://github.com/Gabriellimmaa/DiskWing/milestones). Public v1 readiness is false until the independent gates pass. Historical plans remain unchanged.
 
+## Follow-on qualification and next priorities
+
+PR #10 is merged at 6e95e499 and its [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42755083061). The next M1/M3 increment replaces whole-tree in-memory verification with compatible streamed digests and makes a single-file copy cancellable. It adds a 20,001-file resource benchmark and actual disposable filesystem images: APFS metadata/recovery, low space, read-only and safe ExFAT refusal. See [qualification evidence](validation/FILESYSTEMS-2026-11-10.md). These are local development checks, not final milestone closure.
+
+The next independent gates, in order of prerequisites, are:
+
+1. Review/CI for this increment, then another Apple Silicon Mac's disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7).
+2. Hands-on keyboard/VoiceOver and both-language acceptance across the two core flows, keeping user data untouched (M6).
+3. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent and recovery (M7). Credentials/hosting are external prerequisites; no public release is implicit.
+4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness.
+
+Physical cable/power faults must use a separate disposable test device, never the development SSD. Additional filesystems and multi-gigabyte sequential copy throughput remain open qualification work.
+
 ## Baseline
 
 The imported 0.1 alpha passed 26 native-enabled Swift tests and five packaging tests. Public CI runs 24 isolated Swift tests, explicitly skips two installed-tool checks, builds and verifies the app. These checks do not establish actual project installs, physical unplug safety or market validation.
