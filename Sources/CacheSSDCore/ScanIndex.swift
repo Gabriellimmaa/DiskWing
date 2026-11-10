@@ -311,7 +311,7 @@ public final class IndexedScanner {
                }
               }
             }
-            try index.finish(id: id, depth: maxDepth, logical: logical, allocated: allocated, files: files, entries: count, partial: limited || !unreadable.isEmpty, cancelled: cancellation.isCancelled)
+            try index.finish(id: id, depth: maxDepth, logical: logical, allocated: allocated, files: files, entries: count, partial: limited || !unreadable.isEmpty || !mounts.isEmpty, cancelled: cancellation.isCancelled)
             return try index.report(id: id, unreadable: unreadable, mounts: mounts, reachedLimit: limited)
         } catch { index.abandon(id: id); throw error }
     }
