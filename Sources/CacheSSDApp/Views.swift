@@ -169,7 +169,7 @@ struct ExplorerView: View {
                         Text(model.currentFolder?.path ?? report.root.path).font(.callout).lineLimit(1).truncationMode(.middle).textSelection(.enabled).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     HStack {
-                        Picker(L10n.text("Exibir"), selection: $model.showLargest) { Text(L10n.text("Pastas e arquivos")).tag(false); Text(L10n.text("Maiores arquivos")).tag(true) }.pickerStyle(.segmented).frame(maxWidth: 280)
+                        Picker(L10n.text("Exibir"), selection: $model.showLargest) { Text(L10n.text("Pastas e arquivos")).tag(false); Text(L10n.text("Maiores arquivos")).tag(true) }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
                         Toggle(L10n.text("Acompanhar pasta"), isOn: Binding(get: { model.isWatchingCurrentRoot }, set: { model.watchCurrentRoot($0) })).toggleStyle(.checkbox)
                         Spacer(minLength: 0)
                         Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.help(L10n.text("Exportar relatório com nomes e caminhos")).accessibilityLabel(L10n.text("Exportar relatório com nomes e caminhos")).disabled(model.busy || model.isScanning)
