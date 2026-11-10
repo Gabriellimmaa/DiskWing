@@ -1,0 +1,34 @@
+name: macOS checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      CACHESSD_TEST_TEMP: ${{ runner.temp }}/diskwing-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create isolated fixture location
+        run: mkdir -p "$CACHESSD_TEST_TEMP"
+      - name: Swift isolated tests
+        run: swift test -j 2
+      - name: Packaging boundary tests
+        run: python3 -m unittest discover -s Tests/Packaging -v
+      - name: Build production bundle
+        run: python3 build.py
+      - name: Verify signature and approved icon
+        run: |
+          codesign --verify --deep --strict dist/DiskWing.app
+          cmp Assets/AppIcon.icns dist/DiskWing.app/Contents/Resources/AppIcon.icns
+          cmp design/brand/macos/DiskWing.icns Assets/AppIcon.icns

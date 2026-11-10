@@ -1,0 +1,26 @@
+{
+  "name": "DiskWing",
+  "canvas": {
+    "width": 1024,
+    "height": 1024
+  },
+  "background": {
+    "color": "#2764E7",
+    "colorSpace": "sRGB"
+  },
+  "layers": [
+    {
+      "name": "01 Lift mark",
+      "file": "01-lift-mark.svg",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1024,
+        "height": 1024
+      }
+    }
+  ],
+  "note": "Especificação legível da composição; não é o documento nativo .icon. Não aplicar máscara ou margem adicional ao importar esta camada."
+}

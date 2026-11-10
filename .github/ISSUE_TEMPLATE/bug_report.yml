@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible issue using a disposable sample
+title: "[Bug] "
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Expected and observed behavior. Do not include personal paths or contents.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduce with an isolated sample
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Revision and macOS version
+  - type: textarea
+    id: recovery
+    attributes:
+      label: Preservation and recovery state
+      description: Redact logs. Report security issues privately.

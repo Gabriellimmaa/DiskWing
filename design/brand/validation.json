@@ -1,0 +1,105 @@
+{
+  "date": "2026-11-09",
+  "brand": "DiskWing",
+  "concept": "Lift",
+  "status": "passed",
+  "svg": {
+    "logos": 13,
+    "outlinedText": true,
+    "externalResources": false
+  },
+  "appIcon": {
+    "slots": 10,
+    "dimensions": [
+      {
+        "file": "icon_16x16.png",
+        "pixels": 16,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_16x16@2x.png",
+        "pixels": 32,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_32x32.png",
+        "pixels": 32,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_32x32@2x.png",
+        "pixels": 64,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_128x128.png",
+        "pixels": 128,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_128x128@2x.png",
+        "pixels": 256,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_256x256.png",
+        "pixels": 256,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_256x256@2x.png",
+        "pixels": 512,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_512x512.png",
+        "pixels": 512,
+        "alpha": true,
+        "srgbProfile": true
+      },
+      {
+        "file": "icon_512x512@2x.png",
+        "pixels": 1024,
+        "alpha": true,
+        "srgbProfile": true
+      }
+    ]
+  },
+  "icns": {
+    "header": "valid",
+    "appleIconutilDecoding": "passed",
+    "decodedRepresentations": 10,
+    "dimensionsPreserved": true,
+    "alphaPreserved": true,
+    "opaquePixelsPreserved": true
+  },
+  "assetCatalog": {
+    "compiled": true,
+    "tool": "actool 26.6",
+    "platform": "macosx",
+    "validationDeploymentTarget": "11.0",
+    "warnings": 0
+  },
+  "menuBar": {
+    "points": 18,
+    "scales": [
+      "1x",
+      "2x"
+    ],
+    "template": true
+  },
+  "iconComposer": {
+    "nativeDocumentIncluded": false,
+    "foregroundSVGAndPNGIncluded": true,
+    "reason": "Primeiro uso do Icon Composer exige aceite de licença pelo usuário."
+  },
+  "scope": "Recursos verificados; não houve integração ou teste de execução do aplicativo."
+}

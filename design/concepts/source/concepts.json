@@ -1,0 +1,42 @@
+[
+  {
+    "id": "01-lift",
+    "name": "Lift",
+    "label": "Disco com asa",
+    "color": "#2764E7",
+    "accent": "#5D94FF",
+    "tint": "#EDF3FF",
+    "description": "Um disco encontra uma asa em ascensão. Direto e expressivo.",
+    "rationale": "O núcleo circular representa o armazenamento; três penas apontam para cima e para fora. O centro vazado mantém a referência a disco e dá respiro ao símbolo."
+  },
+  {
+    "id": "02-fold",
+    "name": "Fold",
+    "label": "Monograma D",
+    "color": "#087D6C",
+    "accent": "#20AC92",
+    "tint": "#E9F6F1",
+    "description": "A letra D abriga duas aberturas que desenham uma asa.",
+    "rationale": "Uma construção compacta em uma única forma. A letra D se reconhece pela haste e pela curva externa; os vazios diagonais sugerem penas e movimento. É o conceito mais contido."
+  },
+  {
+    "id": "03-orbit",
+    "name": "Orbit",
+    "label": "Espaço em movimento",
+    "color": "#C86315",
+    "accent": "#EFA04E",
+    "tint": "#FFF2E3",
+    "description": "Um disco aberto e um segmento que se transforma em voo.",
+    "rationale": "O anel sugere a ocupação do disco. Um segmento se desprende e ganha uma ponta de asa: uma metáfora para espaço recuperado. O círculo permanece forte nas versões pequenas."
+  },
+  {
+    "id": "04-soar",
+    "name": "Soar",
+    "label": "Asa dobrada",
+    "color": "#BA4A40",
+    "accent": "#E57D6C",
+    "tint": "#FFF0EB",
+    "description": "Uma asa de papel, formada por três planos geométricos.",
+    "rationale": "Uma direção abstrata, sem desenhar um dispositivo. O plano maior sugere uma asa aberta; a dobra e a cauda dão uma assinatura própria à silhueta. O nome completa a referência a armazenamento."
+  }
+]

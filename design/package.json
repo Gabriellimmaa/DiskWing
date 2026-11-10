@@ -1,0 +1,12 @@
+{
+  "name": "diskwing-artwork-tools",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=20.9" },
+  "scripts": {
+    "brand": "node brand/source/build-assets.cjs",
+    "concepts": "node concepts/source/render.cjs"
+  },
+  "dependencies": { "sharp": "0.35.5" }
+}

@@ -1,0 +1,21 @@
+{
+  "images": [
+    {
+      "filename": "diskwing-menubar.png",
+      "idiom": "mac",
+      "scale": "1x"
+    },
+    {
+      "filename": "diskwing-menubar@2x.png",
+      "idiom": "mac",
+      "scale": "2x"
+    }
+  ],
+  "info": {
+    "author": "DiskWing",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "template"
+  }
+}

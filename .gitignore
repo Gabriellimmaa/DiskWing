@@ -1,0 +1,24 @@
+# Private migration archives and local configuration
+.local/
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+# Build outputs and dependencies
+.build/
+.swiftpm/
+dist/
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+# Local artifacts
+.DS_Store
+*.xcuserstate
+xcuserdata/
+*.app/
+*.dSYM/
+*.zip
+*.log

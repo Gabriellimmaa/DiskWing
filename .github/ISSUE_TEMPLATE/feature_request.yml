@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a focused storage-management improvement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior and recovery
+      description: Include user review and how data remains recoverable.
+    validations:
+      required: true
