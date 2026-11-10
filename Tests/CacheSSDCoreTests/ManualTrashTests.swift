@@ -229,13 +229,18 @@ final class ManualTrashTests: XCTestCase {
         let source = try file("Library/Caches/generated/data").deletingLastPathComponent()
         let before = try FileTree.digest(source)
         var reachedPublication = false
+        var publishedOperationID: UUID?
         let actions = actions(checkpoint: { journal in
-            if journal.phase == .published { reachedPublication = true; throw CacheSSDError.message("generated failure after Trash publication") }
+            if journal.phase == .published {
+                reachedPublication = true; publishedOperationID = journal.id
+                throw CacheSSDError.message("generated failure after Trash publication")
+            }
         })
         XCTAssertThrowsError(try actions.trash(source))
         XCTAssertTrue(reachedPublication)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
-        let journal = try XCTUnwrap(store.operations().first)
+        let operationID = try XCTUnwrap(publishedOperationID)
+        let journal = try XCTUnwrap(store.operations().first(where: { $0.id == operationID }))
         XCTAssertEqual(journal.phase, .interrupted)
         XCTAssertEqual(journal.sourceDigest, before)
         return (source, journal, before)
@@ -245,7 +250,7 @@ final class ManualTrashTests: XCTestCase {
         let (source, journal, before) = try interruptedCacheTrash()
         XCTAssertNil(reason(source))
         let recovery = RecoveryManager(store: store, home: home, busyCheck: { _, _ in [] })
-        XCTAssertTrue(try XCTUnwrap(recovery.pending().first).canRestoreSource)
+        XCTAssertTrue(try XCTUnwrap(recovery.pending().first(where: { $0.id == journal.id })).canRestoreSource)
         try recovery.restoreSource(id: journal.id)
         XCTAssertEqual(try FileTree.digest(source), before)
         XCTAssertEqual(store.operations().first?.phase, .resolved)
