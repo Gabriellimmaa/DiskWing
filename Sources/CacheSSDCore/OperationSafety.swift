@@ -111,10 +111,14 @@ public final class RecoveryManager {
     private let home: URL
     private let permittedRoot: URL?
     private let permittedRootIdentity: FileIdentity?
+    private let busyCheck: BusyCheck
     private let checkpoint: (OperationJournal) throws -> Void
     private let supportedKinds: Set<String> = ["migration", "personalMove", "trash", "restore"]
-    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, permittedRoot: URL? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, permittedRoot: URL? = nil,
+                busyCheck: @escaping BusyCheck = { try BusyInspector.inspect(paths: $0, tool: $1) },
+                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
         self.store = store; self.home = home; self.checkpoint = checkpoint
+        self.busyCheck = busyCheck
         self.permittedRoot = permittedRoot.map(Paths.physicalURL)
         permittedRootIdentity = permittedRoot.flatMap { try? FileIdentity($0) }
     }
@@ -253,7 +257,7 @@ public final class RecoveryManager {
             }
             let copy = URL(fileURLWithPath: path)
             guard copy.standardizedFileURL == copy.resolvingSymlinksInPath(),
-                  try BusyInspector.inspect(paths: [copy]).isEmpty else { throw CacheSSDError.message(L10n.text("A cópia está indisponível, redirecionada ou em uso.")) }
+                  try busyCheck([copy], nil).isEmpty else { throw CacheSSDError.message(L10n.text("A cópia está indisponível, redirecionada ou em uso.")) }
             guard try FileTree.digest(copy, tool: journal.toolID ?? "", cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw CacheSSDError.message(L10n.text("A cópia mudou. Ela foi preservada para revisão manual.")) }
             let size = FileTree.measure(copy, cancellation: cancellation, progress: progress)
             guard size.isComplete, Volumes.free(at: source.deletingLastPathComponent()) > size.logical + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço confirmado para restaurar a cópia.")) }
@@ -349,7 +353,7 @@ public final class RecoveryManager {
         }
         if stage == nil {
             guard source.standardizedFileURL == source.resolvingSymlinksInPath(),
-                  try BusyInspector.inspect(paths: [source, target], tool: tool.id).isEmpty,
+                  try busyCheck([source, target], tool.id).isEmpty,
                   try FileTree.digest(source, tool: tool.id, cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw restoreConflict() }
             let size = FileTree.measure(source, cancellation: cancellation, progress: progress)
             guard size.isComplete, Volumes.free(at: home) > max(size.logical, size.allocated) + 536_870_912 else { throw CacheSSDError.message(L10n.text("Não há espaço confirmado para restaurar a cópia.")) }
@@ -366,7 +370,7 @@ public final class RecoveryManager {
         guard let stage else { throw restoreConflict() }
         journal.destinationDigest = expected
         try update(&journal, phase: .copyVerified)
-        guard !cancellation.isCancelled, try BusyInspector.inspect(paths: [target], tool: tool.id).isEmpty else { throw restoreConflict() }
+        guard !cancellation.isCancelled, try busyCheck([target], tool.id).isEmpty else { throw restoreConflict() }
         try update(&journal, phase: .publishing)
         try RestorePublication.publish(stage, to: target, journal: &journal, store: store)
         try update(&journal, phase: .published)
@@ -374,7 +378,7 @@ public final class RecoveryManager {
     }
 
     private func finishRestoreConfiguration(_ journal: inout OperationJournal, tool: CacheDescriptor, target: URL, expected: String, cancellation: CancellationFlag, progress: @escaping (String) -> Void) throws {
-        guard !cancellation.isCancelled, try BusyInspector.inspect(paths: [target], tool: tool.id).isEmpty,
+        guard !cancellation.isCancelled, try busyCheck([target], tool.id).isEmpty,
               try FileTree.digest(target, tool: tool.id, cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw restoreConflict() }
         var latest = try restoreSettings()
         if let location = latest.locations[tool.id] {

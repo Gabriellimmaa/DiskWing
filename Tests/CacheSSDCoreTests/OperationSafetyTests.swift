@@ -84,7 +84,7 @@ final class OperationSafetyTests: XCTestCase {
         let bytes = Data("resource fork".utf8)
         XCTAssertEqual(bytes.withUnsafeBytes { setxattr(source.path, "com.apple.ResourceFork", $0.baseAddress, bytes.count, 0, 0) }, 0)
         let expected = try FileTree.digest(source)
-        _ = try PersonalActions(home: home, store: store, trashHandler: fakeTrash).move(source, to: destination)
+        _ = try PersonalActions(home: home, store: store, trashHandler: fakeTrash, busyCheck: { _, _ in [] }).move(source, to: destination)
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(try FileTree.digest(destination.appendingPathComponent(source.lastPathComponent)), expected)
         let operation = try XCTUnwrap(store.operations().first)
@@ -93,7 +93,7 @@ final class OperationSafetyTests: XCTestCase {
     }
     func testFullDestinationPreservesSourceWithoutStaging() throws {
         let source = try personalSource(), destination = try target()
-        XCTAssertThrowsError(try PersonalActions(home: home, store: store, freeBytes: { _ in 0 }, trashHandler: fakeTrash).move(source, to: destination))
+        XCTAssertThrowsError(try PersonalActions(home: home, store: store, freeBytes: { _ in 0 }, trashHandler: fakeTrash, busyCheck: { _, _ in [] }).move(source, to: destination))
         XCTAssertEqual(try String(contentsOf: source), "original bytes")
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
     }
@@ -105,19 +105,25 @@ final class OperationSafetyTests: XCTestCase {
     }
     func testCancellationAfterVerificationKeepsOriginalAndPendingRecord() throws {
         let source = try personalSource(), destination = try target(), token = CancellationFlag()
-        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: { if $0.phase == .copyVerified { token.cancel() } })
+        var reachedCheckpoint = false
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, busyCheck: { _, _ in [] }, checkpoint: { if $0.phase == .copyVerified { reachedCheckpoint = true; token.cancel() } })
         XCTAssertThrowsError(try actions.move(source, to: destination, cancellation: token))
+        XCTAssertTrue(reachedCheckpoint)
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
         XCTAssertEqual(store.operations().first?.phase, .cancelled)
         XCTAssertEqual(RecoveryManager(store: store, home: home).pending().count, 1)
     }
     func testFailureAfterPublicationKeepsBothAndCanBeResolvedWithoutDeleting() throws {
         let source = try personalSource(), destination = try target()
-        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: {
-            if $0.phase == .published { throw CacheSSDError.message("injected stop") }
+        var reachedCheckpoint = false
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, busyCheck: { _, _ in [] }, checkpoint: {
+            if $0.phase == .published { reachedCheckpoint = true; throw CacheSSDError.message("injected stop") }
         })
         XCTAssertThrowsError(try actions.move(source, to: destination))
+        XCTAssertTrue(reachedCheckpoint, "The intended published boundary must be reached before injected failure")
         let record = try XCTUnwrap(store.operations().first)
+        XCTAssertEqual(record.phase, .interrupted)
+        XCTAssertTrue(record.detail.contains("injected stop"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
         try RecoveryManager(store: store, home: home).keepCopiesAndResolve(id: record.id)
@@ -126,12 +132,14 @@ final class OperationSafetyTests: XCTestCase {
     }
     func testRecoveryRestoresAbsentSourceAndNeverOverwrites() throws {
         let source = try personalSource(), destination = try target()
-        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: {
-            if $0.phase == .completed { throw CacheSSDError.message("simulated completion failure") }
+        var reachedCheckpoint = false
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, busyCheck: { _, _ in [] }, checkpoint: {
+            if $0.phase == .completed { reachedCheckpoint = true; throw CacheSSDError.message("simulated completion failure") }
         })
         XCTAssertThrowsError(try actions.move(source, to: destination))
+        XCTAssertTrue(reachedCheckpoint)
         let record = try XCTUnwrap(store.operations().first)
-        let recovery = RecoveryManager(store: store, home: home)
+        let recovery = RecoveryManager(store: store, home: home, busyCheck: { _, _ in [] })
         try recovery.restoreSource(id: record.id)
         XCTAssertEqual(try String(contentsOf: source), "original bytes")
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
@@ -139,7 +147,7 @@ final class OperationSafetyTests: XCTestCase {
     }
     func testVerifiedMigrationCanBeRestoredWithoutOverwritingLocalCache() throws {
         let (tool, volume) = try migrationFixture()
-        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false)
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] })
         _ = try engine.migrate(toolID: "npm", removeLocal: true)
         try engine.restore(toolID: "npm")
         XCTAssertEqual(try String(contentsOf: tool.source.appendingPathComponent("artifact")), "cached bytes")
@@ -148,14 +156,99 @@ final class OperationSafetyTests: XCTestCase {
     }
     func testRestoreDetectsConcurrentLocalUseAndPreservesBothCopies() throws {
         let (tool, volume) = try migrationFixture()
-        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false)
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] })
         _ = try engine.migrate(toolID: "npm", removeLocal: true)
-        let other = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, checkpoint: {
+        let other = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] }, checkpoint: {
             if $0.kind == "restore" && $0.phase == .copyVerified { try Data("new local data".utf8).write(to: tool.source.appendingPathComponent("new")) }
         })
         XCTAssertThrowsError(try other.restore(toolID: "npm"))
         XCTAssertEqual(try String(contentsOf: tool.source.appendingPathComponent("new")), "new local data")
         XCTAssertNotNil(store.settings().locations["npm"])
+    }
+
+    func testMoveBecomingBusyAfterVerificationPreservesSourceAndVerifiedStaging() throws {
+        let source = try personalSource(), destination = try target(), expected = try FileTree.digest(source)
+        var busy = false, inspected = 0, trashed = false, phases: [OperationPhase] = []
+        let actions = PersonalActions(home: home, store: store, trashHandler: { item in
+            trashed = true; return try self.fakeTrash(item)
+        }, busyCheck: { paths, tool in
+            XCTAssertEqual(paths.map(\.path), [source.path]); XCTAssertNil(tool); inspected += 1
+            return busy ? [BusyProcess(pid: 4242, name: "Controlled fixture holder")] : []
+        }, checkpoint: { journal in
+            phases.append(journal.phase)
+            if journal.phase == .copyVerified { busy = true }
+        })
+        XCTAssertThrowsError(try actions.move(source, to: destination))
+        XCTAssertTrue(phases.contains(.copyVerified)); XCTAssertFalse(phases.contains(.published))
+        XCTAssertFalse(trashed); XCTAssertEqual(inspected, 2)
+        XCTAssertEqual(try FileTree.digest(source), expected)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
+        let journal = try XCTUnwrap(store.operations().first)
+        XCTAssertEqual(journal.phase, .interrupted)
+        XCTAssertEqual(try FileTree.digest(URL(fileURLWithPath: XCTUnwrap(journal.staging))), expected)
+    }
+
+    func testMoveBecomingBusyAfterPublicationOrAtTrashKeepsBothCopies() throws {
+        for phase in [OperationPhase.published, .trashing] {
+            let source = try file("home/Downloads/reopened-\(phase.rawValue).txt"), destination = try target()
+            let expected = try FileTree.digest(source)
+            var busy = false, reachedCheckpoint = false, trashed = false, inspections = 0
+            let actions = PersonalActions(home: home, store: store, trashHandler: { item in
+                trashed = true; return try self.fakeTrash(item)
+            }, busyCheck: { paths, tool in
+                XCTAssertEqual(paths.map(\.path), [source.path]); XCTAssertNil(tool)
+                inspections += 1
+                return busy ? [BusyProcess(pid: 4242, name: "Controlled late fixture holder")] : []
+            }, checkpoint: { journal in
+                if journal.phase == phase { reachedCheckpoint = true; busy = true }
+            })
+            XCTAssertThrowsError(try actions.move(source, to: destination), phase.rawValue)
+            XCTAssertTrue(reachedCheckpoint, phase.rawValue); XCTAssertFalse(trashed, phase.rawValue)
+            XCTAssertEqual(inspections, 3, phase.rawValue)
+            let sourceExists = FileManager.default.fileExists(atPath: source.path)
+            XCTAssertTrue(sourceExists, phase.rawValue)
+            if sourceExists { XCTAssertEqual(try FileTree.digest(source), expected, phase.rawValue) }
+            XCTAssertEqual(try FileTree.digest(destination.appendingPathComponent(source.lastPathComponent)), expected, phase.rawValue)
+            let journal = try XCTUnwrap(store.operations().first(where: { $0.source == source.path }))
+            XCTAssertEqual(journal.phase, .interrupted, phase.rawValue)
+        }
+    }
+
+    private enum InspectionFailure: Error { case unavailable }
+    func testBusyInspectionErrorsPropagateWithoutChangingPersonalOrCacheSources() throws {
+        let source = try personalSource(), destination = try target(), expected = try FileTree.digest(source)
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, busyCheck: { paths, tool in
+            XCTAssertEqual(paths.map(\.path), [source.path]); XCTAssertNil(tool); throw InspectionFailure.unavailable
+        })
+        XCTAssertThrowsError(try actions.move(source, to: destination)) { XCTAssertTrue($0 is InspectionFailure) }
+        XCTAssertThrowsError(try actions.trash(source)) { XCTAssertTrue($0 is InspectionFailure) }
+        XCTAssertEqual(try FileTree.digest(source), expected)
+        XCTAssertTrue(store.operations().isEmpty)
+        let (tool, volume) = try migrationFixture(), cacheExpected = try FileTree.digest(tool.source)
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { paths, toolID in
+            XCTAssertEqual(paths.map(\.path), [tool.source.path]); XCTAssertEqual(toolID, tool.id); throw InspectionFailure.unavailable
+        })
+        XCTAssertThrowsError(try engine.migrate(toolID: tool.id, removeLocal: true)) { XCTAssertTrue($0 is InspectionFailure) }
+        XCTAssertEqual(try FileTree.digest(tool.source), cacheExpected)
+        XCTAssertTrue(store.operations().isEmpty)
+    }
+
+    func testRecoveryBusyInspectionErrorPreservesCopyAndPendingJournal() throws {
+        let source = try personalSource(), copy = try target().appendingPathComponent(source.lastPathComponent)
+        try FileTree.copyItem(source, to: copy)
+        let expected = try FileTree.digest(source)
+        var journal = try OperationJournal(kind: "personalMove", source: source, destination: copy)
+        journal.sourceDigest = expected; journal.destinationDigest = expected; journal.phase = .interrupted
+        let name = "operation-\(journal.id.uuidString).json"
+        try store.writeDurably(journal, name: name); try FileManager.default.removeItem(at: source)
+        let before = try Data(contentsOf: store.base.appendingPathComponent(name))
+        let recovery = RecoveryManager(store: store, home: home, busyCheck: { paths, tool in
+            XCTAssertEqual(paths.map(\.path), [copy.path]); XCTAssertNil(tool); throw InspectionFailure.unavailable
+        })
+        XCTAssertThrowsError(try recovery.restoreSource(id: journal.id)) { XCTAssertTrue($0 is InspectionFailure) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try FileTree.digest(copy), expected)
+        XCTAssertEqual(try Data(contentsOf: store.base.appendingPathComponent(name)), before)
     }
 
     func testChangedScanIdentityPreventsTrashAndMove() throws {
