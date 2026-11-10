@@ -17,6 +17,8 @@ Every data-changing action has a review. Verify copies before releasing eligible
 5. DiskWing was selected as the public name. Concept 01, Lift, was approved; preserve its silhouette, Manrope lettering, and palette.
 6. Consolidation was approved under MIT, with public consolidated context, private personal evidence, and preservation of the separate ChatGPT project.
 7. The alpha-to-v1 roadmap was approved with both explorer/cache flows, Apple Silicon, PT/EN, recoverable operations, optional growth tracking, signed consented updates and a real ten-person/seven-day beta. Implementation and validation evidence remain separate.
+8. The approved autonomous delivery cycle integrated PR12/19/20, qualified immutable local 1.0.0 build 6, independently reviewed the implementation and checkpoint-test follow-ups, and passed macOS 15/26 exact-head/main CI. Production distribution and human/physical gates remain pending.
+9. The maintainer explicitly requested installation and opening of build 6 for interface validation. The exact candidate was installed on internal storage with the previous app preserved, and its normal window was observed. This authorizes that installation/launch, not personal cache changes; maintainer feedback has not yet been received.
 
 Naming research was exploratory and time-specific. No domain purchase, trademark clearance, or release is established by it. A native Icon Composer .icon remains pending; completed .icns and asset catalogs are available.
 
@@ -27,6 +29,8 @@ Naming research was exploratory and time-specific. No domain purchase, trademark
 - docs/ROADMAP.md and docs/TRACEABILITY.json: live requirements, issues/milestones and remaining release gates.
 - docs/ARCHITECTURE.md, docs/TESTING.md and docs/validation/: implementation contracts and evidence.
 - docs/context/CURRENT_STATE.md: completed work and next priorities.
+- docs/context/SESSION-2026-11-10.md: consolidated autonomous delivery, verification, installation and resumption history.
+- docs/validation/LOCAL-INSTALLATION-2026-11-10.md: actual maintainer installation/launch, preserved prior version and pending interface feedback.
 - docs/context/MIGRATION-2026-11-09.md: consolidation validation.
 - docs/COMPATIBILITY.md: technical identifiers to preserve.
 - design/brand/README.md: approved Lift; design/concepts holds historical alternatives.

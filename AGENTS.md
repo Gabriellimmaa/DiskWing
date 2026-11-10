@@ -4,6 +4,8 @@ Read docs/context/PROJECT_CONTEXT.md, docs/context/CURRENT_STATE.md, docs/COMPAT
 
 The approved v1 roadmap and live acceptance/evidence ledger are docs/ROADMAP.md and docs/TRACEABILITY.json. Both primary flows, Apple Silicon, and PT/EN are required. Never mark a beta or notarized release complete using only code/tests.
 
+For the completed autonomous engineering cycle and the subsequent maintainer installation, read docs/context/SESSION-2026-11-10.md and docs/validation/LOCAL-INSTALLATION-2026-11-10.md. The normal build 6 application was installed and opened at the maintainer's request; interface feedback is pending. Preserve that installation and its previous-version backup during review. Installation/launch permission does not authorize personal migrations or attest human acceptance.
+
 ## Architecture and commands
 
 Native macOS SwiftPM project. Sources/CacheSSDCore contains analysis, routing, persistence, and operations; Sources/CacheSSDApp contains SwiftUI/AppKit screens; Sources/CacheSSDHelper is the CLI. Technical names intentionally remain CacheSSD for compatibility.

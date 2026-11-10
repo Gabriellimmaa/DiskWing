@@ -38,6 +38,8 @@ Benchmark report fields contain no paths or disk UUIDs. Hashing changed only buf
 
 ## GUI experiments and corrections
 
+This report covers the autonomous engineering and generated-data qualification cycle. Statements about leaving the normal installed app unchanged describe that cycle. The maintainer later explicitly requested actual installation/launch of the same candidate; see [the separate installation record](LOCAL-INSTALLATION-2026-11-10.md). Human interface feedback remains pending.
+
 The acceptance application has its own bundle ID and generated context. First launch on the external development volume stalled before the first window; process sampling located filesystem work in synchronous App initialization. A minimal private internal temporary workspace opened immediately. This does not prove a specific TCC cause; bootstrap was moved out of App initialization and the external behavior must be recorded separately.
 
 Native inspection confirmed sample banner, 151-entry pagination (120/page), global nested search, keyboard selection and shortcuts, Escape cancelling review, fresh release-source checkbox, cache migration/restore preserving the SSD copy, simulated disconnection, local-mode control, generated-shell integration/disable and PT/EN switch. No native package tool, real shell, login, Xcode, notification or volume ejection was activated.
