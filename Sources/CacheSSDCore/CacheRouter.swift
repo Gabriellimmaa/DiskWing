@@ -15,7 +15,10 @@ public enum CacheRouter {
             let value = raw.lowercased()
             if value.hasPrefix("--backend") || value.hasPrefix("--global-store") { result.insert("bun") }
             if value.hasPrefix("--link-mode") { result.insert("uv") }
-            if ["--userconfig", "--globalconfig", "--prefix", "--cache"].contains(where: { value.hasPrefix($0) }) || raw == "-C" { result.insert("npm") }
+            if value.hasPrefix("--") {
+                let option = String(value.dropFirst(2).split(separator:"=",maxSplits:1).first ?? "")
+                if !option.isEmpty && ["userconfig","globalconfig","prefix","cache"].contains(where: { $0.hasPrefix(option) || option.hasPrefix($0) }) { result.insert("npm") }
+            } else if raw.hasPrefix("-"), raw.contains("C") { result.insert("npm") }
         }
         return result
     }
@@ -34,16 +37,18 @@ public enum CacheRouter {
             return RouteDecision(toolID: tool.id, mode: "ssd", environmentKey: tool.environmentKey, path: root.path)
         }
     }
-    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil) -> [String: String] {
+    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil) -> [String: String] {
         Dictionary(uniqueKeysWithValues: decisions(settings: settings, volumes: volumes ?? Volumes.list()).filter {
-            !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations) &&
+            !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home, processEnvironment: processEnvironment, npmGlobalConfigurations: npmGlobalConfigurations, pipGlobalConfigurations: pipGlobalConfigurations) &&
             processEnvironment[$0.environmentKey] == nil &&
             !($0.toolID == "npm" && processEnvironment["NPM_CONFIG_CACHE"] != nil)
         }.compactMap { d in d.path.map { (d.environmentKey, $0) } })
     }
-    public static func hasCustomPreference(toolID: String, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment environment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil) -> Bool {
+    public static func hasCustomPreference(toolID: String, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, processEnvironment environment: [String:String] = ProcessInfo.processInfo.environment, npmGlobalConfigurations: [URL]? = nil, pipGlobalConfigurations: [URL]? = nil) -> Bool {
         if let tool = CacheCatalog.find(toolID, home: home), environment[tool.environmentKey] != nil { return true }
         if toolID == "npm", environment.keys.contains(where: { ["npm_config_cache", "npm_config_userconfig", "npm_config_globalconfig", "npm_config_prefix"].contains($0.lowercased()) }) { return true }
+        if ["pip","uv"].contains(toolID), environment["XDG_CONFIG_HOME"] != nil { return true }
+        if toolID == "pip", ["XDG_DATA_HOME","XDG_DATA_DIRS","PIP_CONFIG_FILE"].contains(where: { environment[$0] != nil }) { return true }
         if toolID == "cocoapods", environment["CP_HOME_DIR"] != nil { return true }
         if toolID == "uv", environment["UV_LINK_MODE"] == "symlink" { return true }
         if toolID == "bun", FileManager.default.fileExists(atPath: home.appendingPathComponent(".bun/install/cache/links").path) { return true }
@@ -69,7 +74,7 @@ public enum CacheRouter {
             }
         case "bun": files = folders.flatMap { [$0.appendingPathComponent("bunfig.toml"), $0.appendingPathComponent(".bunfig.toml")] }
         case "uv": files = folders.flatMap { [$0.appendingPathComponent("uv.toml"), $0.appendingPathComponent("pyproject.toml")] } + [home.appendingPathComponent(".config/uv/uv.toml")]
-        case "pip": files = [home.appendingPathComponent(".pip/pip.conf"), home.appendingPathComponent(".config/pip/pip.conf"), home.appendingPathComponent("Library/Application Support/pip/pip.conf"), URL(fileURLWithPath: "/etc/pip.conf")]; if let venv = environment["VIRTUAL_ENV"] { files.append(URL(fileURLWithPath: venv).appendingPathComponent("pip.conf")) }; if let config = environment["PIP_CONFIG_FILE"] { files.append(URL(fileURLWithPath: config)) }
+        case "pip": files = [home.appendingPathComponent(".pip/pip.conf"), home.appendingPathComponent(".config/pip/pip.conf"), home.appendingPathComponent("Library/Application Support/pip/pip.conf")] + (pipGlobalConfigurations ?? [URL(fileURLWithPath:"/Library/Application Support/pip/pip.conf"), URL(fileURLWithPath:"/etc/pip.conf")]); if let venv = environment["VIRTUAL_ENV"] { files.append(URL(fileURLWithPath: venv).appendingPathComponent("pip.conf")) }; if let config = environment["PIP_CONFIG_FILE"] { files.append(URL(fileURLWithPath: config)) }
         case "cocoapods": files = [home.appendingPathComponent(".cocoapods/config.yaml")]
         default: return false
         }
@@ -79,6 +84,9 @@ public enum CacheRouter {
             guard info.st_mode & S_IFMT == S_IFREG, info.st_flags & UInt32(SF_DATALESS) == 0, info.st_size <= 1_048_576 else { return true }
             let fd = open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { return true }
+            var opened = stat()
+            guard fstat(fd,&opened) == 0, opened.st_dev == info.st_dev, opened.st_ino == info.st_ino,
+                  opened.st_mode & S_IFMT == S_IFREG, opened.st_flags & UInt32(SF_DATALESS) == 0, opened.st_size <= 1_048_576 else { close(fd); return true }
             let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             let data = try? handle.read(upToCount: 1_048_577); try? handle.close()
             guard let data, data.count <= 1_048_576, let text = String(data: data, encoding: .utf8) else { return true }

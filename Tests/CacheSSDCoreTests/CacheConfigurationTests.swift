@@ -44,6 +44,16 @@ final class CacheConfigurationTests: XCTestCase {
         XCTAssertEqual(CacheAdapters.assess(npm,version:version,effectiveRoot:nil,custom:false,queried:true).state,"configuration-unverified")
         XCTAssertFalse(CacheAdapters.assess(npm,version:"999.0.0",effectiveRoot:expected,custom:false,queried:true).canReleaseSource)
         XCTAssertFalse(CacheAdapters.assess(npm,version:version,effectiveRoot:expected,custom:true,queried:true).canReleaseSource)
+        XCTAssertFalse(CacheAdapters.assess(npm,version:version,effectiveRoot:expected,custom:false,queried:false).canReleaseSource)
+    }
+    func testPipGlobalsAndXDGSelectorsPreserveConfiguration() throws {
+        let file = root.appendingPathComponent("pip.conf")
+        try Data("[global]\ncache-dir=/generated/custom\n".utf8).write(to:file)
+        XCTAssertTrue(CacheRouter.hasCustomPreference(toolID:"pip",directory:home,home:home,processEnvironment:[:],pipGlobalConfigurations:[file]))
+        for key in ["PIP_CONFIG_FILE","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_DATA_DIRS"] {
+            XCTAssertTrue(CacheRouter.hasCustomPreference(toolID:"pip",directory:home,home:home,processEnvironment:[key:"generated"],pipGlobalConfigurations:[]))
+        }
+        XCTAssertFalse(CacheRouter.hasCustomPreference(toolID:"pip",directory:home,home:home,processEnvironment:[:],pipGlobalConfigurations:[]))
     }
     func testUnsupportedDiscoveryAndLinkedInstallToolsPreserveOriginal() throws {
         for id in ["cocoapods","gradle","bun","uv"] {
@@ -55,6 +65,8 @@ final class CacheConfigurationTests: XCTestCase {
         XCTAssertEqual(CacheRouter.commandExclusions(["npm","--userconfig","fixture"]),["npm"])
         XCTAssertEqual(CacheRouter.commandExclusions(["--globalconfig=fixture","--link-mode=copy"]),["npm","uv"])
         XCTAssertEqual(CacheRouter.commandExclusions(["--backend=copyfile","-C","fixture"]),["npm","bun"])
+        for arg in ["--userconf=fixture","--globalconf=fixture","--pref=fixture","--ca=fixture","-gCfixture"] { XCTAssertTrue(CacheRouter.commandExclusions(["npm",arg]).contains("npm")) }
+        XCTAssertFalse(CacheRouter.commandExclusions(["npm","--offline","--ignore-scripts"]).contains("npm"))
         XCTAssertTrue(CacheRouter.commandExclusions(["npm","install","sample"]).isEmpty)
     }
     func testShellHookPassesOmitFlagForExplicitCommandConfiguration() throws {
@@ -65,10 +77,10 @@ final class CacheConfigurationTests: XCTestCase {
         let store = Store(base:root.appendingPathComponent("support"))
         try ShellIntegration.install(helper:helper,store:store,home:home)
         let integration = store.base.appendingPathComponent("integration.zsh")
-        let commands = "source '\(integration.path)'; : > '\(log.path)'; _cachessd_route 'npm --userconfig sample install'; _cachessd_route 'NPM_CONFIG_GLOBALCONFIG=sample npm install'"
+        let commands = "source '\(integration.path)'; : > '\(log.path)'; _cachessd_route 'npm --userconf=sample install'; _cachessd_route 'npm -gCsample install'; _cachessd_route 'NPM_CONFIG_GLOBALCONFIG=sample npm install'; _cachessd_route 'npm install --offline --ignore-scripts'"
         let result = try CommandRunner.run(URL(fileURLWithPath:"/bin/zsh"),["-c",commands],environment:["PATH":"/usr/bin:/bin","HOME":home.path])
         XCTAssertEqual(result.status,0,result.output)
-        XCTAssertEqual(try String(contentsOf:log).components(separatedBy:"--omit-npm").count-1,2)
+        XCTAssertEqual(try String(contentsOf:log).components(separatedBy:"--omit-npm").count-1,3)
     }
     func testRoutingDoesNotReplaceGlobalOrSelectedConfiguration() throws {
         let disk = root.appendingPathComponent("volume"), data = disk.appendingPathComponent("cache")

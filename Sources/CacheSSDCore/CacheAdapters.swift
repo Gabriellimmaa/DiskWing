@@ -9,6 +9,10 @@ public struct AdapterStatus: Codable, Identifiable, Sendable {
     public let state: String
     public let explanation: String
     public let canReleaseSource: Bool
+    public init(toolID: String, adapterVersion: Int, version: String?, effectiveCachePath: String?, state: String, explanation: String, canReleaseSource: Bool) {
+        self.toolID = toolID; self.adapterVersion = adapterVersion; self.version = version
+        self.effectiveCachePath = effectiveCachePath; self.state = state; self.explanation = explanation; self.canReleaseSource = canReleaseSource
+    }
 }
 
 /// Native configuration discovery is kept separate from mutation and qualification.
@@ -53,7 +57,7 @@ public enum CacheAdapters {
         let expected = tool.destinationChild.isEmpty ? tool.source : tool.source.deletingLastPathComponent()
         let matches = effectiveRoot.map { Paths.physicalURL(URL(fileURLWithPath:$0)).path == Paths.physicalURL(expected).path } ?? false
         let state = custom || effectiveRoot != nil && !matches ? "custom-configuration" : queried && !matches ? "configuration-unverified" : "native-available"
-        let verified = state == "native-available" && matches
+        let verified = queried && state == "native-available" && matches
         let reason = state == "custom-configuration" ? "O destino efetivo é personalizado. A configuração e a origem foram preservadas." : state == "configuration-unverified" ? "Não foi possível confirmar o destino efetivo. A origem foi preservada." : tool.canReleaseLocal ? "Ferramenta disponível. Revise origem e destino; a qualificação em projetos reais depende da versão testada." : "Novos downloads podem usar SSD; a origem local é preservada por possíveis links de instalações existentes."
         return AdapterStatus(toolID:tool.id, adapterVersion:self.version, version:version, effectiveCachePath:effectiveRoot, state:state, explanation:reason, canReleaseSource:verified && tool.canReleaseLocal && version != nil && qualifiedVersions[tool.id] == version)
     }
