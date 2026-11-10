@@ -154,6 +154,9 @@ public final class PersonalActions {
     private let freeBytes: (URL) -> Int64
     private let busyCheck: BusyCheck
     private let checkpoint: (OperationJournal) throws -> Void
+    private let volumeProvider: (String) -> VolumeInfo?
+    private let protectedRoots: [URL]
+    private let finderTrashAvailable: (VolumeInfo) -> Bool
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, store: Store = Store(),
                 freeBytes: @escaping (URL) -> Int64 = { Volumes.free(at: $0) },
                 trashHandler: @escaping (URL) throws -> URL? = { url in
@@ -161,11 +164,16 @@ public final class PersonalActions {
                     try FileManager.default.trashItem(at: url, resultingItemURL: &result)
                     return result.map { $0 as URL }
                 }, busyCheck: @escaping BusyCheck = { try BusyInspector.inspect(paths: $0, tool: $1) },
-                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in },
+                volumeProvider: @escaping (String) -> VolumeInfo? = { Volumes.find(uuid: $0) },
+                protectedRoots: [URL] = [],
+                finderTrashAvailable: @escaping (VolumeInfo) -> Bool = VolumeTrashScope.qualifiedFinderTrash) {
         self.home = home; self.store = store; self.freeBytes = freeBytes
         self.trashHandler = trashHandler; self.busyCheck = busyCheck; self.checkpoint = checkpoint
+        self.volumeProvider = volumeProvider; self.protectedRoots = protectedRoots; self.finderTrashAvailable = finderTrashAvailable
     }
-    public func trash(_ source: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
+    public func trash(_ source: URL, expectedIdentity: FileIdentity? = nil, scope: VolumeTrashScope? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
+        if let scope { return try trashVolume(source, scope: scope, expectedIdentity: expectedIdentity, cancellation: cancellation, progress: progress) }
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
         try PersonalActionPolicy.validateTrashTree(source, home: home, storeBase: store.base, cancellation: cancellation, progress: progress)
@@ -194,6 +202,52 @@ public final class PersonalActions {
             try operation.advance(.completed)
             return record
         } catch { operation.recordFailure(error, cancellation: cancellation); throw error }
+    }
+
+    private func trashVolume(_ reviewed: URL, scope: VolumeTrashScope, expectedIdentity: FileIdentity?, cancellation: CancellationFlag, progress: @escaping (String) -> Void) throws -> OperationRecord {
+        let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
+        guard reviewed.path == scope.reviewedPath else { throw VolumeTrashScope.failure() }
+        let source = try scope.resolve(volumeProvider: volumeProvider)
+        let (volume, _) = try scope.resolvedVolume(volumeProvider: volumeProvider)
+        guard finderTrashAvailable(volume) else { throw CacheSSDError.message(L10n.text("A Lixeira deste sistema de arquivos ainda não foi qualificada. Nenhum item foi alterado.")) }
+        if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw VolumeTrashScope.failure() }
+        try PersonalActionPolicy.validateVolumeTrashTree(source, volume: volume, home: home, storeBase: store.base, protectedRoots: protectedRoots, cancellation: cancellation, progress: progress)
+        guard try busyCheck([source], nil).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
+        let operation = try OperationContext(store: store, kind: "volumeTrash", source: source, sourceVolumeUUID: scope.volumeUUID, volumeTrashScope: scope, checkpoint: checkpoint)
+        do {
+            try operation.advance(.verifying)
+            let digest = try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress)
+            operation.journal.sourceDigest = digest
+            try operation.advance(.trashing)
+            guard !cancellation.isCancelled, try busyCheck([source], nil).isEmpty,
+                  try scope.resolve(volumeProvider: volumeProvider).path == source.path else { throw VolumeTrashScope.failure() }
+            try operation.assertSourceIdentity()
+            let (latestVolume, _) = try scope.resolvedVolume(volumeProvider: volumeProvider)
+            guard finderTrashAvailable(latestVolume) else { throw VolumeTrashScope.failure() }
+            try PersonalActionPolicy.validateVolumeTrashTree(source, volume: latestVolume, home: home, storeBase: store.base, protectedRoots: protectedRoots, cancellation: cancellation, progress: progress)
+            guard try FileTree.digest(source, cancellation: cancellation, workspace: store.base, progress: progress) == digest,
+                  !cancellation.isCancelled, try scope.resolve(volumeProvider: volumeProvider).path == source.path else { throw VolumeTrashScope.failure() }
+            try operation.assertSourceIdentity()
+            let result = try trashHandler(source)
+            operation.journal.trashPath = result?.path
+            operation.journal.trashIdentity = result.flatMap { try? FileIdentity($0) }
+            operation.journal.trashRelativePath = result.flatMap { try? scope.relativeTrashPath($0, volumeProvider: volumeProvider) }
+            // Persist even an unexpected OS result, so a moved item is never
+            // discarded merely because its automatic recovery is unsupported.
+            try operation.advance(.published)
+            guard let identity = operation.journal.trashIdentity, let relative = operation.journal.trashRelativePath,
+                  identity.device == scope.itemIdentity.device, identity.inode == scope.itemIdentity.inode,
+                  Self.isTrashRelativePath(relative) else { throw CacheSSDError.message(L10n.text("O resultado da Lixeira precisa de revisão no Finder. Nenhuma cópia será removida automaticamente.")) }
+            if let current = try? FileIdentity(source), current.device == identity.device, current.inode == identity.inode { throw VolumeTrashScope.failure() }
+            let record = OperationRecord(title: "Item enviado à Lixeira", detail: "\(source.lastPathComponent). O espaço só será liberado quando você esvaziar a Lixeira no Finder.", recoveryPath: result?.path)
+            try store.append(record); try operation.advance(.completed)
+            return record
+        } catch { operation.recordFailure(error, cancellation: cancellation); throw error }
+    }
+
+    static func isTrashRelativePath(_ path: String) -> Bool {
+        let components = path.split(separator: "/").dropLast().map { $0.lowercased() }
+        return components.contains(".trash") || components.contains(".trashes")
     }
     public func move(_ source: URL, to directory: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
