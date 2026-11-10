@@ -543,8 +543,8 @@ struct SampleModeBanner: View {
                 Toggle(L10n.text("Simular pouca energia"), isOn: $state.lowPower).toggleStyle(.checkbox).accessibilityIdentifier("sample-low-power")
                 if model.isSamples {
                     Menu {
-                        Button(L10n.text("Janela mínima")) { NSApp.keyWindow?.setContentSize(NSSize(width: 1050, height: 690)) }.accessibilityIdentifier("sample-window-minimum")
-                        Button(L10n.text("Tamanho padrão")) { NSApp.keyWindow?.setContentSize(NSSize(width: 1240, height: 810)) }.accessibilityIdentifier("sample-window-default")
+                        Button(L10n.text("Janela mínima")) { (NSApp.keyWindow ?? NSApp.mainWindow)?.setContentSize(NSSize(width: 1050, height: 690)) }.accessibilityIdentifier("sample-window-minimum")
+                        Button(L10n.text("Tamanho padrão")) { (NSApp.keyWindow ?? NSApp.mainWindow)?.setContentSize(NSSize(width: 1240, height: 810)) }.accessibilityIdentifier("sample-window-default")
                     } label: {
                         Label(L10n.text("Tamanho da janela"), systemImage: "macwindow").labelStyle(.iconOnly)
                     }.help(L10n.text("Tamanho da janela")).accessibilityLabel(L10n.text("Tamanho da janela")).accessibilityIdentifier("sample-window-size")
