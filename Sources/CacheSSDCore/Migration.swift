@@ -147,8 +147,19 @@ public final class MigrationEngine {
         let status = adapterInspector(tool)
         guard status.state == "native-available" else { throw CacheSSDError.message(L10n.text("A ferramenta ou sua configuração não permite este direcionamento. A origem foi preservada.")) }
         let settingsURL = store.base.appendingPathComponent("settings.json")
-        guard settingsURL.standardizedFileURL == settingsURL.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O registro de configuração foi redirecionado e será preservado.")) }
-        let before = try String(contentsOf: settingsURL, encoding: .utf8)
+        func readCurrentSettings() throws -> String {
+            guard settingsURL.standardizedFileURL == settingsURL.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O registro de configuração foi redirecionado e será preservado.")) }
+            let descriptor = open(settingsURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+            guard descriptor >= 0 else { throw CacheSSDError.message(L10n.text("O registro de configuração está indisponível e será preservado.")) }
+            let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            var metadata = stat()
+            guard fstat(descriptor, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG,
+                  metadata.st_flags & UInt32(SF_DATALESS) == 0, metadata.st_size <= 4_194_304,
+                  let data = try file.readToEnd(), let text = String(data: data, encoding: .utf8) else { throw CacheSSDError.message(L10n.text("O registro de configuração está indisponível e será preservado.")) }
+            return text
+        }
+        let before = try readCurrentSettings()
+        let settingsIdentity = try FileIdentity(settingsURL)
         var settings = try store.read(AppSettings.self, name: "settings.json")
         guard settings.locations[tool.id] == nil else { throw CacheSSDError.message(L10n.text("Esta ferramenta já tem um destino configurado. Revise a configuração existente.")) }
         guard let uuid = settings.selectedVolumeUUID, let volume = volumeProvider(uuid), volume.uuid.caseInsensitiveCompare(uuid) == .orderedSame,
@@ -187,19 +198,46 @@ public final class MigrationEngine {
         try configurationCheckpoint(change)
         try validateVolume(); try validateSource()
         progress("Preparando destino para novos caches…")
-        try FileManager.default.createDirectory(at: tool.payload(at: destination), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        // Create relative to held directory descriptors. A replaced ancestor must
+        // never redirect even the first mkdir into an unrelated user directory.
+        try Self.createCacheDirectories(relative: relative + (tool.destinationChild.isEmpty ? "" : "/" + tool.destinationChild), volumeURL: volumeURL, volumeIdentity: volumeIdentity)
         guard destination.standardizedFileURL == destination.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O destino contém um link personalizado.")) }
         if tool.id == "gradle" { try prepareGradleHome(destination) }
         if verifyNative { try nativeValidation(tool, root: destination) }
         try validateVolume(); try validateSource()
-        guard try String(contentsOf: settingsURL, encoding: .utf8) == before else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
+        guard try FileIdentity(settingsURL) == settingsIdentity, try readCurrentSettings() == before else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
         try store.save(settings)
-        try store.writeDurably(settings, name: "settings.json")
+        guard try readCurrentSettings() == after else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
+        let persisted = open(settingsURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard persisted >= 0 else { throw CacheSSDError.message(L10n.text("Não foi possível confirmar o registro da operação.")) }
+        defer { close(persisted) }
+        guard fsync(persisted) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível persistir o registro da operação.")) }
+        let directory = open(store.base.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard directory >= 0 else { throw CacheSSDError.message(L10n.text("O diretório de registros está indisponível.")) }
+        defer { close(directory) }
+        guard fsync(directory) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível persistir a pasta de registros.")) }
         let record = OperationRecord(title: "Destino para novos caches de \(tool.name) preparado", detail: "Nenhum cache local foi movido ou removido. Novas execuções pela integração podem usar o SSD; sem ele, usam o Mac.", recoveryPath: destination.path)
         try store.append(record)
         change.state = "completed"; try store.writeDurably(change, name: changeName)
         try configurationCheckpoint(change)
         return record
+    }
+
+    private static func createCacheDirectories(relative: String, volumeURL: URL, volumeIdentity: FileIdentity) throws {
+        let components = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard components.allSatisfy(Paths.safeComponent) else { throw CacheSSDError.message(L10n.text("Caminho de recuperação inválido.")) }
+        var descriptor = open(volumeURL.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw CacheSSDError.message(L10n.text("O destino contém um link personalizado.")) }
+        defer { close(descriptor) }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0, Int64(metadata.st_dev) == volumeIdentity.device, UInt64(metadata.st_ino) == volumeIdentity.inode else { throw CacheSSDError.message(L10n.text("O SSD ficou indisponível. A migração foi interrompida.")) }
+        for component in components {
+            guard mkdirat(descriptor, component, 0o700) == 0 || errno == EEXIST else { throw CacheSSDError.message(L10n.text("Não foi possível preparar a pasta no SSD.")) }
+            let child = openat(descriptor, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard child >= 0 else { throw CacheSSDError.message(L10n.text("O destino contém um link personalizado.")) }
+            close(descriptor); descriptor = child
+            guard fstat(descriptor, &metadata) == 0, Int64(metadata.st_dev) == volumeIdentity.device else { throw CacheSSDError.message(L10n.text("O destino contém outro volume e foi preservado.")) }
+        }
     }
 
     private func prepareGradleHome(_ root: URL) throws {
@@ -244,6 +282,16 @@ public final class MigrationEngine {
         defer { try? FileManager.default.removeItem(at: validation) }
         // Bun's package-manager commands require a project, even when only querying the cache.
         try Data("{\"name\":\"cachessd-validation\",\"version\":\"0.0.0\",\"private\":true}".utf8).write(to: validation.appendingPathComponent("package.json"))
+        if tool.id == "go" {
+            // The Go command can initialize telemetry even for `env`. Give this
+            // explicit validation a fresh home/config; it never reads user opt-in state.
+            env = ["PATH": env["PATH"] ?? "/usr/bin:/bin", "HOME": validation.path,
+                   "XDG_CONFIG_HOME": validation.appendingPathComponent("config").path,
+                   "XDG_CACHE_HOME": validation.appendingPathComponent("cache").path,
+                   "GOENV": "off", "GOTOOLCHAIN": "local", "GOPROXY": "off", "GOSUMDB": "off",
+                   "GOPATH": validation.appendingPathComponent("gopath").path,
+                   "GOCACHE": root.path, "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8"]
+        }
         let result = try CommandRunner.run(command, arguments, environment: env, timeout: 120, directory: validation)
         guard result.status == 0, !result.truncated else { throw CacheSSDError.message(L10n.text("A validação de \(tool.name) falhou. A origem foi preservada; código \(result.status).")) }
         let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
