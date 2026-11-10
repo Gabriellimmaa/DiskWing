@@ -226,11 +226,13 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 case .xcodeLocal:
                     try XcodeIntegration.useLocalDerivedData(); notice = L10n.text("O Xcode usará o local padrão no Mac. Os arquivos anteriores no SSD foram preservados.")
                 case .eject(let volume):
-                    let previousMode = settings.useExternal
+                    let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
+                    var routingSettings = store.settings()
+                    let previousMode = routingSettings.useExternal
                     do {
-                        settings.useExternal = false; try store.save(settings)
-                        defer { settings.useExternal = previousMode; try? store.save(settings) }
-                        let locations = settings.locations.values.filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativePath) }
+                        routingSettings.useExternal = false; try store.save(routingSettings)
+                        defer { routingSettings.useExternal = previousMode; try? store.save(routingSettings) }
+                        let locations = routingSettings.locations.values.filter { $0.volumeUUID == volume.uuid }.map { URL(fileURLWithPath: volume.path).appendingPathComponent($0.relativePath) }
                         let processes = try await Task.detached { try BusyInspector.inspect(paths: locations) }.value
                         guard processes.isEmpty else { throw CacheSSDError.message(L10n.text("Ejeção adiada. Encerre antes: ") + processes.map { L10n.text("\($0.name) (\($0.pid))") }.joined(separator: L10n.text(", "))) }
                         try NSWorkspace.shared.unmountAndEjectDevice(at: URL(fileURLWithPath: volume.path))

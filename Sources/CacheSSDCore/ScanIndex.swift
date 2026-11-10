@@ -209,6 +209,7 @@ public final class ScanIndex: @unchecked Sendable {
         return max(pages * size, [url.path,url.path+"-wal"].reduce(0) { $0 + ((try? FileManager.default.attributesOfItem(atPath: $1)[.size] as? NSNumber)?.int64Value ?? 0) })
     }
     public func export(sessionID: UUID, to output: URL, cancellation: CancellationFlag = CancellationFlag()) throws {
+        guard output.standardizedFileURL == output.resolvingSymlinksInPath(), !Paths.contains(output, in: url.deletingLastPathComponent()) else { throw CacheSSDError.message(L10n.text("Escolha um destino fora dos registros locais e sem links.")) }
         lock.lock(); defer { lock.unlock() }
         try execute("BEGIN DEFERRED")
         defer { _ = try? execute("ROLLBACK") }

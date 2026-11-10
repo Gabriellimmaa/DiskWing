@@ -40,7 +40,7 @@ Bun creates absolute links to packages inside its own cache. Copies normalize ve
 
 ## Safety evidence
 
-Tests cover unreadable/invalid shell configuration, unknown/missing measurements, a shared lease across mutating entry points, full destinations, protected nested project content, expected scanned identity, bytes/resource forks/mode/mtime, post-verification cancellation, post-publication failure, restore conflicts and source preservation. Actual subprocess _exit at publication and immediately after simulated Trash relocation leaves durable records and a recoverable verified destination. Recovery never overwrites a populated source; unavailable, changed or redirected copies remain for review.
+Tests cover unreadable/invalid shell configuration, unknown/missing measurements, a shared lease across mutating entry points, full destinations, protected nested project content, expected scanned identity, bytes/resource forks/mode/mtime, post-verification cancellation, post-publication failure, restore conflicts and source preservation. Actual subprocess _exit at publication and immediately after simulated Trash relocation leaves durable records and a recoverable verified destination. Recovery never overwrites a populated source; unavailable, changed or redirected copies remain for review. Report exports reject links and internal-record destinations. Eject preparation uses the same operation lease and reloads the latest routing settings; no physical ejection was performed.
 
 Growth tests cover complete/partial/unavailable/wrong-volume states, actual FSEvents delivery, age-qualified comparisons, retention and folder coverage. Simulated timestamps prove comparison logic, not real seven-day use.
 

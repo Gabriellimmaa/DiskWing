@@ -96,6 +96,11 @@ final class ScanIndexTests: XCTestCase {
         let token = CancellationFlag(); token.cancel()
         XCTAssertThrowsError(try index.export(sessionID: report.id, to: output, cancellation: token))
         XCTAssertEqual(try String(contentsOf: output), "previous report")
+        let linked = root.appendingPathComponent("linked.json")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: output)
+        XCTAssertThrowsError(try index.export(sessionID: report.id, to: linked))
+        XCTAssertThrowsError(try index.export(sessionID: report.id, to: index.url))
+        XCTAssertEqual(try String(contentsOf: output), "previous report")
     }
     func testOwnIndexIsExcludedAndFutureSchemaIsPreserved() throws {
         try file("visible",bytes: 19)
