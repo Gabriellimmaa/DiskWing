@@ -77,15 +77,20 @@ final class FilesystemQualificationTests: XCTestCase {
         try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:true)
         var a = stat(), b = stat(); XCTAssertEqual(lstat(source.path,&a),0); XCTAssertEqual(lstat(mounted.path,&b),0)
         XCTAssertNotEqual(a.st_dev,b.st_dev,"This must be a genuine cross-volume copy")
-        let actions = PersonalActions(home:home,store:store,trashHandler:fakeTrash,checkpoint:{ if $0.phase == .completed { throw CacheSSDError.message("Injected post-trash interruption") } })
+        var reachedCheckpoint = false
+        let actions = PersonalActions(home:home,store:store,trashHandler:fakeTrash,busyCheck:{ _, _ in [] },checkpoint:{
+            if $0.kind == "personalMove" && $0.phase == .completed { reachedCheckpoint = true; throw CacheSSDError.message("Injected post-trash interruption") }
+        })
         XCTAssertThrowsError(try actions.move(source,to:destination))
+        XCTAssertTrue(reachedCheckpoint, "Cross-volume move must reach completed before the post-Trash interruption")
         let journal = try XCTUnwrap(store.operations().first)
+        XCTAssertEqual(journal.kind, "personalMove"); XCTAssertEqual(journal.phase, .interrupted)
         let copied = destination.appendingPathComponent("payload")
         XCTAssertEqual(try FileTree.digest(copied),before)
         XCTAssertFalse(FileManager.default.fileExists(atPath:source.path))
         // Keep the original privately; force recovery from the external verified copy.
         try FileManager.default.moveItem(at:root.appendingPathComponent("private-trash"),to:root.appendingPathComponent("preserved-original"))
-        try RecoveryManager(store:store,home:home).restoreSource(id:journal.id)
+        try RecoveryManager(store:store,home:home,busyCheck:{ _, _ in [] }).restoreSource(id:journal.id)
         XCTAssertEqual(try FileTree.digest(source),before)
         XCTAssertEqual(try FileTree.digest(copied),before)
         try record("apfs-move-recovery",filesystem:"APFS",extra:["bytesACLResourceForkModeNanosecondMtimeVerified":true,"originalPreserved":true,"verifiedCopyPreserved":true])
@@ -130,7 +135,9 @@ final class FilesystemQualificationTests: XCTestCase {
         let volume = VolumeInfo(uuid:"DISPOSABLE-APFS",name:"Test",path:mounted.path,totalBytes:1_073_741_824,freeBytes:free,isInternal:false,isWritable:true)
         var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
         let before = try FileTree.digest(tool.source)
-        XCTAssertThrowsError(try MigrationEngine(store:store,home:home,volumeProvider:{ _ in volume },verifyNative:false).migrate(toolID:"npm",removeLocal:true))
+        XCTAssertThrowsError(try MigrationEngine(store:store,home:home,volumeProvider:{ _ in volume },verifyNative:false).migrate(toolID:"npm",removeLocal:true)) { error in
+            XCTAssertEqual(error.localizedDescription, L10n.text("O SSD não tem espaço suficiente para a cópia e a margem de segurança."), "Low-space evidence must reach the capacity check rather than accept an unrelated preflight refusal")
+        }
         XCTAssertEqual(try FileTree.digest(tool.source),before)
         XCTAssertTrue(store.operations().isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath:mounted.appendingPathComponent("MacCaches").path))

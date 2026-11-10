@@ -22,22 +22,29 @@ final class RestoreRecoveryTests: XCTestCase {
         let disk = directory.appendingPathComponent("fixture-volume"); try FileManager.default.createDirectory(at: disk, withIntermediateDirectories: true)
         let volume = VolumeInfo(uuid: "GENERATED-RESTORE-VOLUME", name: "Fixture", path: disk.path, totalBytes: 1_000_000_000_000, freeBytes: 900_000_000_000, isInternal: false, isWritable: true)
         var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
-        _ = try MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false).migrate(toolID: "npm", removeLocal: true)
+        // Generated setup only: live process detection has its own held-FD tests.
+        _ = try MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, busyCheck: { _, _ in [] }).migrate(toolID: "npm", removeLocal: true)
         let location = try XCTUnwrap(store.settings().locations["npm"])
         let external = tool.payload(at: disk.appendingPathComponent(location.relativePath))
+        XCTAssertEqual(try FileTree.digest(external, workspace: root), expected)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: tool.source.path).isEmpty)
         return Fixture(home: home, store: store, tool: tool, volume: volume, external: external, expected: expected)
     }
     func interrupted(_ fixture: Fixture, at phase: OperationPhase) throws -> OperationJournal {
-        let engine = MigrationEngine(store: fixture.store, home: fixture.home, volumeProvider: { _ in fixture.volume }, verifyNative: false, checkpoint: { record in
-            if record.kind == "restore" && record.phase == phase { throw CacheSSDError.message("Injected restore interruption") }
+        var reachedCheckpoint = false
+        let before = try FileTree.digest(fixture.external, workspace: root)
+        let engine = MigrationEngine(store: fixture.store, home: fixture.home, volumeProvider: { _ in fixture.volume }, verifyNative: false, busyCheck: { _, _ in [] }, checkpoint: { record in
+            if record.kind == "restore" && record.phase == phase { reachedCheckpoint = true; throw CacheSSDError.message("Injected restore interruption") }
         })
         XCTAssertThrowsError(try engine.restore(toolID: "npm"))
+        XCTAssertTrue(reachedCheckpoint, "Restore must reach the requested \(phase.rawValue) boundary before injected failure")
+        XCTAssertEqual(try FileTree.digest(fixture.external, workspace: root), before)
         return try XCTUnwrap(fixture.store.operations().first(where: { $0.kind == "restore" }))
     }
     func testRestoreRecoveryCompletesEveryBoundaryAndRemainsIdempotent() throws {
         for phase in [OperationPhase.preparing, .verifying, .copying, .copyVerified, .publishing, .published, .completed] {
             let f = try fixture(), record = try interrupted(f, at: phase)
-            let manager = RecoveryManager(store: f.store, home: f.home)
+            let manager = RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] })
             let assessment = try XCTUnwrap(manager.pending().first(where: { $0.id == record.id }))
             XCTAssertEqual(assessment.recoveryAction, .finishRestore, phase.rawValue)
             try manager.recover(id: record.id)
@@ -55,7 +62,7 @@ final class RestoreRecoveryTests: XCTestCase {
         let partial = URL(fileURLWithPath: try XCTUnwrap(record.staging))
         try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: true)
         let evidence = partial.appendingPathComponent("partial"); try Data("keep partial bytes".utf8).write(to: evidence)
-        try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+        try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
         XCTAssertEqual(try String(contentsOf: evidence), "keep partial bytes")
         let snapshots = try FileManager.default.contentsOfDirectory(at: f.store.base, includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("restore-recovery-before-") }
         XCTAssertFalse(snapshots.isEmpty)
@@ -67,7 +74,7 @@ final class RestoreRecoveryTests: XCTestCase {
         let f = try fixture(), record = try interrupted(f, at: .copyVerified)
         let retained = f.external.deletingLastPathComponent().appendingPathComponent("retained-external")
         try FileManager.default.moveItem(at: f.external, to: retained)
-        try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+        try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
         XCTAssertEqual(try FileTree.digest(f.tool.source, workspace: root), f.expected)
         XCTAssertEqual(try FileTree.digest(retained, workspace: root), f.expected)
     }
@@ -76,7 +83,7 @@ final class RestoreRecoveryTests: XCTestCase {
         let retained = f.external.deletingLastPathComponent().appendingPathComponent("retained-external")
         try FileManager.default.moveItem(at: f.external, to: retained)
         let identity = try FileIdentity(f.tool.source)
-        try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+        try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
         XCTAssertEqual(try FileIdentity(f.tool.source), identity)
         XCTAssertNil(f.store.settings().locations["npm"])
         XCTAssertEqual(try FileTree.digest(retained, workspace: root), f.expected)
@@ -98,18 +105,22 @@ final class RestoreRecoveryTests: XCTestCase {
         let expected = try FileTree.digest(f.external, workspace: root), record = try interrupted(f, at: .published)
         let retained = f.external.deletingLastPathComponent().appendingPathComponent("retained-empty")
         try FileManager.default.moveItem(at: f.external, to: retained)
-        try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+        try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
         XCTAssertEqual(try FileTree.digest(f.tool.source, workspace: root), expected)
         XCTAssertNil(f.store.settings().locations["npm"])
     }
     func testCancelledRecoveryRetainsARecoverableJournalAndOriginal() throws {
         let f = try fixture(), record = try interrupted(f, at: .copying), token = CancellationFlag()
-        let manager = RecoveryManager(store: f.store, home: f.home, checkpoint: { if $0.phase == .copying { token.cancel() } })
+        var reachedCheckpoint = false
+        let manager = RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }, checkpoint: {
+            if $0.kind == "restore" && $0.phase == .copying { reachedCheckpoint = true; token.cancel() }
+        })
         XCTAssertThrowsError(try manager.recover(id: record.id, cancellation: token))
+        XCTAssertTrue(reachedCheckpoint, "Recovery must reach copying before cancellation")
         XCTAssertEqual(f.store.operations().first(where: { $0.id == record.id })?.phase, .cancelled)
         XCTAssertEqual(try FileTree.digest(f.external, workspace: root), f.expected)
         XCTAssertNotNil(f.store.settings().locations["npm"])
-        try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+        try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
         XCTAssertEqual(try FileTree.digest(f.tool.source, workspace: root), f.expected)
     }
     func testReappearingAndDanglingLocalTargetsAreNeverReplaced() throws {
@@ -176,10 +187,14 @@ final class RestoreRecoveryTests: XCTestCase {
     func testRecoveryCanBeInterruptedAfterPublicationOrConfigurationAndRetried() throws {
         for phase in [OperationPhase.published, .resolved] {
             let f = try fixture(), record = try interrupted(f, at: .copying)
-            let manager = RecoveryManager(store: f.store, home: f.home, checkpoint: { if $0.phase == phase { throw CacheSSDError.message("Injected recovery stop") } })
+            var reachedCheckpoint = false
+            let manager = RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }, checkpoint: {
+                if $0.kind == "restore" && $0.phase == phase { reachedCheckpoint = true; throw CacheSSDError.message("Injected recovery stop") }
+            })
             XCTAssertThrowsError(try manager.recover(id: record.id))
+            XCTAssertTrue(reachedCheckpoint, "Recovery must reach the requested \(phase.rawValue) boundary before injected failure")
             XCTAssertEqual(try FileTree.digest(f.tool.source, workspace: root), f.expected)
-            try RecoveryManager(store: f.store, home: f.home).recover(id: record.id)
+            try RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }).recover(id: record.id)
             XCTAssertNil(f.store.settings().locations["npm"])
             XCTAssertEqual(f.store.operations().first(where: { $0.id == record.id })?.phase, .resolved)
         }
@@ -187,8 +202,10 @@ final class RestoreRecoveryTests: XCTestCase {
     func testNormalRestorePreservesUnrelatedConfigurationAndConflictingNewGenerations() throws {
         for conflict in [false, true] {
             let f = try fixture()
-            let engine = MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in f.volume }, verifyNative: false, checkpoint: { record in
+            var reachedCheckpoint = false
+            let engine = MigrationEngine(store: f.store, home: f.home, volumeProvider: { _ in f.volume }, verifyNative: false, busyCheck: { _, _ in [] }, checkpoint: { record in
                 if record.kind == "restore" && record.phase == .published {
+                    reachedCheckpoint = true
                     var latest = f.store.settings(); latest.useExternal = false; latest.selectedVolumeUUID = "OTHER-GENERATED-VOLUME"
                     if conflict { latest.locations["npm"]?.relativePath += "-new-generation" }
                     try f.store.save(latest)
@@ -196,6 +213,7 @@ final class RestoreRecoveryTests: XCTestCase {
             })
             if conflict { XCTAssertThrowsError(try engine.restore(toolID: "npm")) }
             else { try engine.restore(toolID: "npm") }
+            XCTAssertTrue(reachedCheckpoint, "Restore must publish before configuration is changed")
             XCTAssertFalse(f.store.settings().useExternal)
             XCTAssertEqual(f.store.settings().selectedVolumeUUID, "OTHER-GENERATED-VOLUME")
             if conflict { XCTAssertTrue(f.store.settings().locations["npm"]?.relativePath.hasSuffix("-new-generation") == true) }
@@ -206,8 +224,12 @@ final class RestoreRecoveryTests: XCTestCase {
     }
     func testPublicationCheckpointCannotOverwriteAConcurrentLocalWrite() throws {
         let f = try fixture(), record = try interrupted(f, at: .copying)
-        let manager = RecoveryManager(store: f.store, home: f.home, checkpoint: { if $0.phase == .publishing { try Data("concurrent bytes".utf8).write(to: f.tool.source.appendingPathComponent("new")) } })
+        var reachedCheckpoint = false
+        let manager = RecoveryManager(store: f.store, home: f.home, busyCheck: { _, _ in [] }, checkpoint: {
+            if $0.kind == "restore" && $0.phase == .publishing { reachedCheckpoint = true; try Data("concurrent bytes".utf8).write(to: f.tool.source.appendingPathComponent("new")) }
+        })
         XCTAssertThrowsError(try manager.recover(id: record.id))
+        XCTAssertTrue(reachedCheckpoint, "Recovery must reach publishing before the concurrent local write")
         XCTAssertEqual(try String(contentsOf: f.tool.source.appendingPathComponent("new")), "concurrent bytes")
         XCTAssertNotNil(f.store.settings().locations["npm"])
         XCTAssertEqual(try FileTree.digest(f.external, workspace: root), f.expected)
