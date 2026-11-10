@@ -68,7 +68,7 @@ public final class Store {
     }
     public func pruneCompletedOperations(keeping count: Int = 150) throws {
         // Pending and unreadable records are never discarded by retention.
-        for journal in operations().filter({ $0.schemaVersion == 1 && !$0.isPending }).dropFirst(max(0,count)) {
+        for journal in operations().filter({ $0.schemaVersion == 1 && !$0.hasUnsupportedVolumeTrashScope && !$0.isPending }).dropFirst(max(0,count)) {
             try FileManager.default.removeItem(at: base.appendingPathComponent("operation-\(journal.id.uuidString).json"))
         }
     }

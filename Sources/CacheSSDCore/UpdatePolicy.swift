@@ -42,7 +42,7 @@ public final class UpdateSessionLease {
             if name.hasPrefix("operation-") {
                 do {
                     let record: OperationJournal = try readRecord(name)
-                    if record.schemaVersion != 1 { unreadable = true }
+                    if record.schemaVersion != 1 || record.hasUnsupportedVolumeTrashScope { unreadable = true }
                     else { pending = pending || record.isPending }
                 } catch { unreadable = true }
             } else if name.hasPrefix("configuration-") {
@@ -53,8 +53,9 @@ public final class UpdateSessionLease {
                 } catch { unreadable = true }
             }
         }
+        let graphicalUnsafe = GraphicalCacheMigrationEngine(store: store).hasUnsafeRecoveryRecords()
         let state = UpdateSafetyState(workInProgress: isBusy(), pendingRecovery: pending,
-                                      unreadableRecords: unreadable, pendingConfiguration: configuration)
+                                      unreadableRecords: unreadable || graphicalUnsafe, pendingConfiguration: configuration)
         guard UpdatePolicy.canInstall(state: state) else { throw CacheSSDError.message(L10n.text("Conclua a operação ou recuperação antes de atualizar o aplicativo.")) }
         withExtendedLifetime(lease) {}
     }

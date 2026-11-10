@@ -280,8 +280,8 @@
   "execution": {
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
-    "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "expanded_scope_engineering_complete_external_gates_pending",
+    "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
+    "phase": "cache_volume_experience_implementation",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -770,13 +770,89 @@
           "docs/validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md"
         ],
         "nextAction": "Collect maintainer feedback; do not initiate personal cache migration without its actual reviewed selection."
+      },
+      {
+        "id": "UX-CACHE-01",
+        "requirement": "M4",
+        "owner": "cache_scope",
+        "branch": "codex/gui-cache-providers",
+        "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
+        "priority": "high",
+        "classification": "approved_plan",
+        "title": "Graphical cache providers, durable transfer and genuine use states",
+        "writableFiles": [
+          "Sources/CacheSSDCore/Graphical*",
+          "Sources/CacheSSDCore/CacheTransfer*",
+          "Tests/CacheSSDCoreTests/Graphical*"
+        ],
+        "status": "implementing",
+        "evidence": [],
+        "nextAction": "Implement targeted tests, independent review and integration."
+      },
+      {
+        "id": "UX-VOLUME-01",
+        "requirement": "M2",
+        "owner": "explorer_scope",
+        "branch": "codex/volume-scan-engine",
+        "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
+        "priority": "high",
+        "classification": "approved_plan",
+        "title": "Whole logical volume scopes, durable scan and external index",
+        "writableFiles": [
+          "Sources/CacheSSDCore/ScanIndex.swift",
+          "Sources/CacheSSDCore/Volumes.swift",
+          "Sources/CacheSSDCore/VolumeScanTarget.swift"
+        ],
+        "status": "implementing",
+        "evidence": [],
+        "nextAction": "Implement targeted tests, independent review and integration."
+      },
+      {
+        "id": "UX-TRASH-01",
+        "requirement": "M3",
+        "owner": "independent_scope",
+        "branch": "codex/volume-trash",
+        "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
+        "priority": "high",
+        "classification": "approved_plan",
+        "title": "Volume-bound Trash and mount-independent recovery",
+        "writableFiles": [
+          "Sources/CacheSSDCore/PersonalActions.swift",
+          "Sources/CacheSSDCore/OperationSafety.swift",
+          "Sources/CacheSSDCore/VolumeTrashScope.swift"
+        ],
+        "status": "implemented_independently_reviewed_native_qualification_pending",
+        "evidence": [],
+        "nextAction": "Run disposable APFS Finder Trash/remount/conflict and ExFAT refusal after native lane is available.",
+        "implementationCommit": "d67bb0e21a5bbd4a86a3c1b5baf8657a9743bff1",
+        "reviewer": "coordinator",
+        "validation": "93 targeted tests independently repeated; native external Finder Trash/remount tests added but not executed yet"
+      },
+      {
+        "id": "UX-APP-01",
+        "requirement": "M6",
+        "owner": "coordinator",
+        "branch": "codex/cache-volume-ux",
+        "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
+        "priority": "high",
+        "classification": "approved_plan",
+        "title": "Two primary flows, batch cache review, native tree and MIT treemap",
+        "writableFiles": [
+          "Sources/CacheSSDApp/",
+          "Sources/CacheSSDCore/Treemap.swift",
+          "Sources/CacheSSDCore/Resources/en.json"
+        ],
+        "status": "implemented_targeted_tests_passed_independent_review_pending",
+        "evidence": [],
+        "nextAction": "Independent code/UI review; PT/EN native samples minimum-window and keyboard checks; produce separately identified candidate.",
+        "validation": "20 app/localization/treemap targeted tests passed with generated SSD fixtures; 51 packaging tests passed. New default temporary alias regression being corrected before final suite."
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
     "lastIntegratedCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
-    "nextAction": "Collect maintainer feedback on installed build8. Preserve build6 and earlier backups plus immutable candidate archives. Personal cache operations require actual reviewed selections; none were performed by this installation. External physical/human/signing gates remain pending.",
+    "nextAction": "Implement approved app-oriented cache workflow and volume/tree/treemap explorer with external Trash; qualify at least one normal-launch graphical application in isolated profiles; preserve installed8/backup and personal data.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
-    "integrationBranch": "main",
+    "integrationBranch": "codex/cache-volume-ux",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/22",
     "lastVerifiedCodeCommit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
     "mainCIVerification": "success",
@@ -881,6 +957,7 @@
       "humanAcceptanceAttested": false,
       "personalMigrationsInitiatedByAssistant": false,
       "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
-    }
+    },
+    "newExperiencePlan": "docs/plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md"
   }
 }

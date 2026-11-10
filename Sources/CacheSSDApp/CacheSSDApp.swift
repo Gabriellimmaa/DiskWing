@@ -33,16 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .defaultSize(width: 1240, height: 810)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button(L10n.text("Analisar pasta…")) { launch.model?.chooseFolder() }.keyboardShortcut("o").disabled(launch.model.map { $0.busy || $0.isScanning } ?? true)
+                Button(L10n.text("Escolher volume…")) { launch.model?.chooseVolume() }.keyboardShortcut("o").disabled(launch.model.map { $0.busy || $0.isScanning } ?? true)
             }
             CommandGroup(after: .toolbar) {
-                Button(L10n.text("Atualizar análise")) { if let model = launch.model, let root = model.report?.root.url { model.scan(root) } }.keyboardShortcut("r").disabled(launch.model.map { $0.isScanning || $0.busy } ?? true)
+                Button(L10n.text("Atualizar análise")) { launch.model?.refreshExplorer() }.keyboardShortcut("r").disabled(launch.model.map { $0.isScanning || $0.busy } ?? true)
             }
             CommandMenu(L10n.text("Navegar")) {
                 if let model = launch.model {
-                    Button(L10n.text("Visão geral")) { model.section = .overview }.keyboardShortcut("1")
-                    Button(L10n.text("Explorar espaço")) { model.section = .explorer }.keyboardShortcut("2")
-                    Button(L10n.text("Caches e SSD")) { model.section = .caches }.keyboardShortcut("3")
+                    Button(L10n.text("Explorar volumes")) { model.section = .explorer }.keyboardShortcut("2")
+                    Button(L10n.text("Caches no SSD")) { model.section = .caches }.keyboardShortcut("3")
                     Button(L10n.text("Histórico")) { model.section = .history }.keyboardShortcut("4")
                     Button(L10n.text("Ajustes")) { model.section = .preferences }.keyboardShortcut("5")
                 }
@@ -80,7 +79,7 @@ struct MenuContent: View {
     var body: some View {
         Text(model.selectedVolume.map { L10n.text("\($0.name): \(CacheSSDCore.ByteText.format($0.freeBytes)) livres") } ?? L10n.text("SSD selecionado desconectado"))
         Button(L10n.text("Abrir DiskWing")) { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
-        Button(L10n.text("Analisar pasta…")) { openWindow(id: "main"); model.chooseFolder() }
+        Button(L10n.text("Escolher volume…")) { openWindow(id: "main"); model.chooseVolume() }
         Divider()
         Button(L10n.text("Usar somente o Mac")) { model.setLocalOnly() }.disabled(model.busy)
         if let volume = model.selectedVolume { Button(L10n.text("Preparar para ejetar \(volume.name)…")) { openWindow(id: "main"); model.review = .eject(volume) }.disabled(model.busy || model.isScanning) }

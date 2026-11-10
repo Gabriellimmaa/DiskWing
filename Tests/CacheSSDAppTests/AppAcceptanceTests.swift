@@ -85,7 +85,7 @@ import CacheSSDCore
         try context.store.writeDurably(journal, name: "operation-\(journal.id.uuidString).json")
         try FileManager.default.moveItem(at: source, to: try XCTUnwrap(context.container).appendingPathComponent("preserved-original.txt"))
         let resumed = try AppContext.resumeSamples(session: XCTUnwrap(context.container)), model = AppModel(context: resumed)
-        XCTAssertEqual(model.section, .overview); XCTAssertEqual(model.pendingRecoveryCount, 1)
+        XCTAssertEqual(model.section, .explorer); XCTAssertEqual(model.pendingRecoveryCount, 1)
         let assessment = try XCTUnwrap(model.recoveries.first); XCTAssertTrue(assessment.canRestoreSource)
         model.review = .recover(assessment); model.execute(.recover(assessment)); try await wait(until: { !model.busy })
         XCTAssertNil(model.errorMessage); XCTAssertEqual(model.pendingRecoveryCount, 0)
@@ -202,7 +202,7 @@ import CacheSSDCore
             var pending = completed; pending.phase = .interrupted
             try context.store.writeDurably(pending, name: "operation-\(pending.id.uuidString).json")
             let reopenedContext = try AppContext.resumeSamples(session: session), reopened = AppModel(context: reopenedContext)
-            XCTAssertEqual(reopened.preferences.language, language); XCTAssertEqual(reopened.section, .overview)
+            XCTAssertEqual(reopened.preferences.language, language); XCTAssertEqual(reopened.section, .explorer)
             XCTAssertEqual(reopened.pendingRecoveryCount, 1)
             let recovery = try XCTUnwrap(reopened.recoveries.first { $0.id == pending.id })
             XCTAssertTrue(recovery.canRestoreSource)
@@ -223,6 +223,89 @@ import CacheSSDCore
             XCTAssertEqual(try FileTree.digest(destination, workspace: context.store.base), expected)
         }
     }
+    func testFlagsWithoutDestinationsDoNotClaimCacheTransfer() throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        var settings = context.store.settings(); settings.useExternal = true; settings.shellIntegrationEnabled = true; settings.locations = [:]
+        try context.store.save(settings)
+        let model = AppModel(context: context); model.setLanguage("pt-BR")
+        XCTAssertFalse(model.hasRegisteredCacheDestinations)
+        XCTAssertEqual(model.cacheWorkflowHeadline, "Nenhum cache transferido")
+        XCTAssertEqual(model.section, .explorer); XCTAssertTrue(model.choosingVolume)
+        XCTAssertTrue(context.store.history().isEmpty)
+    }
+    func testReviewedCacheBatchSeparatesPreparedVerifiedAndAbsentSSDInBothLanguages() async throws {
+        defer { L10n.preference = "system" }
+        for language in ["pt-BR", "en"] {
+            let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+            let model = AppModel(context: context); model.setLanguage(language); model.analyzeCacheWorkflow()
+            try await wait(until: { !model.cacheAnalyzing && !model.cacheEntries.isEmpty })
+            let chrome = GraphicalCacheCatalog.chromeCacheID
+            XCTAssertTrue(model.cacheSelectedIDs.contains(chrome)); XCTAssertTrue(model.cacheSelectedIDs.contains("npm"))
+            XCTAssertTrue(model.cacheEntries.filter { ["Cursor", "Xcode", "Safari"].contains($0.title) }.allSatisfy { $0.blockedReason != nil })
+            model.cacheSelectedIDs = [chrome, "npm"]; model.reviewCacheTransfer()
+            let action = try XCTUnwrap(model.review)
+            guard case .cacheTransfer(let plan) = action else { return XCTFail("Expected one reviewed batch") }
+            XCTAssertEqual(Set(plan.eligibleEntries.map(\.id)), [chrome, "npm"])
+            model.closeReviewedApplications(plan)
+            XCTAssertEqual(context.samples?.events, ["close-applications"])
+            try await reviewed(action, on: model)
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .configuredNeedsReopen, model.cacheTransferResults.map(\.detail).joined(separator: "; "))
+            XCTAssertFalse(try XCTUnwrap(model.cacheTransferResults.first { $0.id == chrome }).sourceReleased)
+            XCTAssertFalse(model.cacheTransferResults.contains { $0.state == .ssdVerified })
+            let registry = try XCTUnwrap(context.graphicalEngine().registrations().first)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(registry.sourceQuarantine).path))
+            model.verifyCacheWorkflowUsage(); try await wait(until: { !model.cacheAnalyzing })
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .ssdVerified)
+            XCTAssertTrue(try XCTUnwrap(model.cacheTransferResults.first { $0.id == chrome }).sourceReleased)
+            XCTAssertEqual(try context.graphicalEngine().registrations().first?.evidence?.isSimulated, true, "Generated sample evidence must remain visibly simulated in durable records")
+            try XCTUnwrap(context.samples).setVolumeConnected(false)
+            model.analyzeCacheWorkflow(); try await wait(until: { !model.cacheAnalyzing })
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .localTemporary)
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == "npm" }?.state, .localTemporary)
+            try XCTUnwrap(context.samples).setVolumeConnected(true)
+            try await reviewed(.graphicalResume(chrome), on: model)
+            XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .configuredNeedsReopen)
+            try await reviewed(.graphicalRestore(chrome), on: model)
+            XCTAssertFalse(model.cacheRegisteredIDs.contains(chrome))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: context.home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path))
+        }
+    }
+    func testVolumeJourneyKeepsSelectedVolumeAndTrashesThroughReviewedScope() async throws {
+        defer { L10n.preference = "system" }
+        for language in ["pt-BR", "en"] {
+            let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+            let model = AppModel(context: context); model.setLanguage(language)
+            try await wait(until: { !model.volumeTargets.isEmpty })
+            let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } }, String(describing: model.volumeTargets) + " supplied " + String(describing: context.volumes()))
+            let cacheVolume = model.settings.selectedVolumeUUID
+            model.scanVolume(target)
+            try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+            XCTAssertNil(model.errorMessage); XCTAssertEqual(model.explorerTarget?.id, target.id)
+            XCTAssertEqual(model.settings.selectedVolumeUUID, cacheVolume); XCTAssertTrue(model.indexOnSSD)
+            let rootPath = try XCTUnwrap(model.currentFolder?.path)
+            let page = try await model.treePage(parent: rootPath, offset: 0, limit: 128)
+            let downloads = try XCTUnwrap(page.items.first { $0.name == "Downloads" })
+            model.openFolder(downloads); try await wait(until: { !model.indexLoading })
+            XCTAssertEqual(model.explorerTarget?.id, target.id)
+            let items = try await model.treePage(parent: downloads.path, offset: 0, limit: 128)
+            let item = try XCTUnwrap(items.items.first { !$0.isDirectory })
+            model.selectExplorerItem(item, ordinal: 0)
+            XCTAssertEqual(model.selectedItem?.path, item.path)
+            XCTAssertEqual(model.treeScrollRequest?.ordinal, 0)
+            XCTAssertNil(model.trashPolicyReason(item)); model.reviewTrash(item)
+            let action = try XCTUnwrap(model.review)
+            guard case .volumeTrash(_, let scope) = action else { return XCTFail("Volume browsing must require a bound Trash scope") }
+            XCTAssertEqual(scope.volumeUUID, target.roots.first?.identity.volumeUUID)
+            try await reviewed(action, on: model)
+            try await wait(until: { !model.isScanning && !model.indexLoading })
+            XCTAssertFalse(FileManager.default.fileExists(atPath: item.path))
+            let journal = try XCTUnwrap(context.store.operations().first { $0.kind == "volumeTrash" })
+            XCTAssertNotNil(journal.volumeTrashScope); XCTAssertNotNil(journal.trashRelativePath)
+            XCTAssertEqual(model.explorerTarget?.id, target.id)
+            XCTAssertEqual(model.settings.selectedVolumeUUID, cacheVolume)
+        }
+    }
+
     func testCacheReleaseRestoreLocalDisableJourneyInBothLanguages() async throws {
         defer { L10n.preference = "system" }
         for language in ["pt-BR", "en"] {
