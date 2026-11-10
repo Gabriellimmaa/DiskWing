@@ -1,18 +1,14 @@
 # Current state
 
-## Active scope expansion — 2026-11-10
+## Expanded core flows — 2026-11-10
 
-The maintainer authorized [expanded cache and explorer behavior](../plans/SCOPE-EXPANSION-2026-11-10.md). Implementation is proceeding in separate worktrees from main 83e0cb1, preserving the installed build 6 and backup. The new increment covers independent manual Trash eligibility (including caches), internal data-volume entry, current scan state after mutations, future-write setup for empty caches and additional native cache adapters. Earlier candidate evidence below describes the previous behavior and does not attest these changes. See TRACEABILITY.json for live task/review state.
+The [expanded scope](../plans/SCOPE-EXPANSION-2026-11-10.md) is implemented and independently reviewed. The current local candidate is **1.0.0 build 8**, source 9be84dd, with a clean-source [manifest](../validation/candidate-1.0.0-build8-local.json) and successful [exact-archive qualification](../validation/expanded-build8-qualification.json). The normal installed application remains build 6 with its previous backup preserved; build 7 is superseded.
 
-The expanded implementation is independently reviewed at ecdf1af and locally
-qualified as 1.0.0 build 7: 216 Swift cases executed, 23 explicit skips, zero
-failures; 51 packaging checks; native Yarn1.22.22/Go1.27.3 generated workflows;
-real generated APFS alias regressions and exact-archive temporary internal
-installation/removal. ccache remains inactive without qualification; Yarn/Go
-origins remain local. See [expanded evidence](../validation/EXPANDED-FLOWS-2026-11-10.md).
-Exact-head CI/integration is next. Visual sample QA is pending because the Mac
-was locked; no visual/human acceptance is inferred. The installed build6 and
-backup remain preserved.
+The explorer now separates manual Trash from conservative Move, including eligible home/application-cache content with review, protected paths and recovery. It offers an explicit internal APFS data-volume entry and refreshes stale results after operations. Caches can prepare future writes with an empty/absent local source. Yarn Classic and Go are exactly qualified and retain originals; ccache remains inactive. npm 10.9.2 is qualified with source-unavailable offline SSD reuse and npx preservation; validation preserves unindexed cache content.
+
+The combined suite passed 244 cases discovered, 219 executed, 25 explicit skips and zero failures; 18 targeted cases checked the qualification binding. Native follow-up passed 48 of 49 cases with one ccache skip. The CocoaPods runtime profiles are recorded separately from inherited application availability. Build 8 samples PT/EN/minimum-window/Trash/future-cache/keyboard observations passed and the sample process was closed. Exact build 8 ZIP installation/helper/resources/removal passed in a generated temporary internal workspace. See [expanded evidence](../validation/EXPANDED-FLOWS-2026-11-10.md).
+
+The macOS 15 directory-hint issue and a test journal-ID ordering issue were corrected and passed both CI runners at e761947. Final combined-head CI/integration remains the next step in the [live ledger](../TRACEABILITY.json). All observed sample/automated results remain distinct from maintainer approval, another Mac/macOS 14, physical faults, human VoiceOver/beta and signed distribution. publicV1Ready remains false.
 
 ## Previous build 6 engineering handoff
 

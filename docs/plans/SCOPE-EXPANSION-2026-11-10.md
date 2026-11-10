@@ -1,106 +1,65 @@
-# Expanded cache and explorer scope
+# Ampliação dos fluxos de caches e explorador
 
-Authorized by the maintainer on 2026-11-10. This amends the live product scope;
-the historical approved cache plan remains unchanged. Implementation and
-qualification are separate, and build 6 and its previous-version backup remain
-preserved during this work.
+Escopo autorizado pelo mantenedor em 10 de novembro de 2026. Este plano atualiza o contrato vivo do produto e preserva o plano histórico aprovado. Implementação, qualificação técnica e aceitação humana são etapas distintas. A instalação do build 6 e seu backup permanecem preservados.
 
-## Product contract
+## Resultado esperado
 
-1. Cache management transfers existing eligible cache data and directs future
-   writes to the selected SSD through each application's supported mechanism.
-   An empty or absent cache must also be configurable. A verified copy alone
-   does not mean routing is active. Report retained originals and any scope
-   outside the integration explicitly.
-2. The explorer lets the user inspect storage, navigate by size and explicitly
-   send selected eligible content to macOS Trash, including application caches.
-   Manual deletion has a distinct policy from generic file relocation. Unknown
-   content is never classified as disposable merely because of its location.
-3. Coverage is explicit: system/data volumes, access failures, other mounts and
-   resource limits must not disappear behind a claim that the entire Mac was
-   scanned. Provide a direct entry for the internal data volume on split APFS.
+1. **Caches no SSD:** transferir dados existentes elegíveis e direcionar novas gravações pelo mecanismo compatível de cada ferramenta. Também permitir preparar o SSD quando o cache local estiver vazio ou ausente. Uma cópia conferida, sozinha, não comprova direcionamento ativo.
+2. **Explorador com exclusão manual:** analisar o armazenamento, navegar pelos tamanhos e revisar o envio dos itens escolhidos à Lixeira, inclusive caches e dados de aplicativos elegíveis. A exclusão manual tem uma política própria, separada da movimentação genérica.
+3. **Cobertura explícita:** oferecer entrada para o volume de dados do macOS e mostrar áreas sem acesso, outros volumes e limites. A raiz do sistema protegido não representa todos os arquivos do Mac.
 
-## Acceptance criteria
+## Critérios de aceite
 
-| ID | Required evidence |
+| ID | Evidência exigida |
 |---|---|
-| C1 | Each adapter distinguishes cache payload, settings, profiles, credentials, installations and projects. |
-| C2 | Existing native/project/environment/command configuration wins; inspection does not initialize personal caches. |
-| C3 | Generated native workflows prove reuse of transferred data and new writes to SSD, plus local fallback and disable/restore behavior. |
-| C4 | Empty/absent local caches can prepare a destination without creating personal source directories or silently enabling shell integration. |
-| C5 | The UI distinguishes verified copy, retained/released original, future-write configuration and terminal activation. |
-| C6 | Source release requires specific native evidence and stable source; missing/unqualified tools cannot inherit compatibility from fixtures. |
-| E1 | Explicit Trash works for eligible home descendants, including Library caches, independently of the stricter Move policy. |
-| E2 | Review shows the actual path, measured/unknown size, application-data consequences and that Trash still occupies space. |
-| E3 | Structural roots, system, credentials, protected profiles/SDKs/environments, DiskWing records and ancestors remain protected. |
-| E4 | Identity, tree readability, no redirection/cloud hydration, process use, cancellation and final source stability are checked. |
-| E5 | Durable Trash recovery works for newly eligible cache paths and refuses overwrite of recreated content. |
-| E6 | After a mutation, invalidate or refresh the displayed analysis; stale results cannot remain presented as current. |
-| E7 | Internal data-volume entry, selectable scopes, partial coverage and PT/EN remain usable with keyboard navigation. |
+| C1 | Cada integração distingue cache, configurações, perfis, credenciais, instalações e projetos. |
+| C2 | Configurações explícitas do ambiente/projeto/usuário/comando prevalecem. As novas inspeções não inicializam caches pessoais. |
+| C3 | Fluxos nativos descartáveis comprovam reutilização, novas gravações no SSD e retorno local. npm exige prova adicional com origem indisponível e npx preservado. |
+| C4 | Origem vazia ou ausente pode preparar somente o destino externo, com registro durável e sem ativação automática do terminal. |
+| C5 | A interface distingue cópia conferida, origem preservada/liberada, destino preparado e integração pendente/atualizada. |
+| C6 | Liberação da origem exige prova específica, estabilidade e revisão explícita. Versões novas não herdam compatibilidade por presença no catálogo. |
+| E1 | A Lixeira aceita descendentes elegíveis da pasta pessoal, inclusive caches, independentemente da política mais restrita de Mover. |
+| E2 | A revisão mostra caminho, tamanho conhecido/parcial e consequências para dados de aplicativos. Arquivos na Lixeira continuam ocupando espaço. |
+| E3 | Raízes, sistema, credenciais/perfis conhecidos, SDKs/ambientes vinculados, registros do DiskWing e seus ancestrais permanecem protegidos. |
+| E4 | Identidade, leitura da árvore, uso por processos, cancelamento e estabilidade final são revalidados; links e placeholders não levam à leitura/exclusão do alvo. |
+| E5 | A recuperação funciona nos novos caminhos de caches e recusa sobrescrever conteúdo recriado. |
+| E6 | Após alterações, a análise e o inventário são atualizados ou identificados como desatualizados. |
+| E7 | Os dois fluxos mantêm português/inglês, navegação por teclado e cobertura parcial honesta. |
 
-## Cache expansion and evidence policy
+## Ampliação de compatibilidade
 
-The first implementation increment adds Yarn Classic, Go build cache and ccache
-to the existing seven adapters. Yarn Classic retains its original cache because
-existing Plug'n'Play projects may reference it. Modern Yarn, Go module stores,
-pnpm stores/dlx, SDKs, installed runtimes, Chrome profiles and broad system cache
-redirection are not silently included. Go/ccache unavailable on a test machine
-remain unavailable/unqualified until a disposable native workflow proves their
-contract. Catalog presence alone is not acceptance.
+O primeiro incremento acrescenta Yarn Classic e cache de compilação Go com versões exatas qualificadas, além da infraestrutura de ccache, que fica inativa até possuir sua própria qualificação. Yarn/Go preservam as origens locais nesta etapa; Bun/uv continuam preservados. A economia de espaço existente depende da elegibilidade específica, não da soma do catálogo.
 
-Research pnpm metadata separately from its linked package store, and graphical
-applications separately from terminal inheritance. Xcode's documented build
-locations are a candidate for a dedicated integration; private preference keys
-or a successful CLI fixture do not prove normal Dock launch coverage. Preserve
-Chrome and all existing protected data. Record the candidate matrix and rejected
-mechanisms with primary-source evidence before expanding further.
+Yarn moderno, stores de módulos/pacotes, SDKs, instalações, perfis Chrome e redirecionamentos amplos de caches do sistema não são incluídos implicitamente. pnpm precisa separar metadados, store e dlx. Aplicativos gráficos exigem integração própria; a integração do terminal não cobre automaticamente programas abertos pelo Dock.
 
-Primary mechanism references: [Yarn Classic cache](https://classic.yarnpkg.com/lang/en/docs/cli/cache/),
-[Yarn 1.22.22 rc discovery](https://raw.githubusercontent.com/yarnpkg/yarn/v1.22.22/src/util/rc.js),
-[Go build cache](https://go.dev/cmd/go/),
-[Go telemetry](https://go.dev/doc/telemetry),
-[ccache configuration](https://ccache.dev/manual/4.14.1.html),
-[Xcode build locations](https://help.apple.com/xcode/mac/current/en.lproj/deva52afe8a4.html).
+Xcode é candidato a uma frente específica por oferecer local de compilação configurável, mas chaves privadas de preferências ou um teste de linha de comando não comprovam o funcionamento do aplicativo gráfico. Nenhum dado pessoal será usado para testar essa hipótese.
 
-## Autonomous team and execution
+Fontes primárias: [Yarn Classic](https://classic.yarnpkg.com/lang/en/docs/cli/cache/), [descoberta de configuração Yarn1.22.22](https://raw.githubusercontent.com/yarnpkg/yarn/v1.22.22/src/util/rc.js), [cache Go](https://go.dev/cmd/go/), [telemetria Go](https://go.dev/doc/telemetry), [ccache](https://ccache.dev/manual/4.14.1.html), [scripts npm](https://docs.npmjs.com/cli/v10/commands/npm-run-script/#ignore-scripts) e [locais de compilação Xcode](https://help.apple.com/xcode/mac/current/en.lproj/deva52afe8a4.html).
 
-Use all available agent capacity, with no fixed organizational ceiling on total
-specialists. This session exposes four concurrent slots including coordination.
-Rotate specialists through the three worker slots as tasks finish. A worktree
-and exclusive file ownership isolate each implementation. The coordinator alone
-updates shared context, translations, traceability and integration.
+## Organização autônoma e paralelismo
 
-| Wave | Parallel work | Completion gate |
+Usar toda a capacidade disponível, sem um teto organizacional para o número total de especialistas. A sessão atual oferece quatro agentes simultâneos, incluindo a coordenação. Os papéis se revezam nas vagas conforme as tarefas terminam.
+
+Cada implementação recebe worktree na SSD, branch, arquivos exclusivos e critérios de aceite. O coordenador integra e cuida de documentação, traduções e rastreabilidade. Um autor nunca fornece a única aprovação do próprio trabalho.
+
+| Onda | Trabalho em paralelo | Condição para avançar |
 |---|---|---|
-| 0 | Cache/native-mechanism research; explorer/safety audit; independent scope review | Reproducible gaps, acceptance IDs and ownership recorded. |
-| 1 | Trash policy/operation/recovery; cache adapters/future-write preparation; independent safety review. Coordinator handles UI and data-volume entry. | Targeted disposable tests; each implementation reviewed by a different author. |
-| 2 | Rotate roles for native cache qualification, UI/accessibility journeys and adversarial recovery/configuration review. | Native evidence distinct from fixtures; no unresolved data-loss/core-flow findings. |
-| 3 | Integrated regression, packaging and PT/EN sample journeys; independent final review. | Exact-head CI; affected qualification reopened for changed behavior. |
-| 4 | New separately identified local candidate and durable handoff. | Preserve installed build 6; production signing, another Mac and human gates remain independent. |
+| 0 — Escopo | Pesquisa de mecanismos nativos; auditoria do explorador; revisão independente dos critérios. | Lacunas reproduzidas e tarefas registradas. |
+| 1 — Implementação | Política/operação/recuperação da Lixeira; adaptadores e preparação de caches futuros; revisão independente. Coordenação integra interface e entrada do volume de dados. | Testes descartáveis pertinentes e revisão por outro autor. |
+| 2 — Qualificação | Revezar especialistas em fluxos nativos, interface/acessibilidade e casos adversos de configuração/recuperação. | Evidência real separada de simulações; falhas críticas corrigidas. |
+| 3 — Integração | Regressão combinada, PT/EN, pacote e revisão final. | CI do commit exato e reabertura das validações afetadas por correções. |
+| 4 — Candidato e entrega | Novo artefato identificado, verificação do arquivo exato e documentação de continuidade. | Preservar instalação anterior; manter assinatura/hardware/pessoas como gates independentes. |
 
-Never run native, filesystem-image or scale qualification simultaneously. Each
-run needs a coordinator-owned resource slot. Independent source reads and
-isolated targeted tests can run concurrently in separate build directories;
-do not oversubscribe storage with duplicate full suites. Merges are serialized.
+Leituras independentes e testes isolados podem ocorrer simultaneamente em diretórios separados. Execuções nativas, imagens de filesystem, testes de escala e integrações são serializados por uma vaga de recursos controlada pelo coordenador. Não duplicar suítes completas sem nova mudança, falha ou dúvida concreta.
 
-Workflow: implement → meaningful targeted tests → independent review → fix →
-integrated exact-head checks → PR/CI → serialized merge → verify main. Continue
-executable work without asking for routine implementation approval. If a tool
-or external resource is missing, record the concrete limitation and continue
-independent work; do not substitute fabricated evidence.
+Fluxo: implementar → testar → revisar independentemente → corrigir → conferir integração → PR/CI → integrar em série → verificar main. Falhas repetidas pedem diagnóstico independente, não tentativas cegas. Continuar as tarefas executáveis sem pedir aprovação para escolhas rotineiras já autorizadas.
 
-## Preservation and handoff
+## Preservação e continuidade
 
-Use generated homes, caches, stores, projects, volumes and injected Trash. Do
-not test by migrating personal caches, deleting personal files, changing live
-shell/Xcode/login configuration or unplugging development storage. Opening the
-app performs no migration or cleanup. No automatic cleanup or telemetry is
-introduced. Links/placeholders/special files unsupported by the reviewed Trash
-contract are refused with an explanation; do not delete their targets.
+Usar homes, projetos, caches, stores, volumes e Lixeira gerados/injetados. Não migrar caches pessoais, excluir arquivos pessoais, ativar integrações reais, alterar Xcode/login ou provocar falhas físicas no SSD de desenvolvimento para testar código. Abrir o aplicativo não inicia migração nem limpeza.
 
-Track requirement, branch/base, owner, writable files, dependencies, tests,
-reviewer, status, integrated commit and next action in TRACEABILITY.json. Keep
-raw/private evidence outside Git. A new functional candidate cannot inherit
-build 6's artifact qualification or human approval. Developer ID/notarization,
-signed update delivery, additional physical hardware, PT/EN VoiceOver acceptance
-and real beta observations remain external gates.
+Não há limpeza automática, telemetria nova ou publicação prematura. Dados desconhecidos não são descartáveis por tamanho ou nome. Tamanho lógico, blocos alocados e variação de espaço livre são medidas distintas.
+
+Registrar requisito, responsável, arquivos, branch/base, dependências, testes, revisor, estado, SHA e próxima ação em TRACEABILITY.json. Evidências privadas e conversas ficam fora do Git. Um candidato funcional novo não herda a qualificação do arquivo anterior.
+
+Outro Mac/macOS14, falhas físicas, aceitação humana PT/EN/VoiceOver, beta real, Developer ID/notarização e atualizações assinadas continuam pendentes até existir evidência real. Testes de agentes não substituem essas etapas.

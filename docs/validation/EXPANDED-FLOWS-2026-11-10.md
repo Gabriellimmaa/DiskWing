@@ -1,112 +1,47 @@
 # Expanded core-flow qualification
 
-The maintainer authorized the [expanded scope](../plans/SCOPE-EXPANSION-2026-11-10.md)
-on 2026-11-10. This record describes a new engineering increment; it does not
-replace build 6's immutable evidence or approve a public release.
+The [expanded scope](../plans/SCOPE-EXPANSION-2026-11-10.md) is implemented and independently reviewed. The current local candidate is **1.0.0 build 8**, source `9be84dd484a20a584251c93f8138e88ddbbe2691`, with a clean-source [manifest](candidate-1.0.0-build8-local.json) and successful [exact-archive qualification](expanded-build8-qualification.json). Build 7 is superseded. The installed build 6 and its earlier backup remain preserved.
 
-## Implementation and independent review
+## Implemented behavior
 
-- Manual Trash uses its own home-content policy, including application caches,
-  instead of inheriting generic Move's six-folder whitelist. Structural roots,
-  known credentials/profiles, SDKs/linked environments and DiskWing records stay
-  protected. Unsupported links, special files and cloud placeholders are refused.
-- Review exposes application-data/cache consequences. Content goes to macOS
-  Trash, which the app never empties. The explorer is refreshed or marked stale
-  after mutations; the cache inventory is refreshed as well.
-- Cache setup accepts an empty/absent source, journals before mutation, uses
-  no-follow destination creation, checks settings identity/content and leaves
-  interrupted configuration records for review. It never creates the local
-  source or enables shell integration automatically.
-- The catalog adds Yarn Classic, Go build cache and ccache. New adapters require
-  exact qualified versions for activation and routing. Yarn/Go origins remain
-  local. ccache has no native qualification and remains inactive.
-- Script capability v2 is an additive comment, preserving old paths/markers.
-  Existing terminal integration requires explicit reviewed refresh and a new
-  terminal; a prepared destination is not reported as a migrated cache.
+- Manual Trash has its own home-content policy, including application caches, instead of inheriting generic Move's six-folder whitelist. Structural roots, known credentials/profiles, SDKs/linked environments and DiskWing records remain protected. Links, special files and undownloaded cloud placeholders are refused.
+- Review shows application-data/cache consequences. Content goes to macOS Trash, which the app never empties. Analyses and inventory are refreshed after mutations, or the analysis is explicitly marked stale.
+- Empty/absent caches can prepare a destination with a durable configuration journal, no-follow directory creation and settings identity/content checks. The local cache is not created or removed, and terminal integration is not enabled automatically.
+- Yarn Classic and Go build cache require exactly qualified versions and retain their origins. ccache remains inactive without native qualification. The seven legacy adapters retain their conservative compatibility policy; Bun/uv origins stay local.
+- Native/project/environment/command preferences take precedence. An additive v2 marker detects old integration scripts, which require explicit reviewed refresh and a new terminal. Prepared destination, copied payload and routing availability have distinct states.
+- The internal-storage shortcut selects the APFS data volume. Identity-proven mapping handles Foundation firmlinks and DirectoryEnumerator spelling changes while preserving mount boundaries, link metadata and private-index exclusion.
 
-The Trash author reported 70 affected passing tests; an independent reviewer
-repeated all 20 new ManualTrash tests at 2c9bd8c with zero failures. The cache
-review identified and resolved effective ccache/Yarn configuration loss,
-post-checkpoint path redirection, unbounded/blocking settings reads and false
-Yarn directory classification. A different author reviewed 46cf3ac and repeated
-35 cache/configuration tests with zero failures.
+## Checks and independent review
+
+The combined source at `07a0aa5` passed **244 discovered Swift cases: 219 executed, 25 explicitly skipped, zero failures**. Updating npm's qualification binding to 10.9.2 then passed 18 targeted configuration/application cases, with one explicit native-APFS skip and zero failures. All 51 packaging tests passed.
+
+Independent reviewers examined each implementation and the final fixes. Their own repetitions included 20 initial and 23 follow-up ManualTrash cases,35 cache/configuration cases and 16 coverage/index/negative-alias cases. A further 34 targeted cases covered a real generated APFS alias, private-index exclusion, a leaf link without duplicate counting, system temporary-directory aliases, coverage/indexation and application acceptance. These are local/developer checks, not human acceptance.
+
+Three confirmed follow-ups were corrected before build 8:
+
+1. npm's protected-value filter rejects UUID-bearing `config get cache` paths. Validation now runs a fixed generated script through npm, offline with hooks disabled, fixed `/bin/sh` and quoted `npm_node_execpath`. It compares the exact destination without cleaning cache contents. Regressions preserve unindexed content and defeat an ancestor `node_modules/.bin/node` shadow.
+2. macOS 15 URL directory hints differed for absent Trash sources. Raw-component `lstat` proof replaces redundant Foundation URL equality, preserving no-follow behavior. Recovery tests bind their checkpoint's journal ID rather than ambiguous equal-second ordering. macOS 15/26 and optional-updater CI passed this fix at [e761947](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42870900205); final combined-head CI is recorded in the live ledger.
+3. Data firmlinks and `/private/var` abbreviation required preserving the enumerator's physical spelling and remapping only identity-proven aliases. A vanished Data entry that cannot prove identity still stops the scan explicitly rather than producing a falsely complete result.
 
 ## Native cache evidence
 
-At e661d2f the cache worker ran 40 cases: 39 executed, one explicit ccache skip,
-zero failures. Four generated native workflows covered:
+At `29278464a81f5840916cfeb184e0775aa1910fed`, the author executed 48 of 49 cases with zero failures and one explicit ccache skip: 35 core/configuration, nine legacy/regression cases and four expanded native workflows. See the sanitized [native follow-up report](native-followup-2026-11-10.json), [Yarn report](expanded-yarn-2026-11-10.json) and [Go report](expanded-go-2026-11-10.json).
 
-| Tool/version | Evidence | Retention and limits |
+| Tool/profile | Observed evidence | Limits |
 |---|---|---|
-| Yarn Classic 1.22.22 | [Sanitized report](expanded-yarn-2026-11-10.json): PnP project still executable, migrated cache reused offline, new dependency written to SSD, local fallback and empty-cache preparation | Original retained; no claim about modern Yarn or all existing projects |
-| Go 1.27.3, Darwin arm64 | [Sanitized report](expanded-go-2026-11-10.json): generated binary built/executed, copied build cache reused, new SSD entries, local fallback and empty-cache preparation | Original retained; module stores/tool installations excluded |
-| ccache | Runtime unavailable; explicit skip | No native qualification; cannot activate |
+| npm 10.9.2 | Generated original cache held unavailable; SSD offline install succeeds without recreating it; npx sentinel and held digest preserved; original restored for local offline fallback | Simulates origin unavailability; transactional source release remains covered separately by core guards/tests |
+| Yarn Classic 1.22.22 | Existing PnP project remains executable with its local original; copied cache reused offline, new dependency written to SSD and local fallback; empty-cache preparation | Original retained; modern Yarn and custom/PnP routing remain outside this adapter's automatic coverage |
+| Go 1.27.3 Darwin arm64 | Generated binary built/executed with copied build cache; new SSD entries, local fallback and empty-cache preparation | Original retained; module stores/tool installations excluded; official runtime temporary, no global installation |
+| Bun/pip/uv/Homebrew/Gradle | Real generated installs/builds/cache reuse and documented local fallback passed | pip requires a wheelhouse for empty-cache offline use; Homebrew network-offline availability is not established |
+| CocoaPods 1.16.2 with explicit existing Ruby 3.3.6 | Generated Podfile install, migration and reuse passed using an explicit runtime profile | A clean incompatible launcher was separately refused with source/settings preserved. Inherited application environment was observed native-available; neither observation establishes universal default availability. No gems/global launcher changed; offline network isolation not established |
+| ccache | Runtime unavailable; explicit skip | No qualification or activation |
 
-The Go runtime was downloaded into private temporary development storage from
-the official distribution and checked against its published SHA-256. No runtime
-was installed globally. Probes that could initialize personal Go telemetry were
-replaced with static installation metadata; explicit validation uses a fresh
-home/config. Native cache tests used generated data, controlled process guards
-and injected volume availability, not a physical SSD removal. The subsequent
-exact-version gate changes eligibility, not the tested cache mechanisms.
+All native homes, projects, caches and stores were generated. Source/destination directories were on the same filesystem and volume availability was injected. This does not prove physical internal-to-external throughput, cable removal or another Mac. Static Go/Yarn discovery does not execute commands that initialize personal telemetry/caches; explicit Go validation uses a fresh home/config.
 
-## Coverage and remaining gates
+## Interface and artifact
 
-Internal storage uses the writable APFS data volume as an explicit scope.
-Foundation firmlink/DirectoryEnumerator spelling differences require identity-
-proven normalization, with private-index exclusion and no traversal through
-links or other mounts. The native positive fixture and final integrated/package
-results are recorded below when complete; initial failed probes are diagnostic,
-not acceptance.
+Build 8 samples native UI was observed in Portuguese/English at minimum 1050 × 690. Reviewed Trash/cancel/confirm refreshed the analysis in both languages; missing-cache preparation kept the local source absent and displayed pending routing; fixture-only integration exposed the reviewed update control. Yarn/Go source release stayed disabled, ccache migration/preparation stayed disabled, Esc cancelled review and basic keyboard language selection worked. No functional clipping/blocker was observed. The exact sample process was closed and its fixture/private record retained. This is a developer observation, not human VoiceOver/beta acceptance. An earlier locked-Mac attempt was not counted as a visual pass.
 
-Only generated homes, caches, projects, stores, Trash substitutes and the tiny
-native APFS fixture are operated. No personal migration/deletion, live terminal
-activation, Xcode setting change, normal-app replacement or physical fault is
-part of this increment. The maintainer's installed build 6 and previous backup
-remain preserved. Other-Mac/macOS14, physical faults, human keyboard/VoiceOver,
-real beta, signing/notarization and signed-update acceptance remain independent.
+Build 8 archive SHA-256 is `b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7`. Its exact ZIP passed safe extraction, bundle identity, real temporary internal installation, signature/helper/resources, generated packaged flows and removal. No normal application replacement or personal migration/deletion/live integration was performed.
 
-## Final local result
-
-The independently reviewed code is ecdf1afd6562941741f055f80291b35be230ce41.
-Its full Swift suite discovered 239 cases, executed 216, explicitly skipped 23
-opt-in/worker cases and reported zero failures. All 51 packaging tests passed.
-The APFS/native and related regressions passed 34 targeted cases with no skips:
-identity-proven Data alias, private-index exclusion, leaf-link metadata without
-duplicate allocation, normal temporary-directory aliases, coverage/indexation
-and generated application journeys. Foundation's Data firmlink normalization
-and `/private/var` abbreviation defects were reproduced and corrected before
-this result. A vanished Data entry that cannot prove identity still stops the
-scan explicitly; it never becomes a falsely complete scan.
-
-The new local 1.0.0 build 7 has a clean-source
-[manifest](candidate-1.0.0-build7-local.json) and passed the
-[exact-archive qualification](expanded-build7-qualification.json): safe ZIP,
-bundle identity, real temporary internal installation, signature/helper/resource
-checks, generated acceptance flows and removal. Archive SHA-256:
-`e9bfcfb829fc8a02011bc7827bd2511dc2c65cbe2ecb21b7f16422ac9d44e7d3`.
-It is ad-hoc signed, not publicly notarized; publicV1Ready remains false.
-
-A native visual sample review was attempted but the first CUA app selection
-reported that the Mac was locked. No window/banner, minimum-size layout or
-visual PT/EN journey was observed. Only the separately launched sample process
-was closed, its exit confirmed, and its generated fixture/private record
-retained. Automated PT/EN journeys above do not substitute for this missing
-visual or human accessibility acceptance. Installed build 6 and its previous
-backup were not replaced by build 7.
-
-## Follow-up qualification reopened
-
-Additional checks after build 7 found two code/compatibility follow-ups before
-integration: npm's `config get cache` rejects real UUID-containing destination
-paths as protected values, and macOS15 compares directory hints differently
-when assessing a missing Trash source. The candidate is superseded pending
-these fixes and a new build8; earlier successful archive checks remain valid
-for their stated scope and are not sufficient promotion evidence.
-
-The legacy native run also identified a CocoaPods prerequisite mismatch:
-the default Homebrew launcher selects Ruby3.4 while its installed ffi dependency
-requires an older Ruby. No gems or global launcher were modified. Qualification
-with an explicitly selected existing Ruby3.3 profile, if performed, is separate
-from availability of the default launcher. An unavailable launcher must keep
-the adapter fail-closed and preserve its source.
+The signature is local ad-hoc. Developer ID/notarization, signed updates, another physical Mac/macOS 14, physical fault testing, hands-on accessibility and real beta evidence remain independent. publicV1Ready remains false. Build 7's prior [manifest](candidate-1.0.0-build7-local.json) and [archive checks](expanded-build7-qualification.json) are retained as superseded evidence, not promotion approval.

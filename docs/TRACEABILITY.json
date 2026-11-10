@@ -82,14 +82,16 @@
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
         "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
         "docs/validation/candidate-1.0.0-build7-local.json",
-        "docs/validation/expanded-build7-qualification.json"
+        "docs/validation/expanded-build7-qualification.json",
+        "docs/validation/candidate-1.0.0-build8-local.json",
+        "docs/validation/expanded-build8-qualification.json"
       ],
       "externalDependencies": [
         "Resource results need confirmation on additional Macs/filesystems."
       ],
       "milestone": 3,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/3",
-      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_build8_qualified"
     },
     {
       "id": "M3",
@@ -115,14 +117,16 @@
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
         "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
         "docs/validation/candidate-1.0.0-build7-local.json",
-        "docs/validation/expanded-build7-qualification.json"
+        "docs/validation/expanded-build7-qualification.json",
+        "docs/validation/candidate-1.0.0-build8-local.json",
+        "docs/validation/expanded-build8-qualification.json"
       ],
       "externalDependencies": [
         "Additional Macs/devices/filesystems and physical cable/power faults remain unverified."
       ],
       "milestone": 4,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/4",
-      "expandedScopeStatus": "followup_qualification_reopened"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_build8_qualified"
     },
     {
       "id": "M4",
@@ -143,14 +147,17 @@
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
         "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
         "docs/validation/candidate-1.0.0-build7-local.json",
-        "docs/validation/expanded-build7-qualification.json"
+        "docs/validation/expanded-build7-qualification.json",
+        "docs/validation/candidate-1.0.0-build8-local.json",
+        "docs/validation/expanded-build8-qualification.json",
+        "docs/validation/native-followup-2026-11-10.json"
       ],
       "externalDependencies": [
         "pip requires an offline wheelhouse for empty-cache installation; Homebrew/CocoaPods offline network isolation remains unverified."
       ],
       "milestone": 5,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/5",
-      "expandedScopeStatus": "followup_qualification_reopened"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_build8_qualified"
     },
     {
       "id": "M5",
@@ -199,14 +206,16 @@
         "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
         "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
         "docs/validation/candidate-1.0.0-build7-local.json",
-        "docs/validation/expanded-build7-qualification.json"
+        "docs/validation/expanded-build7-qualification.json",
+        "docs/validation/candidate-1.0.0-build8-local.json",
+        "docs/validation/expanded-build8-qualification.json"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
       ],
       "milestone": 7,
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/7",
-      "expandedScopeStatus": "implemented_independently_reviewed_local_qualified"
+      "expandedScopeStatus": "implemented_independently_reviewed_local_build8_qualified"
     },
     {
       "id": "M7",
@@ -272,7 +281,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "83e0cb111836a10eb13fb3dbfff5a31572bab286",
-    "phase": "build8_local_qualification",
+    "phase": "expanded_scope_final_ci",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -618,12 +627,13 @@
           "CACHE-02"
         ],
         "acceptance": "Separate Trash/Move UI; warnings; data-volume scan entry; refresh/invalidate post-action; route vs copy status; PT/EN",
-        "status": "implemented_automated_pt_en_passed_visual_pending_locked_mac",
+        "status": "complete_developer_sample_validation",
         "evidence": [
           "Initial full suite 223 cases/18 explicit skips/zero failures; subsequent targeted26 cases/1skip/zero failures",
           "Native APFS positive fixture exposed Foundation firmlink normalization mismatch; fix in progress, not accepted yet.",
           "APFS alias/DirectoryEnumerator and /private/var regressions fixed; 34 targeted cases passed with real generated APFS fixture, zero skips/failures.",
-          "ecdf1af full suite:239 discovered,216 executed,23 explicit skips,zero failures. PT/EN expanded AppModel journeys passed. Native visual CUA blocked before any window observation by locked Mac; sample process closed and fixture retained privately."
+          "ecdf1af full suite:239 discovered,216 executed,23 explicit skips,zero failures. PT/EN expanded AppModel journeys passed. Native visual CUA blocked before any window observation by locked Mac; sample process closed and fixture retained privately.",
+          "Samples8 native UI observed PT/EN minimum window, Trash/cancel/confirm/refreshed analysis, future preparation/source absent, fixture integration, keyboard and qualified-state controls. First build7 locked-Mac attempt superseded; no human acceptance claim."
         ]
       },
       {
@@ -646,7 +656,8 @@
         "evidence": [
           "Independent Trash20, cache35, scan16 repetitions passed. APFS native and .private/var fixes examined independently; UI/sample state and resource validation reviewed.",
           "Independent final approval at ecdf1afd6562941741f055f80291b35be230ce41; no open code blockers.",
-          "Independent approval of 3417d2+8aed2c7 and 2927846; native reports distinguish actor and profile evidence."
+          "Independent approval of 3417d2+8aed2c7 and 2927846; native reports distinguish actor and profile evidence.",
+          "Follow-up 2927846 and3417d2+8aed2c7 independently approved; npm10.9.2 qualification requires source-unavailable offline SSD proof and npx preservation, now passed."
         ]
       },
       {
@@ -687,12 +698,12 @@
           "QUALIFY-02"
         ],
         "acceptance": "Integrated tests, packaging, exact-head CI and independently identified artifact; installed build6 preserved",
-        "status": "local_qualified_ci_pending",
+        "status": "build8_local_qualified_final_ci_pending",
         "evidence": [
-          "docs/validation/candidate-1.0.0-build7-local.json",
-          "docs/validation/expanded-build7-qualification.json",
-          "Build7 exact archive/signature/internal temporary lifecycle/helper/resources/removal passed; no normal installation replacement",
-          "Full239/23skip/0failure; 51 packaging tests passed; nativeAPFS positive+isolated regressions34 passed"
+          "docs/validation/candidate-1.0.0-build8-local.json",
+          "docs/validation/expanded-build8-qualification.json",
+          "Build8 exact ZIP passed identity/extraction/temporary internal installation/helper/resources/removal; installed6 and backup preserved.",
+          "Combined244discovered/219executed/25skip/0fail; npmqualification binding18cases/1skip/0fail; native49/48executed/1ccacheskip/0fail; packaging51passed."
         ]
       },
       {
@@ -740,17 +751,17 @@
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42783336972",
     "lastIntegratedCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
-    "nextAction": "Create/qualify build8 from reviewed native/Trash fixes and npm10.9.2 qualification; run exact final PR CI and serial merge. Repeat visual sample inspection if accessible; preserve installed6 and immutable7. Remaining physical/human/signing gates are external.",
+    "nextAction": "Finish final exact-head PR CI, merge serially and verify main. Build8 is independently reviewed, native/isolated/sample-GUI qualified and exact-archive/internal-lifecycle qualified; installed6 and backup preserved. Then collect maintainer feedback and remaining physical/human/signing evidence; ccache stays inactive.",
     "lastVerifiedMainCommit": "1947aec63a925d79b2da526fdfcdff14ab342cdf",
     "integrationBranch": "codex/scope-expansion",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
-    "lastVerifiedCodeCommit": "ecdf1afd6562941741f055f80291b35be230ce41",
+    "lastVerifiedCodeCommit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
     "mainCIVerification": "success",
     "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42778884800",
     "candidate": {
-      "archiveSHA256": "e9bfcfb829fc8a02011bc7827bd2511dc2c65cbe2ecb21b7f16422ac9d44e7d3",
-      "buildNumber": "7",
-      "commit": "ecdf1afd6562941741f055f80291b35be230ce41",
+      "archiveSHA256": "b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7",
+      "buildNumber": "8",
+      "commit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
       "version": "1.0.0"
     },
     "candidateEvidence": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
@@ -803,7 +814,7 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateStatus": "build7_superseded_build8_pending",
+    "candidateStatus": "local_qualified_final_ci_pending",
     "combinedLocalRegression": {
       "codeCommit": "07a0aa5",
       "discovered": 244,
@@ -813,6 +824,20 @@
       "npmQualificationBindingTargetedCases": 18,
       "bindingExplicitSkips": 1,
       "bindingFailures": 0
+    },
+    "supersededCandidates": [
+      {
+        "archiveSHA256": "e9bfcfb829fc8a02011bc7827bd2511dc2c65cbe2ecb21b7f16422ac9d44e7d3",
+        "buildNumber": "7",
+        "commit": "ecdf1afd6562941741f055f80291b35be230ce41",
+        "version": "1.0.0"
+      }
+    ],
+    "sampleVisualQA": {
+      "build": "0.3.0-dev/8 acceptance-only",
+      "status": "developer_observed_pass",
+      "scope": "PT/EN minimum1050x690, reviewed Trash/cancel/confirm/rescan, missing-cache preparation, fixture integration, Yarn/Go retention, ccache refusal and basic keyboard; not human VoiceOver/beta acceptance",
+      "normalInstallationChanged": false
     }
   }
 }
