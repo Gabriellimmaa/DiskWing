@@ -10,6 +10,10 @@ on:
         description: Run the disposable one-million-entry benchmark
         type: boolean
         default: false
+      run_large_copy:
+        description: Run the disposable 4 GiB written-copy qualification
+        type: boolean
+        default: false
       run_filesystems:
         description: Run disposable APFS/ExFAT images and the copy resource benchmark
         type: boolean
@@ -20,12 +24,18 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Require Apple Silicon
+        run: test "$(uname -m)" = arm64
       - name: Create isolated fixture location
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-tests"
@@ -47,9 +57,23 @@ jobs:
       - name: Qualify a disposable internal installation and removal
         run: |
           python3 scripts/qualify_bundle.py dist/DiskWing.app --workspace "$RUNNER_TEMP/diskwing-tests" --output "$RUNNER_TEMP/diskwing-bundle-report.json"
+      - name: Preserve sanitized build and qualification reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-${{ matrix.os }}
+          path: |
+            dist/*.manifest.json
+            ${{ runner.temp }}/diskwing-bundle-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   updater:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,12 +95,23 @@ jobs:
       - name: Exercise a real one-million-entry fixture
         env:
           DISKWING_RUN_SCALE_TESTS: '1'
+          DISKWING_SCALE_REPORT: ${{ runner.temp }}/diskwing-scale-report.json
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-scale"
           CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter ScaleTests
+          test -s "$DISKWING_SCALE_REPORT"
+      - name: Preserve sanitized explorer scale report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: explorer-scale-qualification
+          path: ${{ runner.temp }}/diskwing-scale-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   filesystems:
-    if: github.event_name == 'workflow_dispatch' && inputs.run_filesystems
+    needs: [scale]
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.run_filesystems
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -87,6 +122,46 @@ jobs:
         env:
           DISKWING_RUN_FILESYSTEM_TESTS: '1'
           DISKWING_RUN_COPY_SCALE_TESTS: '1'
+          DISKWING_FILESYSTEM_REPORT_DIR: ${{ runner.temp }}/diskwing-filesystem-reports
+          DISKWING_COPY_SCALE_REPORT: ${{ runner.temp }}/diskwing-copy-scale-report.json
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-filesystems"
           CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-filesystems" swift test -j 2 --filter 'FilesystemQualificationTests|CopyScaleTests'
+          test -s "$DISKWING_COPY_SCALE_REPORT"
+      - name: Preserve sanitized filesystem and copy reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: filesystem-qualification
+          path: |
+            ${{ runner.temp }}/diskwing-filesystem-reports/*.json
+            ${{ runner.temp }}/diskwing-copy-scale-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  large-copy:
+    needs: [filesystems]
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.run_large_copy
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise a real 4 GiB written file and cancellation
+        env:
+          DISKWING_RUN_LARGE_COPY_TESTS: '1'
+          DISKWING_LARGE_COPY_REPORT: ${{ runner.temp }}/diskwing-large-copy-report.json
+        run: |
+          test -f Tests/CacheSSDCoreTests/LargeFileQualificationTests.swift
+          mkdir -p "$RUNNER_TEMP/diskwing-large-copy"
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-large-copy" swift test -j 2 --filter LargeFileQualificationTests
+          test -s "$DISKWING_LARGE_COPY_REPORT"
+      - name: Preserve sanitized large-copy report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: large-copy-qualification
+          path: ${{ runner.temp }}/diskwing-large-copy-report.json
+          if-no-files-found: ignore
+          retention-days: 14
