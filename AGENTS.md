@@ -6,6 +6,8 @@ Read docs/context/PROJECT_CONTEXT.md, docs/context/CURRENT_STATE.md, docs/COMPAT
 
 Native macOS SwiftPM project. Sources/CacheSSDCore contains analysis, routing, persistence, and operations; Sources/CacheSSDApp contains SwiftUI/AppKit screens; Sources/CacheSSDHelper is the CLI. Technical names intentionally remain CacheSSD for compatibility.
 
+Historical chats may retain an obsolete recorded working directory. Run subsequent commands explicitly in this repository checkout; do not recreate the former workspace to recover context.
+
 - Build: python3 build.py (default .build/, dist/DiskWing.app).
 - Isolated tests: swift test -j 2.
 - Packaging tests: python3 -m unittest discover -s Tests/Packaging -v.

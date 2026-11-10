@@ -4,6 +4,8 @@
 
 DiskWing is an open source macOS utility for exploring disk usage and reviewing selective cache migrations to an external SSD. It grew from the local CacheSSD prototype. **This is an early local alpha, not a notarized public release.**
 
+[![macOS checks](https://github.com/Gabriellimmaa/DiskWing/actions/workflows/ci.yml/badge.svg)](https://github.com/Gabriellimmaa/DiskWing/actions/workflows/ci.yml)
+
 [Português](README.pt-BR.md) · [Current state](docs/context/CURRENT_STATE.md) · [Roadmap](docs/plans/ROADMAP-V0.1.md) · [Recovery](docs/RECOVERY.md)
 
 ## What it does
