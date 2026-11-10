@@ -59,6 +59,10 @@ final class ExpandedCacheTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: descriptor.source.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: descriptor.source.deletingLastPathComponent().path))
     }
+    func testGoDiscoveryDoesNotCreateAbsentCacheOrTelemetryConfiguration() throws {
+        _ = CacheAdapters.inspect(try tool("go"), home: home, directory: home)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: home.path).isEmpty)
+    }
     func testGoAndCcacheConfigurationTakesPrecedence() throws {
         let goConfig = home.appendingPathComponent("Library/Application Support/go/env")
         try put(goConfig, "GOCACHE=/generated/custom\n")
@@ -77,6 +81,14 @@ final class ExpandedCacheTests: XCTestCase {
         for argument in ["-C", "-C=/generated", "GOCACHE=/generated", "GOENV=/generated"] { XCTAssertTrue(CacheRouter.commandExclusions(["go", argument]).contains("go"), argument) }
         for argument in ["--dir=/generated", "--config-path=/generated", "-d/generated", "-o", "cache_dir=/generated", "CCACHE_CONFIGPATH=/generated"] { XCTAssertTrue(CacheRouter.commandExclusions(["ccache", argument]).contains("ccache"), argument) }
         XCTAssertTrue(CacheRouter.commandExclusions(["go", "build", "./..."]).isEmpty)
+    }
+    func testYarnGlobalConfigurationAndSelectorsArePreserved() throws {
+        let global = root.appendingPathComponent("global-yarnrc")
+        try put(global, "cache-folder /generated/custom\n")
+        XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "yarn", directory: home, home: home, processEnvironment: [:], yarnGlobalConfigurations: [global]))
+        for key in ["YARN_CONFIG", "YARN_RC_FILENAME", "PREFIX", "DESTDIR", "XDG_CONFIG_HOME"] {
+            XCTAssertTrue(CacheRouter.hasCustomPreference(toolID: "yarn", directory: home, home: home, processEnvironment: [key: "/generated/custom"], yarnGlobalConfigurations: []))
+        }
     }
     func testCcachePreservesAnyUserAndAncestorConfiguration() throws {
         let project = home.appendingPathComponent("Documents/project/nested")
@@ -138,6 +150,31 @@ final class ExpandedCacheTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: try tool("go").source.path))
         XCTAssertThrowsError(try engine().prepareFutureCache(toolID: "ccache"))
     }
+    func testPreparedDestinationCannotFollowReplacedAncestorOutsideSSD() throws {
+        let outside = root.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let operation = engine(configurationCheckpoint: { change in
+            if change.state == "prepared" { try FileManager.default.createSymbolicLink(at: self.disk.appendingPathComponent("MacCaches"), withDestinationURL: outside) }
+        })
+        XCTAssertThrowsError(try operation.prepareFutureCache(toolID: "go"))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+        XCTAssertNil(store.settings().locations["go"])
+        XCTAssertEqual(store.pendingConfigurationRecords().count, 1)
+    }
+    func testPreparedSettingsCannotFollowReplacementLinkWithIdenticalContents() throws {
+        let settingsURL = store.base.appendingPathComponent("settings.json"), outside = root.appendingPathComponent("outside-settings")
+        let original = try Data(contentsOf: settingsURL); try original.write(to: outside)
+        let operation = engine(configurationCheckpoint: { change in
+            if change.state == "prepared" {
+                try FileManager.default.removeItem(at: settingsURL)
+                try FileManager.default.createSymbolicLink(at: settingsURL, withDestinationURL: outside)
+            }
+        })
+        XCTAssertThrowsError(try operation.prepareFutureCache(toolID: "go"))
+        XCTAssertEqual(try Data(contentsOf: outside), original)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: settingsURL.path), outside.path)
+        XCTAssertEqual(store.pendingConfigurationRecords().count, 1)
+    }
     func testCancellationAndBusyToolDoNotConfigureFutureCache() throws {
         let cancellation = CancellationFlag(); cancellation.cancel()
         XCTAssertThrowsError(try engine().prepareFutureCache(toolID: "go", cancellation: cancellation))
@@ -166,11 +203,23 @@ final class ExpandedCacheTests: XCTestCase {
         try Data("#!/bin/sh\nprintf 'YARN_CACHE_FOLDER\\t/generated/yarn\\nGOCACHE\\t/generated/go\\nCCACHE_DIR\\t/generated/ccache\\n'\n".utf8).write(to: helper)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
         try ShellIntegration.install(helper: helper, store: store, home: home)
+        XCTAssertTrue(ShellIntegration.isCurrent(store: store))
         let script = "source '\(store.base.appendingPathComponent("integration.zsh").path)'; _cachessd_route 'go -C /generated build'; print -r -- \"go=${GOCACHE-unset};ccache=${CCACHE_DIR-unset}\"; _cachessd_route 'yarn --enable-pnp install'; print -r -- \"yarn=${YARN_CACHE_FOLDER-unset};go=${GOCACHE-unset}\"; _cachessd_route 'ccache --dir=/custom clang'; print -r -- \"ccache=${CCACHE_DIR-unset}\""
         let result = try CommandRunner.run(URL(fileURLWithPath: "/bin/zsh"), ["-c", script], environment: ["HOME": home.path, "PATH": "/usr/bin:/bin"])
         XCTAssertEqual(result.status, 0, result.output)
         XCTAssertTrue(result.output.contains("go=unset;ccache=/generated/ccache"), result.output)
         XCTAssertTrue(result.output.contains("yarn=unset;go=/generated/go"), result.output)
         XCTAssertTrue(result.output.contains("ccache=unset"), result.output)
+    }
+    func testLegacyAndUnreadableRoutingScriptsRequireReviewedRefresh() throws {
+        XCTAssertFalse(ShellIntegration.isCurrent(store: store))
+        let script = store.base.appendingPathComponent("integration.zsh")
+        try Data("# CacheSSD legacy seven-key integration\n".utf8).write(to: script)
+        XCTAssertFalse(ShellIntegration.isCurrent(store: store))
+        try Data("# CacheSSD routing version: 2\n".utf8).write(to: script)
+        XCTAssertTrue(ShellIntegration.isCurrent(store: store))
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: script.path)
+        XCTAssertFalse(ShellIntegration.isCurrent(store: store))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: script.path)
     }
 }

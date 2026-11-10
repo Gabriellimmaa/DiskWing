@@ -39,6 +39,18 @@ public enum CacheAdapters {
         }
         return nil
     }
+    /// `go version` and `go env` can initialize telemetry state. Inspect only the
+    /// regular VERSION file of a recognized installation while opening the app.
+    static func goVersion(home: URL) -> String? {
+        guard let executable = ToolLocator.locate("go", home: home) else { return nil }
+        let file = executable.resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("VERSION")
+        var metadata = stat()
+        guard lstat(file.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_flags & UInt32(SF_DATALESS) == 0, metadata.st_size <= 4096,
+              let content = try? String(contentsOf: file, encoding: .utf8),
+              let raw = content.split(whereSeparator: { $0.isWhitespace }).first, raw.hasPrefix("go1.") else { return nil }
+        return String(raw.dropFirst(2))
+    }
     public static func inspect(_ tool: CacheDescriptor, home: URL = FileManager.default.homeDirectoryForCurrentUser, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)) -> AdapterStatus {
         func status(_ state: String, _ reason: String, version: String? = nil, path: String? = nil) -> AdapterStatus {
             AdapterStatus(toolID: tool.id, adapterVersion: self.version, version: version, effectiveCachePath: path, state: state, explanation: reason, canReleaseSource: state == "native-available" && tool.canReleaseLocal && version != nil && qualifiedVersions[tool.id] == version)
@@ -50,6 +62,11 @@ public enum CacheAdapters {
             guard let version = yarnClassicVersion(home: home) else { return status("unsupported-version", "Somente uma instalação identificada do Yarn Classic 1.22 é compatível. Outras versões e executores indiretos são preservados.") }
             let custom = CacheRouter.hasCustomPreference(toolID: tool.id, directory: directory, home: home)
             return custom ? status("custom-configuration", "Configuração personalizada ou Plug’n’Play preservado. O cache local não será alterado.", version: version) : assess(tool, version: version, effectiveRoot: nil, custom: false, queried: false)
+        }
+        if tool.id == "go" {
+            guard let version = goVersion(home: home) else { return status("unsupported-version", "A instalação do Go não permite identificar a versão sem executar a ferramenta. Nenhum cache será alterado.") }
+            let custom = CacheRouter.hasCustomPreference(toolID: tool.id, directory: directory, home: home)
+            return custom ? status("custom-configuration", "Configuração personalizada preservada. O cache local não será alterado.", version: version) : assess(tool, version: version, effectiveRoot: nil, custom: false, queried: false)
         }
         var env = ToolLocator.environment(adding: ["HOME":home.path]); env["PATH"] = executable.deletingLastPathComponent().path + ":" + (env["PATH"] ?? "")
         if tool.id == "go" { env["GOTOOLCHAIN"] = "local" }

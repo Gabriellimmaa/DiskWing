@@ -4,6 +4,12 @@ import Darwin
 public enum ShellIntegration {
     private static let begin = "# >>> CacheSSD managed integration >>>"
     private static let end = "# <<< CacheSSD managed integration <<<"
+    private static let routingVersion = "# CacheSSD routing version: 2"
+
+    public static func isCurrent(store: Store = Store()) -> Bool {
+        guard let contents = try? readConfiguration(store.base.appendingPathComponent("integration.zsh")) else { return false }
+        return contents.split(separator: "\n").contains { $0 == Substring(routingVersion) }
+    }
 
     public static func install(helper: URL, store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
@@ -22,6 +28,7 @@ public enum ShellIntegration {
         guard !integration.path.contains("'") else { throw CacheSSDError.message(L10n.text("O caminho da integração não é compatível.")) }
         let script = """
         # CacheSSD: native per-command routing; no symlinks or permanent external paths.
+        \(routingVersion)
         if (( $+functions[_cachessd_restore] )); then _cachessd_restore; fi
         typeset -gA _cachessd_original _cachessd_was_set _cachessd_seen _cachessd_seen_set
         typeset -g _cachessd_has_seen=0
