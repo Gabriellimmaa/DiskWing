@@ -175,6 +175,16 @@ final class SampleAvailability: @unchecked Sendable {
             var info = stat()
             guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == (offset < 2 ? S_IFDIR : S_IFREG) else { throw Self.sampleFailure() }
         }
+        // Every convenience reader below this context must reject redirected or
+        // placeholder records before accessing them, including after resumption.
+        guard let records = FileManager.default.enumerator(at: store.base, includingPropertiesForKeys: nil) else { throw Self.sampleFailure() }
+        var count = 0
+        for case let record as URL in records {
+            count += 1
+            var info = stat()
+            guard count <= 4096, allows(record), lstat(record.path, &info) == 0,
+                  [S_IFREG, S_IFDIR].contains(info.st_mode & S_IFMT), info.st_flags & UInt32(SF_DATALESS) == 0 else { throw Self.sampleFailure() }
+        }
         let fd = Darwin.open(marker.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw Self.sampleFailure() }
         let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true); defer { try? file.close() }
@@ -230,7 +240,7 @@ final class SampleAvailability: @unchecked Sendable {
                 var info = stat()
                 guard let identity, lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
                       Int64(info.st_dev) == identity.device, UInt64(info.st_ino) == identity.inode,
-                      Paths.contains(source, in: root), Paths.physicalURL(source) == source.standardizedFileURL else {
+                      Paths.contains(source, in: root), Paths.physicalURL(source).standardizedFileURL == source.standardizedFileURL else {
                     throw CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste."))
                 }
                 var ancestor = root
@@ -250,7 +260,7 @@ final class SampleAvailability: @unchecked Sendable {
             try FileManager.default.moveItem(at: source, to: path); return path
         })
     }
-    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home) }
+    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: container) }
     func reveal(_ urls: [URL]) throws { try require(urls); if let samples { samples.record("reveal"); return }; NSWorkspace.shared.activateFileViewerSelecting(urls) }
     func open(_ url: URL) throws { try require([url]); if let samples { samples.record("open"); return }; NSWorkspace.shared.open(url) }
     func openPrivacy() { if let samples { samples.record("privacy"); return }; NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!) }
