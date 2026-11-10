@@ -44,7 +44,7 @@ jobs:
         run: swift test -j 2
       - name: Packaging boundary tests
         run: python3 -m unittest discover -s Tests/Packaging -v
-      - name: Build production bundle
+      - name: Build ad-hoc development bundle
         run: python3 build.py
       - name: Verify signature and approved icon
         run: |
@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Compile the separately enabled signed updater
+      - name: Compile the optional updater integration
         env:
           DISKWING_ENABLE_UPDATER: '1'
         run: swift build --scratch-path .build-updater -j 2
