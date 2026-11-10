@@ -25,9 +25,9 @@ public enum CacheAdapters {
         let name = ["cocoapods":"pod", "pip":"python3", "homebrew":"brew"][tool.id] ?? tool.id
         let executable = tool.id == "gradle" ? gradle(home: home) : ToolLocator.locate(name, home: home)
         guard let executable else { return status("missing-tool", "Ferramenta não localizada; nenhum cache será alterado.") }
-        var env = ToolLocator.environment(adding: [:]); env["PATH"] = executable.deletingLastPathComponent().path + ":" + (env["PATH"] ?? "")
+        var env = ToolLocator.environment(adding: ["HOME":home.path]); env["PATH"] = executable.deletingLastPathComponent().path + ":" + (env["PATH"] ?? "")
         let arguments = tool.id == "gradle" ? ["--version", "--no-daemon"] : tool.id == "pip" ? ["-m", "pip", "--version"] : ["--version"]
-        guard let result = try? CommandRunner.run(executable, arguments, environment: env, timeout: 25), result.status == 0, !result.truncated else { return status("unavailable", "Não foi possível identificar a ferramenta. Preserve a configuração atual.") }
+        guard let result = try? CommandRunner.run(executable, arguments, environment: env, timeout: 25, directory: directory), result.status == 0, !result.truncated else { return status("unavailable", "Não foi possível identificar a ferramenta. Preserve a configuração atual.") }
         let regex = try? NSRegularExpression(pattern: #"\b\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.]+)?"#)
         let range = NSRange(result.output.startIndex..., in: result.output)
         let match = regex?.firstMatch(in: result.output, range: range).flatMap { Range($0.range, in: result.output) }.map { String(result.output[$0]) }
@@ -41,13 +41,21 @@ public enum CacheAdapters {
         default: break
         }
         var path: String?
-        if !query.isEmpty, let value = try? CommandRunner.run(executable, query, environment: env, timeout: 25), value.status == 0, !value.truncated {
+        if !query.isEmpty, let value = try? CommandRunner.run(executable, query, environment: env, timeout: 25, directory: directory), value.status == 0, !value.truncated {
             let candidate = value.output.trimmingCharacters(in: .whitespacesAndNewlines)
             if candidate.hasPrefix("/"), !candidate.contains("\n") { path = candidate }
         }
         if custom { return status("custom-configuration", "Configuração personalizada preservada. O cache padrão não comprova o destino desta execução.", version: match, path: path) }
-        let reason = tool.canReleaseLocal ? "Ferramenta disponível. Revise origem e destino; a qualificação em projetos reais depende da versão testada." : "Novos downloads podem usar SSD; a origem local é preservada por possíveis links de instalações existentes."
-        return status("native-available", reason, version: match, path: path)
+        return assess(tool, version: match, effectiveRoot: path, custom: false, queried: !query.isEmpty)
+    }
+    /// Pure policy seam; an exact tool version alone never proves the source path.
+    static func assess(_ tool: CacheDescriptor, version: String?, effectiveRoot: String?, custom: Bool, queried: Bool) -> AdapterStatus {
+        let expected = tool.destinationChild.isEmpty ? tool.source : tool.source.deletingLastPathComponent()
+        let matches = effectiveRoot.map { Paths.physicalURL(URL(fileURLWithPath:$0)).path == Paths.physicalURL(expected).path } ?? false
+        let state = custom || effectiveRoot != nil && !matches ? "custom-configuration" : queried && !matches ? "configuration-unverified" : "native-available"
+        let verified = state == "native-available" && matches
+        let reason = state == "custom-configuration" ? "O destino efetivo é personalizado. A configuração e a origem foram preservadas." : state == "configuration-unverified" ? "Não foi possível confirmar o destino efetivo. A origem foi preservada." : tool.canReleaseLocal ? "Ferramenta disponível. Revise origem e destino; a qualificação em projetos reais depende da versão testada." : "Novos downloads podem usar SSD; a origem local é preservada por possíveis links de instalações existentes."
+        return AdapterStatus(toolID:tool.id, adapterVersion:self.version, version:version, effectiveCachePath:effectiveRoot, state:state, explanation:reason, canReleaseSource:verified && tool.canReleaseLocal && version != nil && qualifiedVersions[tool.id] == version)
     }
     public static func gradle(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         let distributions = home.appendingPathComponent(".gradle/wrapper/dists")

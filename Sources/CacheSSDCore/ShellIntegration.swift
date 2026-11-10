@@ -47,9 +47,13 @@ public enum ShellIntegration {
         }
         _cachessd_route() {
           local key value output
+          local cachessd_command="${(L)${1-}}"
           local -a cachessd_route_flags
           [[ "${1-}" == *--backend* || "${1-}" == *--global-store* ]] && cachessd_route_flags+=(--omit-bun)
           [[ "${1-}" == *--link-mode* ]] && cachessd_route_flags+=(--omit-uv)
+          case "$cachessd_command" in
+            *--userconfig*|*--globalconfig*|*--prefix*|*--cache*|*npm_config_userconfig=*|*npm_config_globalconfig=*|*npm_config_prefix=*|*npm_config_cache=*|*" -c "*) cachessd_route_flags+=(--omit-npm) ;;
+          esac
           _cachessd_restore
           [[ -x '\(helper.path)' ]] || return 0
           output=$(command '\(helper.path)' shell-env $cachessd_route_flags 2>/dev/null) || return 0
