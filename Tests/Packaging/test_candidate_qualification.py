@@ -178,5 +178,13 @@ class CandidateQualificationTests(unittest.TestCase):
             archive.writestr(entry, b'generated')
         with self.assertRaises(ValueError): runner.validate_zip(self.archive)
 
+    def test_zip_local_header_must_match_the_reviewed_central_directory(self):
+        data = bytearray(self.archive.read_bytes())
+        name_length = int.from_bytes(data[26:28], 'little')
+        replacement = b'../' + b'x' * (name_length - 3)
+        data[30:30 + name_length] = replacement
+        self.archive.write_bytes(data)
+        with self.assertRaises(zipfile.BadZipFile): runner.validate_zip(self.archive)
+
 
 if __name__ == '__main__': unittest.main()

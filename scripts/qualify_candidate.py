@@ -54,8 +54,11 @@ def validate_zip(path):
         names, links, roots = {}, {}, set()
         for item in entries:
             components = parts(item.filename)
-            if item.orig_filename != item.filename or item.flag_bits & 1 or item.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+            if item.create_system != 3 or item.orig_filename != item.filename or item.flag_bits & 1 or item.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
                 raise ValueError('Unsupported ZIP entry.')
+            # zipfile checks the local header against the central directory on
+            # open; ditto must never see a different filename than we reviewed.
+            with archive.open(item): pass
             name = '/'.join(components); normalized = key(name)
             if normalized in names: raise ValueError('Duplicate ZIP path.')
             names[normalized] = name
