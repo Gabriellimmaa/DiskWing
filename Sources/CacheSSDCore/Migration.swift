@@ -149,13 +149,18 @@ public final class MigrationEngine {
         let settingsURL = store.base.appendingPathComponent("settings.json")
         func readCurrentSettings() throws -> String {
             guard settingsURL.standardizedFileURL == settingsURL.resolvingSymlinksInPath() else { throw CacheSSDError.message(L10n.text("O registro de configuração foi redirecionado e será preservado.")) }
-            let descriptor = open(settingsURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+            let descriptor = open(settingsURL.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
             guard descriptor >= 0 else { throw CacheSSDError.message(L10n.text("O registro de configuração está indisponível e será preservado.")) }
             let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             var metadata = stat()
             guard fstat(descriptor, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG,
                   metadata.st_flags & UInt32(SF_DATALESS) == 0, metadata.st_size <= 4_194_304,
-                  let data = try file.readToEnd(), let text = String(data: data, encoding: .utf8) else { throw CacheSSDError.message(L10n.text("O registro de configuração está indisponível e será preservado.")) }
+                  let data = try file.read(upToCount: 4_194_305), data.count <= 4_194_304,
+                  data.count == metadata.st_size, let text = String(data: data, encoding: .utf8) else { throw CacheSSDError.message(L10n.text("O registro de configuração está indisponível e será preservado.")) }
+            var after = stat()
+            guard fstat(descriptor, &after) == 0, after.st_dev == metadata.st_dev, after.st_ino == metadata.st_ino,
+                  after.st_size == metadata.st_size, after.st_mtimespec.tv_sec == metadata.st_mtimespec.tv_sec,
+                  after.st_mtimespec.tv_nsec == metadata.st_mtimespec.tv_nsec else { throw CacheSSDError.message(L10n.text("A configuração mudou durante a revisão. Ela foi preservada; tente novamente.")) }
             return text
         }
         let before = try readCurrentSettings()

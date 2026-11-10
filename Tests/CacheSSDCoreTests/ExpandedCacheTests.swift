@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import Darwin
 @testable import CacheSSDCore
 
 final class ExpandedCacheTests: XCTestCase {
@@ -174,6 +175,24 @@ final class ExpandedCacheTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: outside), original)
         XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: settingsURL.path), outside.path)
         XCTAssertEqual(store.pendingConfigurationRecords().count, 1)
+    }
+    func testFutureConfigurationRefusesFIFOWithoutBlockingOrReplacingIt() throws {
+        let settings = store.base.appendingPathComponent("settings.json")
+        try FileManager.default.removeItem(at: settings)
+        XCTAssertEqual(mkfifo(settings.path, 0o600), 0)
+        let start = Date()
+        XCTAssertThrowsError(try engine().prepareFutureCache(toolID: "go"))
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+        var metadata = stat(); XCTAssertEqual(lstat(settings.path, &metadata), 0)
+        XCTAssertEqual(metadata.st_mode & S_IFMT, mode_t(S_IFIFO))
+    }
+    func testFutureConfigurationPreservesOversizedSettings() throws {
+        let settings = store.base.appendingPathComponent("settings.json")
+        let oversized = Data(repeating: 65, count: 4_194_305)
+        try oversized.write(to: settings)
+        XCTAssertThrowsError(try engine().prepareFutureCache(toolID: "go"))
+        XCTAssertEqual(try Data(contentsOf: settings), oversized)
+        XCTAssertTrue(store.pendingConfigurationRecords().isEmpty)
     }
     func testCancellationAndBusyToolDoNotConfigureFutureCache() throws {
         let cancellation = CancellationFlag(); cancellation.cancel()
