@@ -1,17 +1,55 @@
 {
   "schemaVersion": 1,
   "status": "not-run",
-  "candidate": { "version": "", "buildNumber": "", "helperSHA256": "" },
+  "candidate": {
+    "commit": "",
+    "version": "",
+    "buildNumber": "",
+    "archiveSHA256": ""
+  },
   "reviewerAlias": "",
   "reviewedAt": "",
-  "machine": { "alias": "", "macOS": "", "architecture": "", "otherPhysicalMacAttested": false },
+  "machine": {
+    "alias": "",
+    "macOS": "",
+    "architecture": "",
+    "otherPhysicalMacAttested": false
+  },
   "automatedReportRef": "",
   "languages": {
-    "pt-BR": { "explorer": "not-run", "cacheReview": "not-run", "keyboard": "not-run", "voiceOver": "not-run", "recovery": "not-run", "evidenceRef": "" },
-    "en": { "explorer": "not-run", "cacheReview": "not-run", "keyboard": "not-run", "voiceOver": "not-run", "recovery": "not-run", "evidenceRef": "" }
+    "pt-BR": {
+      "explorer": "not-run",
+      "cacheReview": "not-run",
+      "keyboard": "not-run",
+      "voiceOver": "not-run",
+      "recovery": "not-run",
+      "evidenceRef": ""
+    },
+    "en": {
+      "explorer": "not-run",
+      "cacheReview": "not-run",
+      "keyboard": "not-run",
+      "voiceOver": "not-run",
+      "recovery": "not-run",
+      "evidenceRef": ""
+    }
   },
-  "lifecycle": { "install": "not-run", "restore": "not-run", "disable": "not-run", "newTerminalLocalFallback": "not-run", "removal": "not-run", "evidenceRef": "" },
-  "distribution": { "developerID": "not-run", "notarization": "not-run", "validSignedUpdate": "not-run", "invalidSignedUpdateRejected": "not-run", "evidenceRef": "" },
+  "lifecycle": {
+    "install": "not-run",
+    "restore": "not-run",
+    "disable": "not-run",
+    "newTerminalLocalFallback": "not-run",
+    "removal": "not-run",
+    "evidenceRef": ""
+  },
+  "distribution": {
+    "developerID": "not-run",
+    "notarization": "not-run",
+    "validSignedUpdate": "not-run",
+    "invalidSignedUpdateRejected": "not-run",
+    "evidenceRef": ""
+  },
   "criticalIssueRefs": [],
-  "notes": "Private manual-review template. Automated passes do not complete these checks or the seven-day beta."
+  "notes": "Private human-review worksheet, not a readiness record. Copy exact candidate from the manifest; preserve raw observations privately. Summarize verified gates into schema-1 human-review records per beta/PROTOCOL.md. Automated passes cannot attest another Mac, human accessibility, physical faults or a seven-day beta.",
+  "manifestRef": ""
 }

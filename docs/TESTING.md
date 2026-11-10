@@ -8,7 +8,7 @@ python3 build.py
 
 Use CACHESSD_TEST_TEMP=/path/on/a/disposable/development/volume to keep fixtures off a nearly full internal disk. Tests use isolated homes, stores, projects and injected volume providers. Never substitute personal caches, shell settings, projects, browser profiles or SDKs.
 
-The default suite includes safety, abrupt subprocess exit/recovery, metadata/resource forks, indexed pagination/global search/export/retention, comparable growth and a real FSEvents callback, plus translation/resource checks. Default skips are explicit: two installed-tool query checks, seven actual native workflows, one million-entry explorer benchmark, four disposable filesystem-image cases, one copy resource benchmark and the subprocess-only crash worker. The parent crash test runs the worker itself and verifies recovery.
+The default suite includes safety, abrupt subprocess exit/recovery, metadata/resource forks, indexed pagination/global search/export/retention, comparable growth and a real FSEvents callback, plus translation/resource checks. Default skips are explicit: two installed-tool query checks, seven actual native workflows, one million-entry explorer benchmark, four disposable filesystem-image cases, one copy resource benchmark, one written-4-GiB qualification and the subprocess-only crash worker. The parent crash test runs the worker itself and verifies recovery.
 
 ## Separate opt-in native checks
 
@@ -60,6 +60,31 @@ See [another-Mac handoff](acceptance/SECOND_MAC.md) for the packaged helper comm
 
 ## Public CI
 
-CI runs isolated Swift tests, Python packaging/readiness tests, an arm64 production bundle, signature/icon/resource checks and a real disposable internal installation/helper/removal exercise. The separate updater job compiles the exact Sparkle dependency. The explorer scale job requires a manual dispatch with run_scale enabled. A separate filesystems job requires run_filesystems and runs the disposable image/copy tests; default CI never mounts images. Native workflows require explicit local opt-in and suitable tool availability. Default CI never installs personal tooling or publishes releases.
+CI runs isolated Swift tests, Python packaging/readiness tests, an arm64 ad-hoc development bundle, signature/icon/resource checks and a real disposable internal installation/helper/removal exercise. The separate updater job compiles the exact Sparkle dependency. The explorer scale job requires a manual dispatch with run_scale enabled. A separate filesystems job requires run_filesystems and runs the disposable image/copy tests; default CI never mounts images. Native workflows require explicit local opt-in and suitable tool availability. Default CI never installs personal tooling or publishes releases.
 
 Developer ID, Apple notarization, runtime updater consent/signature rejection, VoiceOver, other Macs, real cable removal and the human beta remain independent acceptance gates. See [current evidence](validation/IMPLEMENTATION-2026-11-10.md). Raw machine-specific logs stay in ignored .local/ storage.
+
+## Written large-file qualification
+
+~~~sh
+DISKWING_RUN_LARGE_COPY_TESTS=1 \
+CACHESSD_TEST_TEMP=/your/development/fixture-directory \
+DISKWING_LARGE_COPY_REPORT=/your/private/new-report.json \
+swift test -j 2 --filter LargeFileQualificationTests
+~~~
+
+Requires more than 12 GiB free. Writes and synchronizes 4 GiB, checks actual allocation (no sparse fixture), cancels a transfer, then copies/verifies both trees with bounded memory. This is generated same-volume data, not physical unplug or proof of cross-device throughput. Run heavy suites serially. The one-million-entry and filesystem/copy benchmarks are separate.
+
+## Isolated GUI acceptance
+
+~~~sh
+python3 build.py --acceptance-bundle
+mkdir -p .local/gui-fixtures
+open -n dist/DiskWingAcceptance.app --args --acceptance-workspace "$PWD/.local/gui-fixtures"
+~~~
+
+If macOS has not permitted the separate samples domain to access a removable volume, use a small private temporary internal fixture directory instead. Do not grant broader permissions merely to run acceptance. Confirm the visible sample banner before acting. This creates a private .DiskWing-samples-UUID session containing home, support, simulated SSD and generated files. Reopen using --acceptance-session with that exact directory. Invalid/incomplete launch state shows an error and retry screen, with no access to the real home. Preparation runs in a worker after application launch so filesystem access cannot block the first window. The samples app refuses ordinary launch, and the normal app refuses these flags. Its independent bundle ID protects normal AppKit saved state. Never run samples through the normal app bundle.
+
+Selections and outputs are restricted to the generated session; redirected storage fails closed. Login, notification, Xcode, Finder/open and eject are substitutes. The SSD switch renames only its generated directory, preserves bytes and exercises absence without touching a mounted disk. Native tools and Sparkle are disabled. The sample-only window menu selects the minimum 1050 × 690 content size or the default size; it changes no normal-window preferences. AppAcceptanceTests cover journeys, scope isolation, fresh consent, reconnect and energy resumption; native GUI checks supplement these tests and never attest human VoiceOver usability.
+
+CI runs on macos-15 and macos-26. The macOS 14 minimum requires external validation. Manual heavy jobs run serially (scale, filesystems, written copy), preserve sanitized JSON reports and upload no application binaries or raw logs. Optional updater compilation is distinct from signed-update acceptance.

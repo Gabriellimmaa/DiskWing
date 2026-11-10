@@ -1,6 +1,6 @@
 # Current state
 
-Updated 2026-11-10. [PR #11](https://github.com/Gabriellimmaa/DiskWing/pull/11) merged to main at 1cdcaabf; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42758794618). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
+Updated 2026-11-10. [PR #12](https://github.com/Gabriellimmaa/DiskWing/pull/12) merged to main at fff0d6b; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42762937392). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
 
 ## Implemented
 
@@ -22,16 +22,20 @@ The current validation records are [initial implementation evidence](../validati
 
 Developer ID Application certificate and notarization credentials; hosted signed appcast and end-to-end valid/invalid update checks; second Mac install/restore/disable/removal; hands-on VoiceOver, both languages and keyboard acceptance; five general users plus five developers with immediate and seven-day observations. See [distribution](../DISTRIBUTION.md) and [beta protocol](../beta/PROTOCOL.md).
 
-Events currently schedule full scoped rescans; subtree-only incremental reconciliation is future optimization. Resource limits can produce partial scans, including when retained trees consume the index budget. The 20,001-file copy resource benchmark and disposable-image APFS/ExFAT checks are single-Mac evidence. Multi-gigabyte throughput, more filesystems/devices and physical unplug/power-loss behavior need further qualification. Do not infer these results from synthetic fault injection.
+Events currently schedule full scoped rescans; subtree-only incremental reconciliation is future optimization. Resource limits can produce partial scans; retained-tree pruning now precedes insertion to avoid permanent exhaustion during repeated scans. The 20,001-file copy resource benchmark and disposable-image APFS/ExFAT checks are single-Mac evidence. A newly written 4 GiB same-volume copy/cancellation passed; more filesystems/devices and physical unplug/power-loss behavior still need qualification. Do not infer these results from synthetic fault injection.
 
 No personal cache migration, terminal activation, Xcode preference change, login registration, notification activation, disk ejection, Chrome operation or public binary release is performed by implementing these features. No storage-saving claim is made.
 
+## Autonomous delivery in progress
+
+The maintainer approved autonomous implementation, independent review, merges and publication within the existing v1 scope. See docs/AUTONOMOUS-DELIVERY.md and the execution ledger in TRACEABILITY.json. Work is isolated by ownership/worktree; physical/human/signing dependencies remain pending. Static findings were converted to linked tasks. The repeated-index-budget defect was reproduced and fixed; operation recovery, cache configuration, GUI isolation and candidate evidence have been implemented and independently reviewed. Integrated isolated/native/resource checks and native sample GUI journeys passed. Independent review covered each code increment; exact-head macOS15/26 CI and a clean local candidate are the next promotion steps. Production signing and human acceptance remain pending.
+
 ## Next execution order
 
-1. Review the portable acceptance increment and its CI; the installed application remains unchanged until intentionally updated.
-2. Run the packaged kit and disposable filesystem checks on another Apple Silicon Mac, then complete actual install/restore/disable/removal, VoiceOver, keyboard and PT/EN acceptance with generated samples. Record the private manual template; an automated pass does not attest another physical machine.
-3. Provide a Developer ID Application identity and notarization profile, then qualify a hosted signed update with both valid and invalid signatures, consent and interrupted-operation behavior. No release feed or credentials are created implicitly.
-4. Recruit five general users and five developers under docs/beta/PROTOCOL.md, record independent success and actual seven-day follow-up, resolve critical findings and run the readiness validator.
+1. Finish integrated autonomous validation, exact-head CI, merge and verify main; update docs/TRACEABILITY.json with candidate identity and the next action. Do not recreate already integrated worker branches.
+2. Preserve the complete local 1.0.0 candidate without declaring it publicly ready. Acquire Developer ID/notarization and a protected update key, then build one final production artifact and exercise signed/tampered updates in a separate channel.
+3. Qualify that exact artifact on another physical Apple Silicon Mac and the macOS 14 minimum, with actual PT/EN keyboard/VoiceOver and disposable-device recovery tests.
+4. Record five general users plus five developers, >=80% independent success per cohort and seven real days. Verify private reviewed records against the manifest with the readiness validator before public promotion. No participant outreach is authorized implicitly.
 
 ## Beyond v1
 

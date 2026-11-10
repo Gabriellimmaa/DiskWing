@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0 candidate — unreleased
+
+- Added operation-aware interrupted-restore recovery, additive volume identity, cancellable bounded preflight and chunk-bounded hashing without changing historical digests.
+- Preserve effective/native configuration, npm selectors and unvisited ancestors; future records and unknown versions remain for review.
+- Added complete/partial/unknown index coverage and fixed repeated scans exhausting retained-tree budget; pending scans resume after Low Power Mode.
+- Added a visibly isolated GUI sample domain, substitute OS integrations, fresh release consent per review and early recovery discovery.
+- Bind full ZIP manifests and private reviews to an exact candidate; separate dev/candidate/production builds and qualify CI on macOS 15/26.
+- Added updater session/operation exclusion, fail-closed journal reads, startup cleanup and written-4-GiB qualification.
+
+Public 1.0.0 remains blocked on signed/notarized distribution, update exercises, additional Mac/macOS 14, human accessibility and real beta evidence. This entry does not announce a release.
+
 ## 0.2.0-dev — unreleased
 
 - Added packaged generated-data acceptance, a disposable internal installation/removal runner and a private second-Mac/PT/EN/VoiceOver review template; resolved temporary-directory aliases before verification database opens.
