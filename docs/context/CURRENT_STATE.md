@@ -1,6 +1,6 @@
 # Current state
 
-Updated 2026-11-10. [PR #12](https://github.com/Gabriellimmaa/DiskWing/pull/12) merged to main at fff0d6b; [main CI passed](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42762937392). Development preview 0.2.0-dev on Apple Silicon, macOS 14+. Public v1, other-Mac validation and human beta remain gated.
+Updated 2026-11-10. PR12 and [PR19](https://github.com/Gabriellimmaa/DiskWing/pull/19) are merged. PR19 exact-head CI passed on macOS 15/26 at 4db2600; implementation merge f915039 has the same source tree and its main CI also passed. Local 1.0.0 candidate build 6 is qualified and recorded in [the candidate handoff](../validation/LOCAL-CANDIDATE-2026-11-10.md). It has a local ad-hoc signature and remains ineligible for public v1 promotion. Apple Silicon/macOS 14+, Lift, MIT and PT/EN remain the approved scope.
 
 ## Implemented
 
@@ -28,14 +28,16 @@ No personal cache migration, terminal activation, Xcode preference change, login
 
 ## Autonomous delivery in progress
 
-The maintainer approved autonomous implementation, independent review, merges and publication within the existing v1 scope. See docs/AUTONOMOUS-DELIVERY.md and the execution ledger in TRACEABILITY.json. Work is isolated by ownership/worktree; physical/human/signing dependencies remain pending. Static findings were converted to linked tasks. The repeated-index-budget defect was reproduced and fixed; operation recovery, cache configuration, GUI isolation and candidate evidence have been implemented and independently reviewed. Integrated isolated/native/resource checks and native sample GUI journeys passed. Independent review covered each code increment; exact-head macOS15/26 CI and a clean local candidate are the next promotion steps. Production signing and human acceptance remain pending.
+The maintainer approved autonomous implementation, independent review, merges and publication within the existing v1 scope. See docs/AUTONOMOUS-DELIVERY.md and the execution ledger in TRACEABILITY.json. Work is isolated by ownership/worktree; physical/human/signing dependencies remain pending. Static findings were converted to linked tasks. The repeated-index-budget defect was reproduced and fixed; operation recovery, cache configuration, GUI isolation and candidate evidence have been implemented and independently reviewed. All currently executable implementation/qualification tasks passed independent review and exact-head macOS15/26 CI. Build 6 passed full-ZIP validation, temporary internal installation, packaged resource/helper checks and removal. Production signing, physical-device and human acceptance remain pending.
 
 ## Next execution order
 
-1. Finish integrated autonomous validation, exact-head CI, merge and verify main; update docs/TRACEABILITY.json with candidate identity and the next action. Do not recreate already integrated worker branches.
-2. Preserve the complete local 1.0.0 candidate without declaring it publicly ready. Acquire Developer ID/notarization and a protected update key, then build one final production artifact and exercise signed/tampered updates in a separate channel.
-3. Qualify that exact artifact on another physical Apple Silicon Mac and the macOS 14 minimum, with actual PT/EN keyboard/VoiceOver and disposable-device recovery tests.
-4. Record five general users plus five developers, >=80% independent success per cohort and seven real days. Verify private reviewed records against the manifest with the readiness validator before public promotion. No participant outreach is authorized implicitly.
+1. Inspect actual main/PR/CI state, then read docs/TRACEABILITY.json and docs/validation/candidate-1.0.0-local.json. Preserve the immutable build 6 ZIP; builds 4/5 are superseded. The normal installed app remains unchanged.
+2. Provide Developer ID/notarization access and a protected update key. Build one new final production artifact with a larger build number, then exercise valid/tampered signed updates, consent and operation blocking in a separate channel.
+3. Qualify that exact artifact on another physical Apple Silicon Mac and macOS 14, with actual PT/EN keyboard/VoiceOver and a separate disposable physical-fault device.
+4. Record five general users plus five developers, >=80% independent success per cohort and seven real days. Review private candidate-bound records with the schema 2 readiness validator before public promotion. Specific participant outreach authorization remains required; none was performed here.
+
+No worker has an unintegrated implementation. Independent worktrees can remain private for provenance; recreate specialists only after checking the current ledger. No background service continues after an active session ends.
 
 ## Beyond v1
 

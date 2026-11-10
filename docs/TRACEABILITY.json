@@ -51,7 +51,9 @@
         "docs/validation/FILESYSTEMS-2026-11-10.md",
         "docs/validation/filesystems.json",
         "docs/validation/copy-scale.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "Physical power-loss/cable-removal and another Mac remain unverified."
@@ -72,7 +74,9 @@
         "Tests/CacheSSDCoreTests/ScanIndexTests.swift",
         "Tests/CacheSSDCoreTests/ScaleTests.swift",
         "docs/validation/scale.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "Resource results need confirmation on additional Macs/filesystems."
@@ -98,7 +102,9 @@
         "docs/validation/FILESYSTEMS-2026-11-10.md",
         "docs/validation/filesystems.json",
         "docs/validation/copy-scale.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "Additional Macs/devices/filesystems and physical cable/power faults remain unverified."
@@ -119,7 +125,9 @@
         "Tests/CacheSSDCoreTests/NativeWorkflowTests.swift",
         "docs/validation/native-workflows.json",
         "Sources/CacheSSDCore/Resources/cache-qualification.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "pip requires an offline wheelhouse for empty-cache installation; Homebrew/CocoaPods offline network isolation remains unverified."
@@ -153,7 +161,7 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/7",
       "acceptance": "Both audiences can navigate core flows with keyboard/VoiceOver, choose languages and understand permissions, consequences, recovery and incomplete state.",
       "implementation": "implemented",
-      "validation": "catalog_and_native_keyboard_language_explorer_smoke_passed",
+      "validation": "isolated_native_sample_journeys_pt_en_minimum_window_and_keyboard_passed_human_acceptance_pending",
       "evidence": [
         "Tests/CacheSSDCoreTests/LocalizationTests.swift",
         "docs/ACCESSIBILITY.md",
@@ -166,7 +174,9 @@
         "Tests/Packaging/test_qualification.py",
         "docs/validation/ACCEPTANCE-KIT-2026-11-10.md",
         "docs/validation/bundle-acceptance.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "Full hands-on VoiceOver acceptance and additional users/Macs pending."
@@ -182,7 +192,7 @@
       "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/8",
       "acceptance": "Internal installation remains usable without SSD; production requires Developer ID/notarization; signed Sparkle updates and removal preserve configuration. No signing keys in Git.",
       "implementation": "tooling_implemented",
-      "validation": "ad_hoc_bundle_and_disposable_internal_lifecycle_qualified_human_release_gates_pending",
+      "validation": "exact_full_archive_candidate6_internal_lifecycle_and_dual_os_ci_passed_signed_distribution_pending",
       "evidence": [
         "build.py",
         "scripts/install_local.py",
@@ -196,7 +206,9 @@
         "Tests/Packaging/test_qualification.py",
         "docs/validation/ACCEPTANCE-KIT-2026-11-10.md",
         "docs/validation/bundle-acceptance.json",
-        "docs/validation/AUTONOMOUS-2026-11-10.md"
+        "docs/validation/AUTONOMOUS-2026-11-10.md",
+        "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
+        "docs/validation/candidate-1.0.0-local.json"
       ],
       "externalDependencies": [
         "Developer ID Application identity and notarization profile unavailable.",
@@ -235,7 +247,7 @@
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
     "maxActiveWorkers": 3,
-    "phase": "awaiting_cross_version_ci",
+    "phase": "local_candidate_complete_external_gates_pending",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -246,11 +258,12 @@
         "owner": "coordinator",
         "dependsOn": [],
         "acceptance": "Plan/ledger committed; PR12 and main CI verified",
-        "status": "complete",
+        "status": "complete_local",
         "evidence": [
           "PR12 merged fff0d6b",
           "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42762937392",
-          "084edf2"
+          "084edf2",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ]
       },
       {
@@ -262,12 +275,13 @@
         "owner": "safety_audit",
         "dependsOn": [],
         "acceptance": "Interrupted restores recover safely at every boundary; incomplete/cancelled preflight never releases sources",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "f704b32 restore-aware recovery; 498f2cf additive source volume identity; cf6260c chunk-bounded legacy hashing",
-          "Independent reviews by coordinator and distribution; scoped sample recovery follow-up in progress",
+          "Independent reviews by coordinator and distribution; scoped sample recovery follow-up completed below",
           "41110c0/5eaaa33: session-scoped recovery rechecks reloaded records and accepts legitimate temporary aliases; independent distribution review",
-          "d38d674/fdc052a real-default BusyCheck and terminal source/cancel recheck independently reviewed; four late-query regressions reproduced/fixed"
+          "d38d674/fdc052a real-default BusyCheck and terminal source/cancel recheck independently reviewed; four late-query regressions reproduced/fixed",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ],
         "issue": 13,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/13",
@@ -290,10 +304,11 @@
         "owner": "coordinator",
         "dependsOn": [],
         "acceptance": "Divergent/unknown native paths and npm config selectors never trigger replacement",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "d86c710, 8d1bdbe, e94fb3d, 4bc68ab; independently reviewed by release_autonomy/safety_audit",
-          "10 cache configuration cases and shell routing checks; seven generated native workflows passed"
+          "10 cache configuration cases and shell routing checks; seven generated native workflows passed",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ],
         "issue": 14,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/14",
@@ -317,16 +332,17 @@
           "SAFE-01"
         ],
         "acceptance": "Both GUI sample journeys isolated; no stale release consent; unknown is not zero",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "0e2e16e, dde371d, 749cf6b, 1871a45; isolation follow-ups independently reviewed",
-          "App actor tests; native sample GUI acceptance pending",
+          "App actor tests passed; native sample GUI qualification completed below; human acceptance remains external",
           "f2e9c3b complete PT/EN controller journeys; 592eaed deferred worker bootstrap; a305e8d sample-only minimum-window control; independent review passed",
           "1871a45/f56bccf/576cf60: refuse redirected Trash/support while accepting legitimate internal temporary aliases",
-          "Native sample move/reopen/recovery passed; three content hashes match. PT/EN minimum-window exercise reproduced explorer clipping and Cmd+O initialization issue; follow-ups pending.",
+          "Native sample move/reopen/recovery passed; three content hashes match. PT/EN minimum-window exercise reproduced explorer clipping and Cmd+O initialization issue; follow-ups completed below.",
           "e952f4b/e2ae872/fd9fed7/f356bc6: minimum-window explorer, file shortcut, scene observation and readable picker corrected; independent review passed",
           "Final native PT/EN1050x690 inspection passed; Cmd+O, selection, paths and pending recovery verified; human VoiceOver remains external",
-          "2a8be0d production profile shows real version/build without prematurely asserting human/distribution acceptance"
+          "2a8be0d production profile shows real version/build without prematurely asserting human/distribution acceptance",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ],
         "issue": 15,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/15",
@@ -350,10 +366,11 @@
         "owner": "product_acceptance",
         "dependsOn": [],
         "acceptance": "Four rescans/reopen recover complete coverage when budget permits",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "f57a1ab + 55b9e59 independently reviewed; third-scan quota exhaustion reproduced before fix",
-          "1,000,000 entries complete; index 502853632 bytes; peak RSS 112328704 bytes; generated fixture"
+          "1,000,000 entries complete; index 502853632 bytes; peak RSS 112328704 bytes; generated fixture",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ],
         "issue": 16,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/16",
@@ -377,11 +394,12 @@
         "owner": "release_autonomy",
         "dependsOn": [],
         "acceptance": "Malformed/mismatched evidence blocks promotion; full artifact identity; updater respects operations",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "79a164d, 253d7f1, 95e0c86, e4175f3, 744102b; independently reviewed by safety_audit (35 Python checks)",
-          "UpdatePolicy reviewed by safety_audit; GUI bridge de8bfe1/5c84879 reviewed by release_autonomy; full ZIP qualification follow-up in progress",
-          "74e2427/7533378/d7ece70: full ZIP snapshot/namespace/local-header validation and exact-head CI; 51 Python cases passed, 16 repeated independently by safety"
+          "UpdatePolicy reviewed by safety_audit; GUI bridge de8bfe1/5c84879 reviewed by release_autonomy; full ZIP qualification completed below",
+          "74e2427/7533378/d7ece70: full ZIP snapshot/namespace/local-header validation and exact-head CI; 51 Python cases passed, 16 repeated independently by safety",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039"
         ],
         "issue": 17,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/17",
@@ -410,7 +428,7 @@
           "INDEX-01"
         ],
         "acceptance": "Exact integrated code, local/native/filesystem/scale/4GiB/controller and native sample GUI evidence; production/physical/human gates separate",
-        "status": "reviewed_pending_ci",
+        "status": "complete_local",
         "evidence": [
           "Generated 4 GiB fully allocated source: copy verified, cancellation/source preservation passed; peak RSS 27803648 bytes",
           "Disposable APFS/ExFAT/read-only/low-space + 20001-file benchmark: five checks passed",
@@ -421,7 +439,10 @@
           "No newly introduced personal paths/keys in added lines; legacy exact-match shell compatibility literal unchanged",
           "3008e36 root-path fix passed full macOS15 CI including archive lifecycle; separate macOS26 checkpoint failure identified nonempty busy inspection before the intended boundary",
           "New controlled checkpoint/context tests: 179 discovered/162 executed/17 skipped/0 failures before terminal follow-up; final focused46/45executed/1worker skip/0fail including four disposable filesystems",
-          "No process on the failed CI runner was identified; a transient reader is a hypothesis. Real inspector/default FD test retained."
+          "No process on the failed CI runner was identified; a transient reader is a hypothesis. Real inspector/default FD test retained.",
+          "PR19 exact-head macOS15/26 CI passed; implementation merged f915039",
+          "Build 6 exact ZIP qualified through real temporary internal installation/helper/removal; no normal app/data changes",
+          "Final exact-head and implementation-main CI passed on both macOS runners: 183 discovered/166 executed/17 explicit skips/0 failures; 51 Python cases passed; optional updater compiled"
         ],
         "issue": 18,
         "issueURL": "https://github.com/Gabriellimmaa/DiskWing/issues/18"
@@ -442,10 +463,21 @@
         "evidence": []
       }
     ],
-    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42762937392",
-    "lastIntegratedCommit": "fdc052a",
-    "nextAction": "Require green exact-head CI for controlled checkpoint fixes, merge PR19, verify main, and qualify the new build6 archive; previous builds remain superseded and private.",
-    "lastVerifiedMainCommit": "fff0d6b53da3486d3161b576f8e81c27b6ee6d81",
-    "integrationBranch": "feature/autonomous-delivery"
+    "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42779554478",
+    "lastIntegratedCommit": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
+    "nextAction": "Verify final documentation merge/main; then resume when external signing/update keys, physical Macs/macOS14, accessibility reviewers, disposable fault device and ten real participants are available. Production rebuild must receive its own affected qualification.",
+    "lastVerifiedMainCommit": "f915039a9d23b9f5492cdeb2c443a8a3ab480820",
+    "integrationBranch": "feature/autonomous-delivery",
+    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
+    "lastVerifiedCodeCommit": "4db260076b602c309c3493f9b06548b0751f7356",
+    "mainCIVerification": "success",
+    "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42778884800",
+    "candidate": {
+      "archiveSHA256": "854bae67b4976d74cb95c568f09645aeb8ada10b25f7d5b78b7b4f4c07fc6c60",
+      "buildNumber": "6",
+      "commit": "4db260076b602c309c3493f9b06548b0751f7356",
+      "version": "1.0.0"
+    },
+    "candidateEvidence": "docs/validation/candidate-1.0.0-local.json"
   }
 }
