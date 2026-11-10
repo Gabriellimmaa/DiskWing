@@ -40,8 +40,7 @@ def _review(pointer, root, candidate, built_at, now, *, human, expected_checks, 
         root = Path(root).resolve(strict=True); path = root.joinpath(*PurePosixPath(ref).parts)
         resolved = path.resolve(strict=True)
         if root not in resolved.parents or resolved != path.absolute() or path.is_symlink() or path.stat().st_size > 8_388_608: return False
-        if contracts.sha256(path) != expected_hash: return False
-        record = contracts.read_json_file(path)
+        record = contracts.read_json_file(path, expected_sha256=expected_hash)
         if (not isinstance(record, dict) or type(record.get('schemaVersion')) is not int or record['schemaVersion'] != 1
                 or record.get('kind') not in ({'human-review'} if human else {'human-review', 'tool-verification'})
                 or record.get('candidate') != candidate): return False

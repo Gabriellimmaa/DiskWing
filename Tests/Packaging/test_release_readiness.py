@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('readiness', Path(__file__).resolve().parents[2] / 'scripts/release_readiness.py')
 readiness = importlib.util.module_from_spec(spec); spec.loader.exec_module(readiness)
@@ -107,6 +108,41 @@ class ReleaseReadinessTests(unittest.TestCase):
             path.write_text(text)
             with self.assertRaises(ValueError): readiness.contracts.read_json_file(path)
             self.assertEqual(path.read_text(), text)
+
+    def test_review_cannot_hash_failing_bytes_then_parse_replacement_passing_bytes(self):
+        gate = 'keyboardVerified'
+        pointer = self.record('swapped-review', {gate: False})
+        self.data['distributionReviews'][gate] = pointer
+        path = self.root / pointer['evidenceRef']
+        passing = json.loads(path.read_bytes()); passing['checks'][gate] = True
+        real_hash = readiness.contracts.sha256
+        def swap_after_hash(target):
+            digest = real_hash(target)
+            if Path(target) == path: path.write_text(json.dumps(passing))
+            return digest
+        with patch.object(readiness.contracts, 'sha256', side_effect=swap_after_hash):
+            self.assertFalse(self.evaluate()['ready'])
+
+    def test_json_reader_parses_the_buffer_it_hashed_when_path_changes(self):
+        path = self.root / 'one-buffer.json'; path.write_bytes(b'{"accepted":false}')
+        expected = readiness.contracts.sha256(path)
+        real_digest = readiness.contracts.hashlib.sha256
+        def replace_after_read(data):
+            digest = real_digest(data)
+            path.write_bytes(b'{"accepted":true}')
+            return digest
+        with patch.object(readiness.contracts.hashlib, 'sha256', side_effect=replace_after_read):
+            self.assertEqual(readiness.contracts.read_json_file(path, expected_sha256=expected), {'accepted': False})
+        with self.assertRaises(ValueError): readiness.contracts.read_json_file(path, expected_sha256=expected)
+
+    def test_json_reader_rejects_a_nonregular_replacement_before_open(self):
+        path = self.root / 'replaced.json'; path.write_text('{}')
+        original_open = readiness.contracts.os.open
+        def replace_before_open(target, flags):
+            path.unlink(); os.mkfifo(path)
+            return original_open(target, flags)
+        with patch.object(readiness.contracts.os, 'open', side_effect=replace_before_open):
+            with self.assertRaises(ValueError): readiness.contracts.read_json_file(path)
 
     def test_private_references_cannot_escape_follow_links_or_silently_disappear(self):
         gate = 'keyboardVerified'; original = self.data['distributionReviews'][gate]

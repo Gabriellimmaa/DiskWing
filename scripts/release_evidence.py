@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 
@@ -15,6 +16,7 @@ GATES = ['developerIDVerified', 'notarizationStapled', 'signedUpdaterVerified', 
 HUMAN_GATES = {'secondMacRecoveryVerified', 'minimumMacOSVerified', 'voiceOverVerified', 'keyboardVerified',
                'bothLanguagesVerified', 'physicalFaultRecoveryVerified'}
 PARTICIPANT_CHECKS = ['independentTaskSuccess', 'dataPreserved', 'worksWithoutSSD', 'sevenDayDiaryComplete']
+SF_DATALESS = 0x40000000  # Darwin placeholder content must not be hydrated during verification.
 
 
 def timestamp(value):
@@ -114,11 +116,25 @@ def _reject_constant(value):
     raise ValueError('Non-finite JSON values are unsupported.')
 
 
-def read_json_file(path, limit=8_388_608):
+def read_json_file(path, limit=8_388_608, *, expected_sha256=None):
+    """Hash and parse the same bounded snapshot; never reopen reviewed evidence."""
     path = Path(path)
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > limit: raise ValueError('Invalid evidence file.')
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    before = path.lstat()
+    def identity(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns,
+                value.st_ctime_ns, getattr(value, 'st_flags', 0))
+    def valid(value):
+        return stat.S_ISREG(value.st_mode) and value.st_size <= limit and not getattr(value, 'st_flags', 0) & SF_DATALESS
+    if not valid(before): raise ValueError('Invalid evidence file.')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, 'rb') as file:
+        opened = os.fstat(file.fileno())
+        if not valid(opened) or identity(opened) != identity(before): raise ValueError('Evidence changed before reading.')
         data = file.read(limit + 1)
-    if len(data) > limit: raise ValueError('Evidence is too large.')
+        after = os.fstat(file.fileno())
+        if identity(after) != identity(opened) or identity(path.lstat()) != identity(opened):
+            raise ValueError('Evidence changed while reading.')
+    if len(data) > limit or len(data) != opened.st_size: raise ValueError('Evidence is too large or incomplete.')
+    if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise ValueError('Reviewed evidence bytes do not match their recorded hash.')
     return json.loads(data, object_pairs_hook=_unique_fields, parse_constant=_reject_constant)
