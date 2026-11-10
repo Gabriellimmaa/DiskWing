@@ -22,6 +22,7 @@ public struct ScanItem: Identifiable, Codable, Sendable {
     public let category: ContentCategory
     public let issue: String?
     public let children: [ScanItem]
+    public var fileIdentity: FileIdentity? = nil
     public var url: URL { URL(fileURLWithPath: path) }
 }
 
@@ -79,16 +80,12 @@ public struct OperationRecord: Identifiable, Codable, Sendable {
 
 public enum CacheSSDError: LocalizedError {
     case message(String)
-    public var errorDescription: String? { if case .message(let value) = self { return value }; return nil }
+    public var errorDescription: String? { if case .message(let value) = self { return L10n.message(value) }; return nil }
 }
 
 public enum ByteText {
     public static func format(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
-        return formatter.string(fromByteCount: max(0, bytes))
+        max(0, bytes).formatted(.byteCount(style: .file).locale(L10n.locale))
     }
 }
 
@@ -96,7 +93,7 @@ public enum Paths {
     public static var support: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CacheSSD", isDirectory: true) }
     public static func contains(_ path: URL, in parent: URL) -> Bool {
         let p = path.standardizedFileURL.path, r = parent.standardizedFileURL.path
-        return p == r || p.hasPrefix(r + "/")
+        return p == r || p.hasPrefix(r == "/" ? "/" : r + "/")
     }
     public static func safeComponent(_ value: String) -> Bool {
         !value.isEmpty && value != "." && value != ".." && !value.contains("/") && !value.contains("\n") && !value.contains("\t")

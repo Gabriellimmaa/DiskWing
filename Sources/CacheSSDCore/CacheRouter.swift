@@ -23,8 +23,12 @@ public enum CacheRouter {
             return RouteDecision(toolID: tool.id, mode: "ssd", environmentKey: tool.environmentKey, path: root.path)
         }
     }
-    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = []) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: decisions(settings: settings).filter { !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory) }.compactMap { d in d.path.map { (d.environmentKey, $0) } })
+    public static func environment(settings: AppSettings, directory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath), excluding: Set<String> = [], volumes: [VolumeInfo]? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: decisions(settings: settings, volumes: volumes ?? Volumes.list()).filter {
+            !excluding.contains($0.toolID) && !hasCustomPreference(toolID: $0.toolID, directory: directory, home: home) &&
+            ProcessInfo.processInfo.environment[$0.environmentKey] == nil &&
+            !($0.toolID == "npm" && ProcessInfo.processInfo.environment["NPM_CONFIG_CACHE"] != nil)
+        }.compactMap { d in d.path.map { (d.environmentKey, $0) } })
     }
     public static func hasCustomPreference(toolID: String, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
         let environment = ProcessInfo.processInfo.environment

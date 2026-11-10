@@ -6,21 +6,22 @@ DiskWing is an open source macOS utility for exploring disk usage and reviewing 
 
 [![macOS checks](https://github.com/Gabriellimmaa/DiskWing/actions/workflows/ci.yml/badge.svg)](https://github.com/Gabriellimmaa/DiskWing/actions/workflows/ci.yml)
 
-[Português](README.pt-BR.md) · [Current state](docs/context/CURRENT_STATE.md) · [Roadmap](docs/plans/ROADMAP-V0.1.md) · [Recovery](docs/RECOVERY.md)
+[Português](README.pt-BR.md) · [Current state](docs/context/CURRENT_STATE.md) · [Live roadmap](docs/ROADMAP.md) · [Recovery](docs/RECOVERY.md)
 
 ## What it does
 
-- Explore folders by size, search results, inspect the largest files, and reveal items in Finder.
+- Explore a paginated private SQLite index, search the entire selected scope, filter/order sizes, inspect the largest files, and reveal items in Finder.
 - Distinguish logical size from allocated blocks, with progress, cancellation, and partial-result indicators.
 - Review migrations for npm, Bun, CocoaPods, pip, Homebrew, Gradle, and uv; verify copies before releasing supported local caches.
 - Route new zsh commands to the available cache location. Without the selected SSD, new commands fall back to local defaults.
 - Review personal-file actions, operation history, and recovery locations.
+- Opt into folder-change tracking, comparable growth snapshots and rate-limited notifications. Select Portuguese or English.
 
 Opening DiskWing never starts a cache migration. Chrome profiles, history, cookies, passwords, and browser caches are outside the migration catalog. SDKs, emulator data, projects, and local npx executables stay in place. Bun and uv source caches are retained because installed environments may depend on links to them.
 
 ## Build
 
-Requires macOS 14+, Xcode 16+ (Swift 6 and the macOS SDK), and Python 3. The app has no external Swift package dependencies. The interface is currently in Portuguese.
+Requires macOS 14+, Xcode 16+ (Swift 6 and the macOS SDK), and Python 3. Bundles target Apple Silicon. Default builds use system SQLite and no external Swift package; the separately enabled production updater pins Sparkle 2.10.1. The interface supports Portuguese and English.
 
 ~~~sh
 git clone https://github.com/Gabriellimmaa/DiskWing.git
@@ -44,13 +45,14 @@ swift test -j 2
 python3 -m unittest discover -s Tests/Packaging -v
 ~~~
 
-Two native-tool integration tests are skipped by default. To run all checks on a prepared development Mac:
+Installed-tool checks and resource benchmarks are skipped by default. On a prepared development Mac:
 
 ~~~sh
 DISKWING_RUN_NATIVE_TESTS=1 swift test -j 2
+DISKWING_RUN_INSTALL_TESTS=1 swift test -j 2 --filter NativeWorkflowTests
 ~~~
 
-The native checks require npm, Bun, CocoaPods, Python with pip, uv, Homebrew, and an already installed Gradle wrapper distribution. They use isolated cache samples; they do not install dependencies into personal projects. CACHESSD_TEST_TEMP can select a temporary directory. See [testing](docs/TESTING.md).
+The native checks require npm, Bun, CocoaPods, Python with pip, uv, Homebrew, Java and an already installed Gradle wrapper distribution. Actual installs/builds use disposable projects, pinned public packages and disabled install hooks. CACHESSD_TEST_TEMP selects a temporary directory. Offline availability varies by tool and artifact. See [testing](docs/TESTING.md).
 
 ## Use and limitations
 
@@ -60,7 +62,9 @@ Use **Preparar para ejetar** before disconnecting. Existing processes retain the
 
 Personal-file movement verifies a copy and sends the source to Trash. Space is not recovered until you review and empty Trash in Finder. DiskWing never empties Trash. APFS shared blocks and snapshots mean file-size totals are not a promise of recoverable space.
 
-Analysis is local, does not follow links, and does not intentionally download cloud placeholders. It is limited to 200,000 entries and 80 levels; displayed children and largest-file lists are bounded. Reports contain paths: inspect them before sharing. There is no telemetry or automatic background cleanup.
+Analysis is local, does not follow links, and does not intentionally download cloud placeholders. Limits are one million entries, depth 80 and a 512 MiB index budget, with explicit partial coverage. Navigation/search are paginated; exports stream all indexed entries. Reports contain paths: inspect them before sharing. There is no telemetry or automatic cleanup. Optional events currently trigger full scoped rescans at least fifteen minutes apart; missing/partial scopes never imply saved space.
+
+Install on the internal disk with python3 scripts/install_local.py dist/DiskWing.app to keep the application available without the SSD. Public signing, updater consent and removal are described in [distribution](docs/DISTRIBUTION.md). Human beta and seven-day evidence remain required before v1; see [release gates](docs/beta/PROTOCOL.md).
 
 ## Development and compatibility
 

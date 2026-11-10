@@ -50,6 +50,33 @@ class PackagingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 build.validate_output(app)
 
+    def test_updater_requires_developer_id_https_and_valid_public_key(self):
+        import base64
+        public_key = base64.b64encode(bytes(range(32))).decode()
+        args = build.parse_args(['--with-updater', '--feed-url', 'https://example.org/appcast.xml', '--public-ed-key', public_key])
+        with self.assertRaises(ValueError):
+            build.release_settings(args)
+        args.sign_identity = 'Developer ID Application: Example (TESTTEAM)'
+        settings = build.release_settings(args)
+        self.assertFalse(settings['SUEnableAutomaticChecks'])
+        self.assertFalse(settings['SUAutomaticallyUpdate'])
+        self.assertFalse(settings['SUSendProfileInfo'])
+        for feed in ['http://example.org/feed', 'https://user:password@example.org/feed', 'https://example.org/feed?token=secret']:
+            args.feed_url = feed
+            with self.assertRaises(ValueError):
+                build.release_settings(args)
+
+    def test_notarization_and_version_fail_before_build(self):
+        args = build.parse_args(['--notary-profile', 'example'])
+        with self.assertRaises(ValueError):
+            build.release_settings(args)
+        args = build.parse_args(['--version', 'invalid'])
+        with self.assertRaises(ValueError):
+            build.release_settings(args)
+
+    def test_local_build_has_no_update_metadata(self):
+        self.assertEqual(build.release_settings(build.parse_args([])), {})
+
 
 if __name__ == '__main__':
     unittest.main()

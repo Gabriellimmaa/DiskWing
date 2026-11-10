@@ -1,58 +1,116 @@
 import Foundation
 import AppKit
+import Darwin
 
 public enum PersonalActionPolicy {
     public static func reasonPreventing(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String? {
         let item = url.standardizedFileURL
         guard item == item.resolvingSymlinksInPath() else { return "Links e caminhos redirecionados ficam fora das ações automáticas." }
+        var metadata = stat()
+        if lstat(item.path, &metadata) == 0, metadata.st_flags & UInt32(SF_DATALESS) != 0 { return "Há conteúdo da nuvem ainda não baixado. A origem será preservada." }
         let roots = ["Downloads", "Documents", "Desktop", "Movies", "Music", "Pictures"].map { home.appendingPathComponent($0) }
-        guard roots.contains(where: { item != $0 && Paths.contains(item, in: $0) }) else { return "Ações de arquivos estão disponíveis dentro das suas pastas pessoais. Caches e dados de aplicativos usam integrações específicas." }
+        guard roots.contains(where: { item != $0 && Paths.contains(item, in: $0) }) else { return "Ações de arquivos estão disponíveis dentro das suas pastas pessoais. Dados de aplicativos usam integrações específicas." }
         let forbidden: Set<String> = ["Library", ".git", "node_modules", ".npm", ".gradle", ".android", ".codex"]
         guard !item.pathComponents.contains(where: { forbidden.contains($0) }) else { return "Este item pertence a uma ferramenta ou a dados de aplicativo." }
         let packages: Set<String> = ["app", "photoslibrary", "photolibrary", "sparsebundle", "pvm", "utm", "vmwarevm", "framework"]
-        guard !item.pathComponents.contains(where: { packages.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }) else { return "Bibliotecas e pacotes precisam de um procedimento específico de seu aplicativo." }
-        if let values = try? item.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]), values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus != .current { return "Baixe este arquivo no Finder antes de movê-lo. O CacheSSD não baixará arquivos da nuvem por conta própria." }
+        guard !item.pathComponents.contains(where: { packages.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }) else { return "Bibliotecas e pacotes precisam de um procedimento específico." }
+        if let values = try? item.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]), values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus != .current { return "Baixe este arquivo no Finder antes de movê-lo. O DiskWing não baixa conteúdo da nuvem." }
         return nil
+    }
+    public static func validateTree(_ source: URL, home: URL, cancellation: CancellationFlag) throws {
+        if let reason = reasonPreventing(source, home: home) { throw CacheSSDError.message(reason) }
+        if try source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory != true { return }
+        var failed = false
+        if let e = FileManager.default.enumerator(at: source, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in failed = true; return false }) {
+            for case let child as URL in e {
+                if cancellation.isCancelled { throw CacheSSDError.message(L10n.text("Operação cancelada; origem preservada.")) }
+                if let reason = reasonPreventing(child, home: home) { throw CacheSSDError.message(reason) }
+            }
+        }
+        if failed { throw CacheSSDError.message(L10n.text("Não foi possível examinar todo o conteúdo. A origem foi preservada.")) }
     }
 }
 
 public final class PersonalActions {
     private let home: URL
     private let store: Store
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, store: Store = Store()) { self.home = home; self.store = store }
-    public func trash(_ url: URL) throws -> OperationRecord {
-        if let reason = PersonalActionPolicy.reasonPreventing(url, home: home) { throw CacheSSDError.message(reason) }
-        guard try BusyInspector.inspect(paths: [url]).isEmpty else { throw CacheSSDError.message("O item está em uso. Feche o aplicativo que o utiliza.") }
-        let before = Volumes.free(at: url)
-        var result: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-        let record = OperationRecord(title: "Item enviado à Lixeira", detail: "\(url.lastPathComponent). O espaço será liberado quando a Lixeira for esvaziada no Finder.", measuredFreeDelta: Volumes.free(at: home) - before, recoveryPath: result?.path)
-        try store.append(record); return record
+    private let trashHandler: (URL) throws -> URL?
+    private let freeBytes: (URL) -> Int64
+    private let checkpoint: (OperationJournal) throws -> Void
+    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, store: Store = Store(),
+                freeBytes: @escaping (URL) -> Int64 = { Volumes.free(at: $0) },
+                trashHandler: @escaping (URL) throws -> URL? = { url in
+                    var result: NSURL?
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+                    return result.map { $0 as URL }
+                }, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+        self.home = home; self.store = store; self.freeBytes = freeBytes
+        self.trashHandler = trashHandler; self.checkpoint = checkpoint
     }
-    public func move(_ source: URL, to directory: URL, progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
-        if let reason = PersonalActionPolicy.reasonPreventing(source, home: home) { throw CacheSSDError.message(reason) }
-        guard directory.standardizedFileURL == directory.resolvingSymlinksInPath(), !Paths.contains(directory, in: source) else { throw CacheSSDError.message("Escolha uma pasta de destino independente e sem links.") }
+    public func trash(_ source: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
+        let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
+        if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
+        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation)
+        guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
+        let operation = try OperationContext(store: store, kind: "trash", source: source, checkpoint: checkpoint)
+        do {
+            if let expectedIdentity, operation.journal.sourceIdentity != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
+            try operation.advance(.verifying)
+            progress("Conferindo a origem…")
+            let digest = try FileTree.digest(source, cancellation: cancellation)
+            operation.journal.sourceDigest = digest
+            try operation.advance(.trashing)
+            try operation.assertSourceIdentity()
+            guard !cancellation.isCancelled, try FileTree.digest(source, cancellation: cancellation) == digest,
+                  try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("A origem mudou ou a operação foi cancelada.")) }
+            let result = try trashHandler(source)
+            operation.journal.trashPath = result?.path
+            try operation.advance(.published)
+            let record = OperationRecord(title: "Item enviado à Lixeira", detail: "\(source.lastPathComponent). O espaço só será liberado quando você esvaziar a Lixeira no Finder.", recoveryPath: result?.path)
+            try store.append(record)
+            try operation.advance(.completed)
+            return record
+        } catch { operation.recordFailure(error, cancellation: cancellation); throw error }
+    }
+    public func move(_ source: URL, to directory: URL, expectedIdentity: FileIdentity? = nil, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws -> OperationRecord {
+        let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
+        if let expectedIdentity, try FileIdentity(source) != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
+        try PersonalActionPolicy.validateTree(source, home: home, cancellation: cancellation)
+        guard directory.standardizedFileURL == directory.resolvingSymlinksInPath(), !Paths.contains(directory, in: source) else { throw CacheSSDError.message(L10n.text("Escolha uma pasta independente e sem links.")) }
         let final = directory.appendingPathComponent(source.lastPathComponent)
-        guard !FileManager.default.fileExists(atPath: final.path) else { throw CacheSSDError.message("Já existe um item com esse nome no destino. Nada foi sobrescrito.") }
-        guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message("O item está em uso.") }
-        let before = Volumes.free(at: source)
-        let folder = (try source.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true
-        let staging = directory.appendingPathComponent(".CacheSSD-move-\(UUID().uuidString)")
-        progress("Copiando e conferindo o item…")
-        let manifest = folder ? try FileTree.manifest(source) : []
-        let digest = folder ? "" : try FileTree.hash(source)
-        try FileManager.default.copyItem(at: source, to: staging)
-        if folder {
-            guard try FileTree.manifest(staging) == manifest, try FileTree.manifest(source) == manifest else { throw CacheSSDError.message("O conteúdo mudou ou não passou pela conferência. A origem foi mantida.") }
-        } else {
-            guard try FileTree.hash(staging) == digest, try FileTree.hash(source) == digest else { throw CacheSSDError.message("O arquivo mudou ou não passou pela conferência. A origem foi mantida.") }
-        }
-        guard source.standardizedFileURL == source.resolvingSymlinksInPath(), try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message("A origem passou a ser utilizada; ela foi preservada.") }
-        try FileManager.default.moveItem(at: staging, to: final)
-        // Move the original to the Trash, so the action remains recoverable without deleting personal data.
-        var trashURL: NSURL?
-        try FileManager.default.trashItem(at: source, resultingItemURL: &trashURL)
-        let record = OperationRecord(title: "Arquivo copiado e origem na Lixeira", detail: "Cópia conferida em \(final.path). Revise e esvazie a Lixeira no Finder para liberar o espaço da origem.", measuredFreeDelta: Volumes.free(at: home) - before, recoveryPath: final.path)
-        try store.append(record); return record
+        guard !FileManager.default.fileExists(atPath: final.path) else { throw CacheSSDError.message(L10n.text("Já existe um item com esse nome. Nada foi sobrescrito.")) }
+        guard try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("O item está em uso.")) }
+        let size = FileTree.measure(source)
+        guard size.isComplete else { throw CacheSSDError.message(L10n.text("A leitura da origem está incompleta.")) }
+        guard freeBytes(directory) > max(size.logical, size.allocated) + 536_870_912 else { throw CacheSSDError.message(L10n.text("O destino não tem espaço confirmado para a cópia e a margem de segurança.")) }
+        let operation = try OperationContext(store: store, kind: "personalMove", source: source, destination: final, checkpoint: checkpoint)
+        let staging = directory.appendingPathComponent(".CacheSSD-move-\(operation.journal.id.uuidString)")
+        operation.journal.staging = staging.path
+        do {
+            if let expectedIdentity, operation.journal.sourceIdentity != expectedIdentity { throw CacheSSDError.message(L10n.text("O item mudou desde a análise. Analise novamente antes de confirmar.")) }
+            try operation.advance(.verifying)
+            let digest = try FileTree.digest(source, cancellation: cancellation)
+            operation.journal.sourceDigest = digest
+            try operation.advance(.copying)
+            try FileTree.copyItem(source, to: staging, cancellation: cancellation, progress: progress)
+            guard try FileTree.digest(staging, cancellation: cancellation) == digest,
+                  try FileTree.digest(source, cancellation: cancellation) == digest else { throw CacheSSDError.message(L10n.text("A cópia ou os metadados mudaram; origem preservada.")) }
+            operation.journal.destinationDigest = digest
+            try operation.advance(.copyVerified)
+            try operation.assertSourceIdentity()
+            guard !cancellation.isCancelled, try BusyInspector.inspect(paths: [source]).isEmpty else { throw CacheSSDError.message(L10n.text("A origem passou a ser utilizada ou a cópia foi cancelada.")) }
+            try operation.advance(.publishing)
+            guard !FileManager.default.fileExists(atPath: final.path) else { throw CacheSSDError.message(L10n.text("O destino passou a existir; nada foi sobrescrito.")) }
+            try FileManager.default.moveItem(at: staging, to: final)
+            try operation.advance(.published)
+            try operation.assertSourceIdentity()
+            guard try FileTree.digest(source, cancellation: cancellation) == digest else { throw CacheSSDError.message(L10n.text("A origem mudou após a cópia; ambas foram preservadas.")) }
+            try operation.advance(.trashing)
+            try operation.assertSourceIdentity()
+            operation.journal.trashPath = try trashHandler(source)?.path
+            try operation.advance(.completed, detail: "Cópia e metadados conferidos; origem na Lixeira")
+            let record = OperationRecord(title: "Arquivo copiado e origem na Lixeira", detail: "Cópia conferida em \(final.path). Revise a Lixeira no Finder antes de liberar o espaço da origem.", recoveryPath: final.path)
+            try store.append(record); return record
+        } catch { operation.recordFailure(error, cancellation: cancellation); throw error }
     }
 }

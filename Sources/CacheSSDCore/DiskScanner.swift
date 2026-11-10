@@ -13,8 +13,8 @@ public final class DiskScanner {
         let root = Paths.physicalURL(root)
         let started = Date()
         var rootStat = stat()
-        guard lstat(root.path, &rootStat) == 0 else { throw CacheSSDError.message("Não foi possível acessar a pasta selecionada.") }
-        guard (rootStat.st_mode & S_IFMT) == S_IFDIR else { throw CacheSSDError.message("Selecione uma pasta real para analisar.") }
+        guard lstat(root.path, &rootStat) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível acessar a pasta selecionada.")) }
+        guard (rootStat.st_mode & S_IFMT) == S_IFDIR else { throw CacheSSDError.message(L10n.text("Selecione uma pasta real para analisar.")) }
         let device = rootStat.st_dev
         var entries = 0, bytes: Int64 = 0
         var unreadable: [String] = [], mounts: [String] = [], largest: [ScanItem] = []
@@ -83,7 +83,7 @@ public final class DiskScanner {
             }
             return ScanItem(path: url.path, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: total, allocatedBytes: allocated, fileCount: count, category: category(url), issue: issue, children: childItems)
         }
-        guard let item = visit(root.standardizedFileURL, depth: 0) else { throw CacheSSDError.message("Análise cancelada antes de iniciar.") }
+        guard let item = visit(root.standardizedFileURL, depth: 0) else { throw CacheSSDError.message(L10n.text("Análise cancelada antes de iniciar.")) }
         return ScanReport(id: UUID(), root: item, startedAt: started, finishedAt: Date(), examinedEntries: entries, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: cancellation.isCancelled, reachedLimit: limited, largestFiles: largest)
     }
 

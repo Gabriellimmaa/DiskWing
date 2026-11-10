@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_scale:
+        description: Run the disposable one-million-entry benchmark
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,3 +37,31 @@ jobs:
           codesign --verify --deep --strict dist/DiskWing.app
           cmp Assets/AppIcon.icns dist/DiskWing.app/Contents/Resources/AppIcon.icns
           cmp design/brand/macos/DiskWing.icns Assets/AppIcon.icns
+          dist/DiskWing.app/Contents/MacOS/CacheSSDHelper self-check
+
+  updater:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compile the separately enabled signed updater
+        env:
+          DISKWING_ENABLE_UPDATER: '1'
+        run: swift build --scratch-path .build-updater -j 2
+
+  scale:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_scale
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise a real one-million-entry fixture
+        env:
+          DISKWING_RUN_SCALE_TESTS: '1'
+        run: |
+          mkdir -p "$RUNNER_TEMP/diskwing-scale"
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter ScaleTests

@@ -1,0 +1,200 @@
+import XCTest
+import Foundation
+import Darwin
+@testable import CacheSSDCore
+
+final class OperationSafetyTests: XCTestCase {
+    var root: URL!
+    var home: URL!
+    var store: Store!
+    override func setUpWithError() throws {
+        let parent = ProcessInfo.processInfo.environment["CACHESSD_TEST_TEMP"].map(URL.init(fileURLWithPath:)) ?? FileManager.default.temporaryDirectory
+        root = parent.appendingPathComponent("DiskWing-safety-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        root = Paths.physicalURL(root)
+        home = root.appendingPathComponent("home"); store = Store(base: root.appendingPathComponent("support"))
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+    func file(_ path: String, content: String = "original bytes") throws -> URL {
+        let item = root.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: item.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(content.utf8).write(to: item)
+        return item
+    }
+    func personalSource() throws -> URL { try file("home/Downloads/example.txt") }
+    func target() throws -> URL {
+        let path = root.appendingPathComponent("destination")
+        try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true); return path
+    }
+    func fakeTrash(_ source: URL) throws -> URL? {
+        let destination = root.appendingPathComponent("trash/\(UUID().uuidString)/\(source.lastPathComponent)")
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: source, to: destination); return destination
+    }
+    func migrationFixture() throws -> (CacheDescriptor, VolumeInfo) {
+        let tool = CacheCatalog.find("npm", home: home)!
+        try FileManager.default.createDirectory(at: tool.source, withIntermediateDirectories: true)
+        try Data("cached bytes".utf8).write(to: tool.source.appendingPathComponent("artifact"))
+        let disk = root.appendingPathComponent("SSD"); try FileManager.default.createDirectory(at: disk, withIntermediateDirectories: true)
+        let volume = VolumeInfo(uuid: "SAMPLE-UUID", name: "Sample", path: disk.path, totalBytes: 1_000_000_000_000, freeBytes: 900_000_000_000, isInternal: false, isWritable: true)
+        var settings = AppSettings(); settings.selectedVolumeUUID = volume.uuid; try store.save(settings)
+        return (tool, volume)
+    }
+    func testUnreadableShellFileIsNeverReplacedOrBackedUpAsEmpty() throws {
+        let rc = try file("home/.zshrc", content: "precious configuration\n")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: rc.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: rc.path) }
+        XCTAssertThrowsError(try ShellIntegration.install(helper: URL(fileURLWithPath: "/usr/bin/true"), store: store, home: home))
+        XCTAssertThrowsError(try ShellIntegration.uninstall(store: store, home: home))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.base.appendingPathComponent("integration.zsh").path))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: rc.path)
+        XCTAssertEqual(try String(contentsOf: rc), "precious configuration\n")
+    }
+    func testInvalidEncodingIsNotTreatedAsEmptyConfiguration() throws {
+        let rc = try file("home/.zshrc"); let bytes = Data([0xff, 0xfe, 0x80])
+        try bytes.write(to: rc)
+        XCTAssertThrowsError(try ShellIntegration.install(helper: URL(fileURLWithPath: "/usr/bin/true"), store: store, home: home))
+        XCTAssertEqual(try Data(contentsOf: rc), bytes)
+    }
+    func testMeasurementDistinguishesMissingEmptyAndUnreadable() throws {
+        XCTAssertTrue(FileTree.measure(root.appendingPathComponent("absent")).missing)
+        let empty = root.appendingPathComponent("empty"); try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertTrue(FileTree.measure(empty).isComplete)
+        let blocked = try file("blocked/file").deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: blocked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: blocked.path) }
+        let reading = FileTree.measure(blocked)
+        XCTAssertFalse(reading.isComplete); XCTAssertFalse(reading.unreadablePaths.isEmpty)
+    }
+    func testOneLeaseBlocksAllMutationEntryPoints() throws {
+        let source = try personalSource(), destination = try target()
+        let lease = try OperationLease(store: store)
+        defer { withExtendedLifetime(lease) {} }
+        XCTAssertThrowsError(try PersonalActions(home: home, store: store).move(source, to: destination))
+        XCTAssertThrowsError(try PersonalActions(home: home, store: store).trash(source))
+        XCTAssertThrowsError(try MigrationEngine(store: store, home: home).restore(toolID: "npm"))
+        XCTAssertThrowsError(try ShellIntegration.install(helper: URL(fileURLWithPath: "/usr/bin/true"), store: store, home: home))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertThrowsError(try XcodeIntegration.useLocalDerivedData(store: store))
+    }
+    func testMovePreservesBytesMetadataAndTrashRecovery() throws {
+        let source = try personalSource(), destination = try target()
+        try FileManager.default.setAttributes([.posixPermissions: 0o640, .modificationDate: Date(timeIntervalSince1970: 1_500_000_000)], ofItemAtPath: source.path)
+        let bytes = Data("resource fork".utf8)
+        XCTAssertEqual(bytes.withUnsafeBytes { setxattr(source.path, "com.apple.ResourceFork", $0.baseAddress, bytes.count, 0, 0) }, 0)
+        let expected = try FileTree.digest(source)
+        _ = try PersonalActions(home: home, store: store, trashHandler: fakeTrash).move(source, to: destination)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try FileTree.digest(destination.appendingPathComponent(source.lastPathComponent)), expected)
+        let operation = try XCTUnwrap(store.operations().first)
+        XCTAssertEqual(operation.phase, .completed)
+        XCTAssertEqual(try FileTree.digest(URL(fileURLWithPath: XCTUnwrap(operation.trashPath))), expected)
+    }
+    func testFullDestinationPreservesSourceWithoutStaging() throws {
+        let source = try personalSource(), destination = try target()
+        XCTAssertThrowsError(try PersonalActions(home: home, store: store, freeBytes: { _ in 0 }, trashHandler: fakeTrash).move(source, to: destination))
+        XCTAssertEqual(try String(contentsOf: source), "original bytes")
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
+    }
+    func testFolderContainingProtectedProjectIsNotMoved() throws {
+        _ = try file("home/Documents/project/.git/config")
+        let source = home.appendingPathComponent("Documents/project")
+        XCTAssertThrowsError(try PersonalActions(home: home, store: store, trashHandler: fakeTrash).move(source, to: target()))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+    func testCancellationAfterVerificationKeepsOriginalAndPendingRecord() throws {
+        let source = try personalSource(), destination = try target(), token = CancellationFlag()
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: { if $0.phase == .copyVerified { token.cancel() } })
+        XCTAssertThrowsError(try actions.move(source, to: destination, cancellation: token))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(store.operations().first?.phase, .cancelled)
+        XCTAssertEqual(RecoveryManager(store: store, home: home).pending().count, 1)
+    }
+    func testFailureAfterPublicationKeepsBothAndCanBeResolvedWithoutDeleting() throws {
+        let source = try personalSource(), destination = try target()
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: {
+            if $0.phase == .published { throw CacheSSDError.message("injected stop") }
+        })
+        XCTAssertThrowsError(try actions.move(source, to: destination))
+        let record = try XCTUnwrap(store.operations().first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
+        try RecoveryManager(store: store, home: home).keepCopiesAndResolve(id: record.id)
+        XCTAssertTrue(RecoveryManager(store: store, home: home).pending().isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+    func testRecoveryRestoresAbsentSourceAndNeverOverwrites() throws {
+        let source = try personalSource(), destination = try target()
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash, checkpoint: {
+            if $0.phase == .completed { throw CacheSSDError.message("simulated completion failure") }
+        })
+        XCTAssertThrowsError(try actions.move(source, to: destination))
+        let record = try XCTUnwrap(store.operations().first)
+        let recovery = RecoveryManager(store: store, home: home)
+        try recovery.restoreSource(id: record.id)
+        XCTAssertEqual(try String(contentsOf: source), "original bytes")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
+        XCTAssertThrowsError(try recovery.restoreSource(id: record.id))
+    }
+    func testVerifiedMigrationCanBeRestoredWithoutOverwritingLocalCache() throws {
+        let (tool, volume) = try migrationFixture()
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false)
+        _ = try engine.migrate(toolID: "npm", removeLocal: true)
+        try engine.restore(toolID: "npm")
+        XCTAssertEqual(try String(contentsOf: tool.source.appendingPathComponent("artifact")), "cached bytes")
+        XCTAssertNil(store.settings().locations["npm"])
+        XCTAssertEqual(store.operations().filter { $0.phase == .completed }.count, 2)
+    }
+    func testRestoreDetectsConcurrentLocalUseAndPreservesBothCopies() throws {
+        let (tool, volume) = try migrationFixture()
+        let engine = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false)
+        _ = try engine.migrate(toolID: "npm", removeLocal: true)
+        let other = MigrationEngine(store: store, home: home, volumeProvider: { _ in volume }, verifyNative: false, checkpoint: {
+            if $0.kind == "restore" && $0.phase == .copyVerified { try Data("new local data".utf8).write(to: tool.source.appendingPathComponent("new")) }
+        })
+        XCTAssertThrowsError(try other.restore(toolID: "npm"))
+        XCTAssertEqual(try String(contentsOf: tool.source.appendingPathComponent("new")), "new local data")
+        XCTAssertNotNil(store.settings().locations["npm"])
+    }
+
+    func testChangedScanIdentityPreventsTrashAndMove() throws {
+        let source = try personalSource(), destination = try target(), scanned = try FileIdentity(source)
+        try Data("updated content after scanning".utf8).write(to: source)
+        let actions = PersonalActions(home: home, store: store, trashHandler: fakeTrash)
+        XCTAssertThrowsError(try actions.trash(source, expectedIdentity: scanned))
+        XCTAssertThrowsError(try actions.move(source, to: destination, expectedIdentity: scanned))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertTrue(store.operations().isEmpty)
+    }
+    func testBunAbsoluteInternalLinksBecomePortableAndExternalLinksStayBlocked() throws {
+        let source = root.appendingPathComponent("bun-cache"), copy = root.appendingPathComponent("bun-copy")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let payload = source.appendingPathComponent("package"); try Data("package".utf8).write(to: payload)
+        let link = source.appendingPathComponent("version")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: payload)
+        let original = try FileTree.manifest(source, tool: "bun")
+        try FileTree.copy(source, to: copy, tool: "bun")
+        XCTAssertEqual(try FileTree.manifest(copy, tool: "bun"), original)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: copy.appendingPathComponent("version").path), "package")
+        try FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("outside"))
+        XCTAssertThrowsError(try FileTree.manifest(source, tool: "bun"))
+    }
+    func testRetentionNeverDropsPendingOrUnreadableRecords() throws {
+        let source = try personalSource()
+        for _ in 0..<4 {
+            var journal = try OperationJournal(kind: "trash", source: source)
+            journal.phase = .completed
+            try store.writeDurably(journal, name: "operation-\(journal.id).json")
+        }
+        let pending = try OperationJournal(kind: "trash", source: source)
+        try store.writeDurably(pending, name: "operation-\(pending.id).json")
+        let invalid = store.base.appendingPathComponent("operation-invalid.json")
+        try Data("corrupted".utf8).write(to: invalid)
+        try store.pruneCompletedOperations(keeping: 2)
+        XCTAssertEqual(store.operations().count,3)
+        XCTAssertEqual(store.unreadableOperationRecords(), ["operation-invalid.json"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: invalid.path))
+    }
+}
