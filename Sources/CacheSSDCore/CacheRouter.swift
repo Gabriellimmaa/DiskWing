@@ -54,12 +54,13 @@ public enum CacheRouter {
         if toolID == "bun", FileManager.default.fileExists(atPath: home.appendingPathComponent(".bun/install/cache/links").path) { return true }
         if ["uv", "pip"].contains(toolID), environment["XDG_CACHE_HOME"] != nil { return true }
         var folders: [URL] = [home]
-        var current = directory.standardizedFileURL
+        var current = directory.standardizedFileURL, reachedRoot = false
         for _ in 0..<40 {
             folders.append(current)
             let parent = current.deletingLastPathComponent()
-            if parent == current { break }; current = parent
+            if parent == current { reachedRoot = true; break }; current = parent
         }
+        guard reachedRoot else { return true } // Never assume unvisited ancestor configuration is absent.
         var files: [URL] = []
         switch toolID {
         case "npm":
