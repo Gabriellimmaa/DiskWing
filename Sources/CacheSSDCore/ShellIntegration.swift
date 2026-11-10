@@ -26,7 +26,7 @@ public enum ShellIntegration {
         typeset -gA _cachessd_original _cachessd_was_set _cachessd_seen _cachessd_seen_set
         typeset -g _cachessd_has_seen=0
         typeset -ga _cachessd_keys
-        _cachessd_keys=(npm_config_cache BUN_INSTALL_CACHE_DIR CP_CACHE_DIR PIP_CACHE_DIR HOMEBREW_CACHE GRADLE_USER_HOME UV_CACHE_DIR)
+        _cachessd_keys=(npm_config_cache BUN_INSTALL_CACHE_DIR CP_CACHE_DIR PIP_CACHE_DIR HOMEBREW_CACHE GRADLE_USER_HOME UV_CACHE_DIR YARN_CACHE_FOLDER GOCACHE CCACHE_DIR)
         for _cachessd_key in $_cachessd_keys; do
           _cachessd_was_set[$_cachessd_key]=${+parameters[$_cachessd_key]}
           _cachessd_original[$_cachessd_key]=${(P)_cachessd_key}
@@ -48,11 +48,24 @@ public enum ShellIntegration {
         _cachessd_route() {
           local key value output
           local cachessd_command="${1-}"
+          local cachessd_omit_yarn=0 cachessd_omit_go=0 cachessd_omit_ccache=0
           local -a cachessd_route_flags
           [[ "${1-}" == *--backend* || "${1-}" == *--global-store* ]] && cachessd_route_flags+=(--omit-bun)
           [[ "${1-}" == *--link-mode* ]] && cachessd_route_flags+=(--omit-uv)
           local cachessd_option cachessd_name cachessd_selector
           for cachessd_option in ${(Q)${(z)cachessd_command}}; do
+            case "${(L)cachessd_option}" in
+              --cache-folder*|--cachefolder*|--use-yarnrc*|--no-default-rc*|--cwd*|--enable-pnp*|--pnp*|yarn_*=*) cachessd_omit_yarn=1 ;;
+            esac
+            case "$cachessd_option" in
+              -C|-C=*|-C/*) cachessd_omit_go=1 ;;
+            esac
+            case "${(L)cachessd_option}" in
+              gocache=*|goenv=*|gocacheprog=*) cachessd_omit_go=1 ;;
+            esac
+            case "${(L)cachessd_option}" in
+              --dir*|--config-path*|--set-config*|--set=*|-d|-d/*|-o|cache_dir=*|ccache_*=*) cachessd_omit_ccache=1 ;;
+            esac
             if [[ "$cachessd_option" == --* ]]; then
               cachessd_name="${(L)cachessd_option}"
               cachessd_name="${cachessd_name#--}"
@@ -77,9 +90,12 @@ public enum ShellIntegration {
           while IFS=$'\\t' read -r key value; do
             [[ -n "$key" && -n "$value" ]] || continue
             case "$key" in
-              npm_config_cache|BUN_INSTALL_CACHE_DIR|CP_CACHE_DIR|PIP_CACHE_DIR|HOMEBREW_CACHE|GRADLE_USER_HOME|UV_CACHE_DIR)
+              npm_config_cache|BUN_INSTALL_CACHE_DIR|CP_CACHE_DIR|PIP_CACHE_DIR|HOMEBREW_CACHE|GRADLE_USER_HOME|UV_CACHE_DIR|YARN_CACHE_FOLDER|GOCACHE|CCACHE_DIR)
                 [[ $_cachessd_was_set[$key] == 1 ]] && continue
                 [[ "$key" == npm_config_cache && -n "$NPM_CONFIG_CACHE" ]] && continue
+                [[ "$key" == YARN_CACHE_FOLDER && $cachessd_omit_yarn == 1 ]] && continue
+                [[ "$key" == GOCACHE && $cachessd_omit_go == 1 ]] && continue
+                [[ "$key" == CCACHE_DIR && $cachessd_omit_ccache == 1 ]] && continue
                 export "$key=$value"
                 ;;
             esac
