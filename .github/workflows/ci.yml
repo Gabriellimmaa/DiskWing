@@ -13,14 +13,14 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 20
-    env:
-      CACHESSD_TEST_TEMP: ${{ runner.temp }}/diskwing-tests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Create isolated fixture location
-        run: mkdir -p "$CACHESSD_TEST_TEMP"
+        run: |
+          mkdir -p "$RUNNER_TEMP/diskwing-tests"
+          printf 'CACHESSD_TEST_TEMP=%s\n' "$RUNNER_TEMP/diskwing-tests" >> "$GITHUB_ENV"
       - name: Swift isolated tests
         run: swift test -j 2
       - name: Packaging boundary tests
