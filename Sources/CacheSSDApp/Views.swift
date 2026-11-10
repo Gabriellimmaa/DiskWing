@@ -541,6 +541,14 @@ struct SampleModeBanner: View {
                 Button(L10n.text("Analisar amostras")) { model.chooseFolder() }.disabled(model.busy || model.isScanning).accessibilityIdentifier("sample-scan")
                 Toggle(L10n.text("SSD de amostra conectado"), isOn: Binding(get: { state.volumeConnected }, set: { model.setSampleVolumeConnected($0) })).toggleStyle(.checkbox).accessibilityIdentifier("sample-volume-connected")
                 Toggle(L10n.text("Simular pouca energia"), isOn: $state.lowPower).toggleStyle(.checkbox).accessibilityIdentifier("sample-low-power")
+                if model.isSamples {
+                    Menu {
+                        Button(L10n.text("Janela mínima")) { NSApp.keyWindow?.setContentSize(NSSize(width: 1050, height: 690)) }.accessibilityIdentifier("sample-window-minimum")
+                        Button(L10n.text("Tamanho padrão")) { NSApp.keyWindow?.setContentSize(NSSize(width: 1240, height: 810)) }.accessibilityIdentifier("sample-window-default")
+                    } label: {
+                        Label(L10n.text("Tamanho da janela"), systemImage: "macwindow").labelStyle(.iconOnly)
+                    }.help(L10n.text("Tamanho da janela")).accessibilityLabel(L10n.text("Tamanho da janela")).accessibilityIdentifier("sample-window-size")
+                }
             }
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Palette.accent.opacity(0.1)).accessibilityIdentifier("sample-mode-banner")
     }
