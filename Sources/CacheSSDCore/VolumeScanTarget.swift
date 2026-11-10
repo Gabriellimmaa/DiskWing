@@ -58,7 +58,10 @@ public struct VolumeScanTarget: Codable, Identifiable, Sendable {
     public init(id: String, name: String, roots: [VolumeScanRoot], displayRoot: URL? = nil, dataNamespace: String? = nil) throws {
         guard !id.isEmpty, roots.count == 1 || roots.count == 2 && Set(roots.map { $0.role.rawValue }) == Set(["system", "data"]), Set(roots.map(\.id)).count == roots.count else { throw CacheSSDError.message("A seleção de volumes é inválida.") }
         schemaVersion = 1; self.id = id; self.name = name; self.roots = roots
-        self.displayRoot = displayRoot ?? roots.first(where: { $0.role == .system })?.url ?? roots[0].url
+        let expectedRoot = roots.first(where: { $0.role == .system })?.url ?? roots[0].url
+        let chosenRoot = displayRoot ?? expectedRoot
+        guard chosenRoot.isFileURL, chosenRoot.path == expectedRoot.path else { throw CacheSSDError.message("A raiz exibida não corresponde ao volume selecionado.") }
+        self.displayRoot = chosenRoot
         let suffix = SHA256.hash(data: Data(id.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
         var namespace = dataNamespace ?? VolumeScanner.otherData + "-" + suffix
         if dataNamespace == nil {
@@ -72,6 +75,8 @@ public struct VolumeScanTarget: Codable, Identifiable, Sendable {
         guard schemaVersion == 1, !id.isEmpty, displayRoot.isFileURL, Paths.safeComponent(dataNamespace),
               roots.count == 1 || roots.count == 2 && Set(roots.map { $0.role.rawValue }) == Set(["system", "data"]),
               Set(roots.map(\.id)).count == roots.count, roots.allSatisfy({ $0.url.isFileURL && $0.id == $0.volumeUUID && !$0.id.isEmpty }) else { throw CacheSSDError.message("A seleção de volumes é inválida ou pertence a uma versão mais recente.") }
+        let expectedRoot = roots.first(where: { $0.role == .system })?.url ?? roots[0].url
+        guard displayRoot.path == expectedRoot.path else { throw CacheSSDError.message("A raiz exibida não corresponde ao volume selecionado.") }
     }
     public static func folder(_ url: URL, name: String? = nil) throws -> VolumeScanTarget {
         let root = try VolumeScanRoot(url: Paths.physicalURL(url))

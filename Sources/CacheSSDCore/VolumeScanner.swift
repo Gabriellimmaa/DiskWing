@@ -18,8 +18,14 @@ extension ScanIndex {
             guard versions.count == 1, Self.integer(versions[0], "version") == 1 else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
         } else {
             guard try execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('volume_targets','volume_queue','volume_sources','volume_hardlinks','volume_ownership','volume_phase') LIMIT 1").isEmpty else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
-            try execute("CREATE TABLE volume_format(version INTEGER NOT NULL)")
-            try execute("INSERT INTO volume_format VALUES(1)")
+            try execute("SAVEPOINT volume_format_creation")
+            do {
+                try execute("CREATE TABLE volume_format(version INTEGER NOT NULL)")
+                try execute("INSERT INTO volume_format VALUES(1)")
+                try execute("RELEASE volume_format_creation")
+            } catch {
+                _ = try? execute("ROLLBACK TO volume_format_creation"); _ = try? execute("RELEASE volume_format_creation"); throw error
+            }
         }
         try execute("CREATE TABLE IF NOT EXISTS volume_targets(session TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,targetID TEXT NOT NULL,target TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS volume_queue(session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,rootID TEXT NOT NULL,relative TEXT NOT NULL,state TEXT NOT NULL,identity TEXT,PRIMARY KEY(session,rootID,relative))")
@@ -296,9 +302,9 @@ public final class VolumeScanner {
             guard !target.isSystemGroup || lstat(target.displayRoot.appendingPathComponent(target.dataNamespace).path, &collision) != 0 && errno == ENOENT else { throw CacheSSDError.message("O namespace da análise passou a existir no volume. Inicie uma nova análise; o índice anterior foi preservado.") }
             // Create only the bounded resumable header here. Retention can
             // delete millions of rows, so it belongs inside guarded SQL work.
-            try index.execute("INSERT INTO sessions(id,root,volume,started,state) VALUES(?,?,?,?,?)", [.text(session.uuidString), .text(target.displayRoot.path), .text(target.id), .real(Date().timeIntervalSince1970), .text("scanning")])
             try index.execute("BEGIN IMMEDIATE")
             do {
+                try index.execute("INSERT INTO sessions(id,root,volume,started,state) VALUES(?,?,?,?,?)", [.text(session.uuidString), .text(target.displayRoot.path), .text(target.id), .real(Date().timeIntervalSince1970), .text("scanning")])
                 try index.add(id: session, relative: "", item: ScanItem(path: target.displayRoot.path, name: target.name, isDirectory: true, isSymbolicLink: false, logicalBytes: 0, allocatedBytes: 0, fileCount: 0, category: .unknown, issue: nil, children: []), depth: 0)
                 try index.execute("INSERT INTO volume_targets VALUES(?,?,?)", [.text(session.uuidString), .text(target.id), .text(try encoded(target))])
                 try index.execute("INSERT INTO volume_phase VALUES(?,'enumerating')", [.text(session.uuidString)])

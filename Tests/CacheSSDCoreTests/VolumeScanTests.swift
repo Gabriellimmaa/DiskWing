@@ -350,4 +350,23 @@ final class VolumeScanTests: XCTestCase {
         XCTAssertEqual(ScanIndex.string(try XCTUnwrap(index.execute("SELECT target FROM volume_targets WHERE session=?", [.text(first.id.uuidString)]).first), "target"), text)
         XCTAssertEqual(try index.sessions().count, 3, "Two understood trees are retained without deleting the unknown future record")
     }
+    func testDisplayRootCannotBeDetachedFromTheSelectedPhysicalRoots() throws {
+        let selected = try target(), index = try ScanIndex(url: database)
+        let unrelated = root.appendingPathComponent("unrelated")
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try VolumeScanTarget(id: selected.id, name: selected.name, roots: selected.roots, displayRoot: unrelated))
+        var value = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(selected)) as? [String: Any])
+        value["displayRoot"] = unrelated.absoluteString
+        let malformed = try JSONDecoder().decode(VolumeScanTarget.self, from: JSONSerialization.data(withJSONObject: value))
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(malformed, index: index, policy: unlimited))
+        XCTAssertTrue(try index.execute("SELECT name FROM sqlite_master WHERE name LIKE 'volume_%'").isEmpty)
+        XCTAssertTrue(try index.sessions().isEmpty)
+    }
+    func testEmptyUnknownFormatMarkerIsPreservedRatherThanRepaired() throws {
+        let index = try ScanIndex(url: database)
+        try index.execute("CREATE TABLE volume_format(version INTEGER NOT NULL)")
+        XCTAssertThrowsError(try VolumeScanner(home: root).scan(target(), index: index, policy: unlimited))
+        XCTAssertTrue(try index.execute("SELECT version FROM volume_format").isEmpty)
+        XCTAssertTrue(try index.execute("SELECT name FROM sqlite_master WHERE name='volume_queue'").isEmpty)
+    }
 }
