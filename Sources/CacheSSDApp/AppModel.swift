@@ -73,6 +73,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     var home: URL { context.home }
     var isSamples: Bool { context.isSamples }
     var sampleState: SampleState? { context.samples }
+    var isProductionBuild: Bool { !isSamples && Bundle.main.object(forInfoDictionaryKey: "DiskWingBuildProfile") as? String == "production" }
+    var applicationVersionDescription: String {
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (["DiskWing", version.flatMap { $0.isEmpty ? nil : $0 }, build.flatMap { $0.isEmpty ? nil : "(\($0))" }].compactMap { $0 }).joined(separator: " ")
+    }
     var pendingRecoveryCount: Int {
         guard (try? context.requireStorage()) != nil else { return 1 }
         return Set(recoveries.map(\.id)).union(interrupted.map(\.id)).count + store.unreadableOperationRecords().count + store.pendingConfigurationRecords().count

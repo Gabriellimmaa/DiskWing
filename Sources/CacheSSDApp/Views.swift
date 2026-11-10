@@ -27,7 +27,7 @@ struct ContentView: View {
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 6) {
                     Label(model.selectedVolume?.name ?? L10n.text("SSD desconectado"), systemImage: model.selectedVolume == nil ? "externaldrive.badge.xmark" : "externaldrive.badge.checkmark")
-                    Text(L10n.text("Processamento local · prévia de desenvolvimento")).font(.caption).foregroundStyle(.secondary)
+                    Text(model.isProductionBuild ? L10n.text("Processamento local") : L10n.text("Processamento local · prévia de desenvolvimento")).font(.caption).foregroundStyle(.secondary)
                 }.padding(18)
             }.navigationSplitViewColumnWidth(min: 215, ideal: 225, max: 260)
         } detail: {
@@ -459,7 +459,8 @@ struct PreferencesView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(L10n.text("São mantidas até 150 operações e 50 resumos de análise. O índice local mantém duas árvores por pasta analisada; o acompanhamento contínuo depende de sua escolha.")).foregroundStyle(.secondary)
                         Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
-                        Text(L10n.text("Prévia de desenvolvimento. Distribuição pública, notarização e validação com outras pessoas ainda não foram concluídas.")).font(.caption).foregroundStyle(.secondary)
+                        if model.isProductionBuild { Text(verbatim: model.applicationVersionDescription).font(.caption).foregroundStyle(.secondary) }
+                        else { Text(L10n.text("Prévia de desenvolvimento. Distribuição pública, notarização e validação com outras pessoas ainda não foram concluídas.")).font(.caption).foregroundStyle(.secondary) }
                     }.padding(10)
                 }
             }.padding(30)
