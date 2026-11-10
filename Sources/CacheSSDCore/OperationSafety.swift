@@ -109,12 +109,83 @@ public struct RecoveryAssessment: Identifiable, Sendable {
 public final class RecoveryManager {
     private let store: Store
     private let home: URL
+    private let permittedRoot: URL?
+    private let permittedRootIdentity: FileIdentity?
     private let checkpoint: (OperationJournal) throws -> Void
     private let supportedKinds: Set<String> = ["migration", "personalMove", "trash", "restore"]
-    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) { self.store = store; self.home = home; self.checkpoint = checkpoint }
+    public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, permittedRoot: URL? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+        self.store = store; self.home = home; self.checkpoint = checkpoint
+        self.permittedRoot = permittedRoot?.standardizedFileURL
+        permittedRootIdentity = permittedRoot.flatMap { try? FileIdentity($0) }
+    }
+
+    private func scopeFailure() -> Error { CacheSSDError.message(L10n.text("O modo de amostras só permite os arquivos gerados para este teste.")) }
+    private func validateScope(_ urls: [URL]) throws {
+        guard let root = permittedRoot else { return }
+        var metadata = stat()
+        guard let identity = permittedRootIdentity, lstat(root.path, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFDIR,
+              Int64(metadata.st_dev) == identity.device, UInt64(metadata.st_ino) == identity.inode else { throw scopeFailure() }
+        for url in urls {
+            guard url.isFileURL, url.path == root.path || url.path.hasPrefix(root.path + "/") else { throw scopeFailure() }
+            let tail = String(url.path.dropFirst(root.path.count)).split(separator: "/").map(String.init)
+            guard tail.allSatisfy({ $0 != "." && $0 != ".." }) else { throw scopeFailure() }
+            var current = root
+            for (offset, component) in tail.enumerated() {
+                current.appendPathComponent(component)
+                if lstat(current.path, &metadata) != 0 {
+                    guard errno == ENOENT else { throw scopeFailure() }
+                    break
+                }
+                guard metadata.st_mode & S_IFMT != S_IFLNK,
+                      offset == tail.count - 1 || metadata.st_mode & S_IFMT == S_IFDIR else { throw scopeFailure() }
+            }
+        }
+    }
+    private func validateStorageScope() throws {
+        try validateScope([home, store.base] + ["settings.json", "settings-previous.json", "history.json"].map { store.base.appendingPathComponent($0) })
+    }
+    private func validateJournalScope(_ journal: OperationJournal) throws {
+        try validateScope([journal.source, journal.destination, journal.staging, journal.quarantine, journal.trashPath].compactMap { $0 }.map { URL(fileURLWithPath: $0) })
+    }
+    /// Sample records must be read from the same bounded, unredirected file
+    /// that is validated. Live stores retain their historical read behavior.
+    private func readScoped<T: Decodable>(_ type: T.Type, name: String) throws -> T {
+        let path = store.base.appendingPathComponent(name), limit = 8 * 1_048_576
+        try validateStorageScope(); try validateScope([path])
+        var before = stat()
+        guard lstat(path.path, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              before.st_flags & UInt32(SF_DATALESS) == 0, before.st_size >= 0, before.st_size <= limit else { throw scopeFailure() }
+        let fd = open(path.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw scopeFailure() }
+        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true); defer { try? file.close() }
+        var opened = stat()
+        guard fstat(fd, &opened) == 0, opened.st_mode & S_IFMT == S_IFREG,
+              opened.st_flags & UInt32(SF_DATALESS) == 0, opened.st_dev == before.st_dev, opened.st_ino == before.st_ino,
+              opened.st_size == before.st_size else { throw scopeFailure() }
+        let bytes = try file.read(upToCount: limit + 1) ?? Data()
+        var after = stat(), current = stat()
+        guard bytes.count <= limit, fstat(fd, &after) == 0, lstat(path.path, &current) == 0,
+              after.st_dev == opened.st_dev, after.st_ino == opened.st_ino, after.st_size == opened.st_size,
+              after.st_mtimespec.tv_sec == opened.st_mtimespec.tv_sec, after.st_mtimespec.tv_nsec == opened.st_mtimespec.tv_nsec,
+              after.st_ctimespec.tv_sec == opened.st_ctimespec.tv_sec, after.st_ctimespec.tv_nsec == opened.st_ctimespec.tv_nsec,
+              current.st_mode & S_IFMT == S_IFREG, current.st_dev == after.st_dev, current.st_ino == after.st_ino else { throw scopeFailure() }
+        try validateStorageScope()
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(type, from: bytes)
+    }
+    private func operations() throws -> [OperationJournal] {
+        try validateStorageScope()
+        guard permittedRoot != nil else { return store.operations() }
+        return try FileManager.default.contentsOfDirectory(atPath: store.base.path)
+            .filter { $0.hasPrefix("operation-") && $0.hasSuffix(".json") }
+            .compactMap { try? readScoped(OperationJournal.self, name: $0) }
+            .sorted { $0.startedAt > $1.startedAt }
+    }
 
     public func pending() -> [RecoveryAssessment] {
-        store.operations().filter(\.isPending).map { journal in
+        guard let records = try? operations() else { return [] }
+        return records.filter(\.isPending).map { journal in
+            guard (try? validateJournalScope(journal)) != nil else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "O modo de amostras só permite os arquivos gerados para este teste.") }
             guard journal.schemaVersion == 1 else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Registro de uma versão mais recente. Preserve as cópias e atualize o aplicativo.") }
             guard supportedKinds.contains(journal.kind) else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Tipo de operação desconhecido. Preserve o registro e as cópias para revisão.") }
             if journal.kind == "restore" {
@@ -141,8 +212,10 @@ public final class RecoveryManager {
 
     /// Legacy entry point retained. Restore journals dispatch to their local destination.
     public func restoreSource(id: UUID, cancellation: CancellationFlag = CancellationFlag(), progress: @escaping (String) -> Void = { _ in }) throws {
+        try validateStorageScope()
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
-        guard var journal = store.operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("O registro de recuperação não está disponível.")) }
+        guard var journal = try operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("O registro de recuperação não está disponível.")) }
+        try validateJournalScope(journal)
         if journal.kind == "restore" {
             if !journal.isPending { return }
             let (tool, _) = try restoreTarget(journal)
@@ -206,7 +279,10 @@ public final class RecoveryManager {
     private func restoreConflict() -> Error { CacheSSDError.message(L10n.text("A restauração encontrou conteúdo ou configuração diferente. As cópias foram preservadas para revisão.")) }
 
     private func restoreSettings() throws -> AppSettings {
-        guard let value = try? store.read(AppSettings.self, name: "settings.json") else { throw CacheSSDError.message(L10n.text("Não foi possível ler a configuração da restauração. Os arquivos foram preservados.")) }
+        let value: AppSettings?
+        if permittedRoot != nil { value = try? readScoped(AppSettings.self, name: "settings.json") }
+        else { value = try? store.read(AppSettings.self, name: "settings.json") }
+        guard let value else { throw CacheSSDError.message(L10n.text("Não foi possível ler a configuração da restauração. Os arquivos foram preservados.")) }
         return value
     }
     private func locationMatches(_ location: CacheLocation, journal: OperationJournal, tool: CacheDescriptor, settings: AppSettings) -> Bool {
@@ -308,8 +384,10 @@ public final class RecoveryManager {
     }
 
     public func keepCopiesAndResolve(id: UUID) throws {
+        try validateStorageScope()
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
-        guard var journal = store.operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("Registro não encontrado.")) }
+        guard var journal = try operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("Registro não encontrado.")) }
+        try validateJournalScope(journal)
         if journal.kind == "restore" { _ = try restoreTarget(journal) }
         journal.phase = .resolved; journal.updatedAt = Date(); journal.detail = "Registro encerrado após revisão; nenhuma cópia foi removida"
         try store.writeDurably(journal, name: "operation-\(id.uuidString).json")
