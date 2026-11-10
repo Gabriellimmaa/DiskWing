@@ -53,6 +53,17 @@ final class ScanCoverageTests: XCTestCase {
         let legacy = try DiskScanner(maxEntries: 3).scan(source)
         XCTAssertTrue(legacy.isPartial); XCTAssertEqual(legacy.root.coverage, .partial)
     }
+    func testOmittedUnreadableChildStillMarksLegacyFolderPartial() throws {
+        try Data(repeating: 65, count: 100).write(to: source.appendingPathComponent("large"))
+        let hidden = source.appendingPathComponent("hidden")
+        try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: hidden.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hidden.path) }
+        let report = try DiskScanner(childrenPerFolder: 1).scan(source)
+        XCTAssertEqual(report.root.children.map(\.name), ["large"])
+        XCTAssertEqual(report.root.coverage, .partial)
+        XCTAssertTrue(report.isPartial)
+    }
     func testLegacyJSONAndUnknownCoverageDecodeConservatively() throws {
         let item = ScanItem(path: "/fixture", name: "fixture", isDirectory: true, isSymbolicLink: false, logicalBytes: 0, allocatedBytes: 0, fileCount: 0, category: .unknown, issue: "Sem acesso; tamanho desconhecido", children: [])
         var value = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(item)) as? [String:Any])

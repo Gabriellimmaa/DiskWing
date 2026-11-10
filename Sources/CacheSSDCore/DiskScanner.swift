@@ -62,11 +62,13 @@ public final class DiskScanner {
             var issue: String?
             var omittedChildren = false
             var incomplete = false
+            var incompleteChildren = false
             do {
                 let children = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [])
                 for child in children {
                     if cancellation.isCancelled || entries >= maxEntries { if entries >= maxEntries { limited = true }; incomplete = true; break }
                     if let item = visit(child, depth: depth + 1) {
+                        if !item.isSymbolicLink && item.coverage != .complete { incompleteChildren = true }
                         total += item.logicalBytes; allocated += item.allocatedBytes; count += item.fileCount
                         childItems.append(item)
                         if childItems.count > childrenPerFolder * 2 {
@@ -84,7 +86,7 @@ public final class DiskScanner {
                 issue = "Sem acesso; tamanho desconhecido"
             }
             let coverage = ScanCoverage.legacy(issue: issue, isLink: false, children: childItems)
-            return ScanItem(path: url.path, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: total, allocatedBytes: allocated, fileCount: count, category: category(url), issue: issue, children: childItems, coverage: incomplete && coverage == .complete ? .partial : coverage)
+            return ScanItem(path: url.path, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, isDirectory: true, isSymbolicLink: false, logicalBytes: total, allocatedBytes: allocated, fileCount: count, category: category(url), issue: issue, children: childItems, coverage: (incomplete || incompleteChildren) && coverage == .complete ? .partial : coverage)
         }
         guard let item = visit(root.standardizedFileURL, depth: 0) else { throw CacheSSDError.message(L10n.text("Análise cancelada antes de iniciar.")) }
         return ScanReport(id: UUID(), root: item, startedAt: started, finishedAt: Date(), examinedEntries: entries, unreadablePaths: unreadable, skippedMounts: mounts, isCancelled: cancellation.isCancelled, reachedLimit: limited, largestFiles: largest)
