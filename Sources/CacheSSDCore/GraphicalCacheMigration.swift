@@ -26,6 +26,7 @@ private extension GraphicalCacheMigrationEngine {
         try GraphicalCacheFiles.assertParent(sourceParent, matches: source.deletingLastPathComponent())
         guard source.standardizedFileURL.path == source.resolvingSymlinksInPath().standardizedFileURL.path else { throw failure("O cache local já foi redirecionado e será preservado.") }
         let measurement = FileTree.measure(source, cancellation: cancellation)
+        let sourceDirectoryIdentity = measurement.missing ? nil : try GraphicalCacheDirectoryIdentity(source)
         guard measurement.missing || measurement.isComplete else { throw failure("A leitura deste cache está incompleta. A origem será preservada.") }
         guard !cancellation.isCancelled else { throw failure("Operação cancelada; origem preservada.") }
         let required = max(measurement.logical, measurement.allocated) + 536_870_912
@@ -44,6 +45,7 @@ private extension GraphicalCacheMigrationEngine {
         var configuration = ConfigurationChange(source: store.base.appendingPathComponent(registryName).path,
                                                 before: try encoded(registry), after: try encoded(journal))
         try store.writeDurably(configuration, name: configurationName(id))
+        var metadataProof: GraphicalCacheVerificationProof?
         do {
             try requireClosed(candidate); try requireUnchangedVolume(volume, identity: rootIdentity)
             try GraphicalCacheFiles.createDirectory(staging.deletingLastPathComponent(), under: volumeRoot)
@@ -51,14 +53,19 @@ private extension GraphicalCacheMigrationEngine {
             try requireUnchangedVolume(volume, identity: rootIdentity)
             if !measurement.missing {
                 progress(CacheTransferProgress(entryID: candidate.id, state: .transferring, detail: "Conferindo o cache original…"))
-                journal.sourceDigest = try FileTree.digest(source, cancellation: cancellation, workspace: store.base)
+                journal.sourceDigest = try FileTree.digest(source, cancellation: cancellation, workspace: destination.deletingLastPathComponent())
                 try saveJournal(&journal, phase: .copying)
                 try requireCanonical(staging); try requireClosed(candidate)
                 try FileTree.copy(source, to: staging, cancellation: cancellation) { text in
                     progress(CacheTransferProgress(entryID: candidate.id, state: .transferring, detail: text))
                 }
-                guard try FileTree.digest(staging, cancellation: cancellation, workspace: store.base) == journal.sourceDigest,
-                      try FileTree.digest(source, cancellation: cancellation, workspace: store.base) == journal.sourceDigest,
+                let reference = destination.deletingLastPathComponent().appendingPathComponent(".DiskWing-os-copy-reference-" + id.uuidString)
+                try GraphicalCacheFiles.createDirectory(reference, under: volumeRoot)
+                metadataProof = try GraphicalCacheVerification.verify(source: source, target: staging, sourceAnchor: home, targetAnchor: volumeRoot,
+                    expectedSource: try requireSourceIdentity(sourceDirectoryIdentity), expectedTarget: GraphicalCacheDirectoryIdentity(staging),
+                    referenceRoot: reference, referenceAnchor: volumeRoot, cancellation: cancellation)
+                journal.metadataVerification = metadataProof
+                guard try FileTree.digest(source, cancellation: cancellation, workspace: destination.deletingLastPathComponent()) == journal.sourceDigest,
                       try FileIdentity(source) == journal.sourceIdentity else { throw failure("O cache mudou durante a cópia. A origem e as cópias foram preservadas.") }
             }
             try saveJournal(&journal, phase: .copyVerified)
@@ -85,13 +92,14 @@ private extension GraphicalCacheMigrationEngine {
                 isSimulated: candidate.isSimulated, createdAt: started, updatedAt: Date())
             registration.volumeIdentity = try GraphicalCacheDirectoryIdentity(volumeRoot)
             registration.destinationIdentity = try GraphicalCacheDirectoryIdentity(destination)
+            registration.metadataVerification = metadataProof
             journal.registration = registration
             try saveJournal(&journal, phase: .redirecting)
             try requireUnchangedVolume(volume, identity: rootIdentity); try requireClosed(candidate)
             try GraphicalCacheFiles.assertParent(parent, matches: source.deletingLastPathComponent())
             if let original = journal.sourceIdentity {
                 guard try FileIdentity(source) == original,
-                      try FileTree.digest(source, cancellation: cancellation, workspace: store.base) == journal.sourceDigest else { throw failure("O cache mudou antes da ativação. A origem foi preservada.") }
+                      try FileTree.digest(source, cancellation: cancellation, workspace: destination.deletingLastPathComponent()) == journal.sourceDigest else { throw failure("O cache mudou antes da ativação. A origem foi preservada.") }
                 guard renameatx_np(parent, source.lastPathComponent, parent, quarantine.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw failure("Não foi possível preservar o cache original para recuperação.") }
                 try GraphicalCacheFiles.assertParent(parent, matches: source.deletingLastPathComponent())
                 try requireClosed(candidate)
@@ -154,7 +162,7 @@ private extension GraphicalCacheMigrationEngine {
                 guard !cancellation.isCancelled,
                       managedLinkMatches(registration), try self.destination(for: registration).path == destination.path,
                       try busyCheck([quarantine], nil).isEmpty,
-                      try FileTree.digest(quarantine, cancellation: cancellation, workspace: store.base) == registration.sourceDigest else { throw failure("O original mudou ou continua em uso. Ele foi preservado.") }
+                      try FileTree.digest(quarantine, cancellation: cancellation, workspace: destination.deletingLastPathComponent()) == registration.sourceDigest else { throw failure("O original mudou ou continua em uso. Ele foi preservado.") }
                 let parent = try GraphicalCacheFiles.openParent(of: quarantine, under: home, create: false)
                 defer { close(parent) }
                 try GraphicalCacheFiles.assertParent(parent, matches: quarantine.deletingLastPathComponent())
@@ -180,12 +188,14 @@ private extension GraphicalCacheMigrationEngine {
 
     func requireCandidate(_ candidate: GraphicalCacheCandidate) throws {
         guard candidate.id == GraphicalCacheCatalog.chromeCacheID, candidate.applicationID == GraphicalCacheCatalog.chromeBundleID,
-              candidate.sourceURL.standardizedFileURL.path == home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).standardizedFileURL.path else { throw failure("Este caminho não pertence a um cache gráfico qualificado.") }
+              GraphicalCacheFiles.normalizedSystemPath(candidate.sourceURL.path) == GraphicalCacheFiles.normalizedSystemPath(home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path) else { throw failure("Este caminho não pertence a um cache gráfico qualificado.") }
         if candidate.isSimulated {
             guard allowSimulatedCandidates, permittedRoot != nil else { throw failure("Caches de amostra só podem ser usados em uma sessão isolada.") }
         } else {
+            guard GraphicalCacheCatalog.platformIsQualified else { throw failure("A transferência deste cache só foi qualificada em Apple Silicon com macOS 26 e SSD APFS.") }
             guard !GraphicalCacheCatalog.chromeHasCustomStorage() else { throw failure("O Chrome usa uma configuração de cache ou perfil personalizada. Ela foi preservada.") }
             guard let app = candidate.applicationURL, let info = GenericAppDetector.readBundleInfo(app),
+                  GraphicalCacheCatalog.chromeSignatureIsQualified(app),
                   info["CFBundleIdentifier"] as? String == candidate.applicationID,
                   let version = info["CFBundleShortVersionString"] as? String,
                   version == candidate.applicationVersion, GraphicalCacheCatalog.qualifiedChromeVersions.contains(version) else { throw failure("Este aplicativo ou sua versão ainda não tem uma transferência qualificada.") }
@@ -233,6 +243,7 @@ private extension GraphicalCacheMigrationEngine {
                 // The verified original is already local. Swap it back without
                 // requiring another cache-sized allocation on a nearly full Mac.
                 journal.publicationIdentity = journal.sourceIdentity; journal.stagingURL = nil
+                journal.heldLinkName = restoreInput.lastPathComponent
                 try saveJournal(&journal, phase: .restoring)
                 try requireClosed(candidate)
                 guard !cancellation.isCancelled, managedLinkMatches(record),
@@ -256,10 +267,16 @@ private extension GraphicalCacheMigrationEngine {
             try FileTree.copy(restoreInput, to: staging, cancellation: cancellation) { text in
                 progress(CacheTransferProgress(entryID: candidateID, state: .transferring, detail: text))
             }
-            guard try FileTree.digest(staging, cancellation: cancellation, workspace: store.base) == journal.sourceDigest,
-                  try FileTree.digest(restoreInput, cancellation: cancellation, workspace: store.base) == journal.sourceDigest,
+            let inputAnchor = URL(fileURLWithPath: try resolvedVolumePath(record.volumeUUID))
+            let reference = staging.deletingLastPathComponent().appendingPathComponent(".DiskWing-os-restore-reference-" + operationID.uuidString)
+            try GraphicalCacheFiles.createDirectory(reference, under: home)
+            journal.metadataVerification = try GraphicalCacheVerification.verify(source: restoreInput, target: staging,
+                sourceAnchor: inputAnchor, targetAnchor: home, expectedSource: GraphicalCacheDirectoryIdentity(restoreInput),
+                expectedTarget: GraphicalCacheDirectoryIdentity(staging), referenceRoot: reference, referenceAnchor: home, cancellation: cancellation)
+            guard try FileTree.digest(restoreInput, cancellation: cancellation, workspace: restoreInput.deletingLastPathComponent()) == journal.sourceDigest,
                   try FileIdentity(restoreInput) == journal.sourceIdentity else { throw failure("A cópia mudou durante a restauração. Todas as cópias foram preservadas.") }
             journal.publicationIdentity = try FileIdentity(staging)
+            journal.heldLinkName = ".DiskWing-restored-link-" + operationID.uuidString
             if let original = record.sourceQuarantine { journal.preservedRecoveryURLs = [original] }
             try saveJournal(&journal, phase: .restoring)
             guard !cancellation.isCancelled, managedLinkMatches(record) else { throw failure("O cache mudou ou a restauração foi cancelada. As cópias foram preservadas.") }
@@ -349,7 +366,7 @@ private extension GraphicalCacheMigrationEngine {
         var journal = try readRecord(GraphicalCacheJournal.self, name: journalName(operationID))
         guard !journal.isUnsupported, journal.candidateID == GraphicalCacheCatalog.chromeCacheID,
               journal.operation == nil || ["restore", "resume"].contains(journal.operation ?? ""),
-              journal.sourceURL.path == home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path else { throw failure("O registro deste cache não corresponde a uma pasta qualificada.") }
+              GraphicalCacheFiles.normalizedSystemPath(journal.sourceURL.path) == GraphicalCacheFiles.normalizedSystemPath(home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path) else { throw failure("O registro deste cache não corresponde a uma pasta qualificada.") }
         var registry = try readRegistry()
         let record = journal.registration ?? registry.active[journal.candidateID]
         let candidate = record.map(candidateForRecord) ?? GraphicalCacheCandidate(id: journal.candidateID, applicationID: GraphicalCacheCatalog.chromeBundleID,
@@ -372,7 +389,8 @@ private extension GraphicalCacheMigrationEngine {
             if let record {
                 let parent = try GraphicalCacheFiles.openParent(of: journal.sourceURL, under: home, create: false)
                 defer { close(parent) }
-                let held = ".DiskWing-restored-link-" + journal.id.uuidString
+                let held = journal.heldLinkName ?? ".DiskWing-restored-link-" + journal.id.uuidString
+                guard Paths.safeComponent(held) else { throw failure("O nome de recuperação deste cache é inválido e foi preservado.") }
                 var metadata = stat()
                 if fstatat(parent, held, &metadata, AT_SYMLINK_NOFOLLOW) == 0 { try removeHeldLink(name: held, parent: parent, expected: record) }
                 registry.active.removeValue(forKey: journal.candidateID); try saveRegistry(registry)
@@ -453,7 +471,13 @@ private extension GraphicalCacheMigrationEngine {
     func requireVolume(_ selected: VolumeInfo) throws -> URL {
         guard let actual = volumeProvider(selected.uuid), actual.uuid.caseInsensitiveCompare(selected.uuid) == .orderedSame,
               actual.path == selected.path, actual.isWritable, !actual.isInternal else { throw failure("Conecte o SSD selecionado e confirme que ele permite gravação.") }
-        let root = URL(fileURLWithPath: actual.path); try requireCanonical(root); try FileTree.validateDestination(root); return root
+        let root = URL(fileURLWithPath: actual.path); try requireCanonical(root); try FileTree.validateDestination(root)
+        var filesystem = statfs()
+        guard statfs(root.path, &filesystem) == 0 else { throw failure("Não foi possível identificar o formato do SSD.") }
+        var name = filesystem.f_fstypename
+        let format = withUnsafeBytes(of: &name) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
+        guard format == "apfs" else { throw failure("A transferência de caches gráficos só foi qualificada em SSD APFS.") }
+        return root
     }
     func requireUnchangedVolume(_ selected: VolumeInfo, identity: FileIdentity) throws {
         let root = try requireVolume(selected), current = try FileIdentity(root)
@@ -466,6 +490,12 @@ private extension GraphicalCacheMigrationEngine {
     func encoded<T: Encodable>(_ object: T) throws -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; encoder.dateEncodingStrategy = .iso8601
         return String(decoding: try encoder.encode(object), as: UTF8.self)
+    }
+    func requireSourceIdentity(_ identity: GraphicalCacheDirectoryIdentity?) throws -> GraphicalCacheDirectoryIdentity {
+        guard let identity else { throw failure("A identidade da origem não pôde ser confirmada.") }; return identity
+    }
+    func resolvedVolumePath(_ uuid: String) throws -> String {
+        guard let volume = volumeProvider(uuid), volume.isWritable, !volume.isInternal else { throw failure("Conecte o SSD selecionado e confirme que ele permite gravação.") }; return volume.path
     }
     func journalName(_ id: UUID) -> String { "graphical-operation-" + id.uuidString + ".json" }
     func configurationName(_ id: UUID) -> String { "configuration-graphical-" + id.uuidString + ".json" }
@@ -537,6 +567,7 @@ public struct GraphicalCacheRegistration: Identifiable, Codable, Sendable {
     public var updatedAt: Date
     public var volumeIdentity: GraphicalCacheDirectoryIdentity? = nil
     public var destinationIdentity: GraphicalCacheDirectoryIdentity? = nil
+    public var metadataVerification: GraphicalCacheVerificationProof? = nil
 }
 
 public struct GraphicalCacheJournal: Identifiable, Codable, Sendable {
@@ -559,8 +590,14 @@ public struct GraphicalCacheJournal: Identifiable, Codable, Sendable {
     public var interruptedAtPhase: GraphicalCachePhase? = nil
     public var preservedRecoveryURLs: [URL]? = nil
     public var publicationIdentity: FileIdentity? = nil
+    public var heldLinkName: String? = nil
+    public var metadataVerification: GraphicalCacheVerificationProof? = nil
     public var isPending: Bool { ![.waitingForUsage, .completed, .restored].contains(phase) }
-    public var isUnsupported: Bool { schemaVersion != 1 || operation != nil && !["restore", "resume"].contains(operation ?? "") }
+    public var isUnsupported: Bool {
+        schemaVersion != 1 || operation != nil && !["restore", "resume"].contains(operation ?? "") ||
+        metadataVerification.map { $0.policyVersion != 1 } == true ||
+        registration?.metadataVerification.map { $0.policyVersion != 1 } == true
+    }
 }
 
 private struct GraphicalCacheRegistry: Codable {
@@ -582,6 +619,7 @@ public final class GraphicalCacheMigrationEngine {
     private let freeBytes: (URL) -> Int64
     private let allowSimulatedCandidates: Bool
     private let permittedRoot: URL?
+    private let permittedRootIdentity: GraphicalCacheDirectoryIdentity?
     private let checkpoint: (GraphicalCacheJournal) throws -> Void
     private let registryName = "graphical-caches.json"
 
@@ -596,6 +634,7 @@ public final class GraphicalCacheMigrationEngine {
         self.store = store; self.home = Paths.physicalURL(home); self.volumeProvider = volumeProvider
         self.busyCheck = busyCheck; self.allowSimulatedCandidates = allowSimulatedCandidates
         self.permittedRoot = permittedRoot.map(Paths.physicalURL); self.checkpoint = checkpoint
+        self.permittedRootIdentity = permittedRoot.flatMap { try? GraphicalCacheDirectoryIdentity(Paths.physicalURL($0)) }
         self.applicationRunning = applicationRunning ?? { candidate in
             NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == candidate.applicationID && !$0.isTerminated }
         }
@@ -619,13 +658,23 @@ public final class GraphicalCacheMigrationEngine {
     }
     public func protectedPaths() -> [URL] {
         var result = [store.base]
-        for record in (try? registrations()) ?? [] {
+        // Protection is deliberately broader than operational eligibility. A
+        // future policy never authorizes an action, but its known paths remain
+        // protected without resolving links or opening their contents.
+        let known = try? readRecord(GraphicalCacheRegistry.self, name: registryName)
+        for record in (known?.active.values.map { $0 } ?? []).prefix(4_096) {
             result.append(record.sourceURL); result.append(URL(fileURLWithPath: record.linkTarget))
             if let quarantine = record.sourceQuarantine { result.append(quarantine) }
-            if let current = try? destination(for: record) { result.append(current) }
+            let parts = record.relativeDestination.split(separator: "/", omittingEmptySubsequences: false)
+            if parts.count <= 80, parts.allSatisfy({ Paths.safeComponent(String($0)) }),
+               let volume = volumeProvider(record.volumeUUID), volume.uuid.caseInsensitiveCompare(record.volumeUUID) == .orderedSame {
+                result.append(URL(fileURLWithPath: volume.path).appendingPathComponent(record.relativeDestination))
+            }
         }
-        for journal in (try? allJournals()) ?? [] {
-            if journal.isPending { result.append(journal.sourceURL) }
+        let names = (try? recordNames(prefix: "graphical-operation-")) ?? []
+        for name in names.prefix(4_096) {
+            guard let journal = try? readRecord(GraphicalCacheJournal.self, name: name) else { continue }
+            if journal.isPending || journal.isUnsupported { result.append(journal.sourceURL) }
             if let path = journal.sourceQuarantine { result.append(path) }
             if let path = journal.stagingURL { result.append(path) }
             result += journal.preservedRecoveryURLs ?? []
@@ -693,7 +742,13 @@ public final class GraphicalCacheMigrationEngine {
     private func requireScope(_ urls: [URL]) throws {
         if allowSimulatedCandidates && permittedRoot == nil { throw failure("O modo de amostras precisa de uma pasta isolada para estes caches.") }
         if let root = permittedRoot {
-            guard root.standardizedFileURL == root.resolvingSymlinksInPath(), urls.allSatisfy({ Paths.contains($0, in: root) && Paths.contains($0.resolvingSymlinksInPath(), in: root) }) else { throw failure("O modo de amostras só permite os arquivos gerados para este teste.") }
+            let rootPath = GraphicalCacheFiles.normalizedSystemPath(root.path)
+            func contains(_ path: String) -> Bool {
+                let normalized = GraphicalCacheFiles.normalizedSystemPath(path)
+                return normalized == rootPath || normalized.hasPrefix(rootPath + "/")
+            }
+            guard let identity = permittedRootIdentity, identity.matches(try GraphicalCacheDirectoryIdentity(root)),
+                  urls.allSatisfy({ contains($0.path) && contains($0.resolvingSymlinksInPath().path) }) else { throw failure("O modo de amostras só permite os arquivos gerados para este teste.") }
         }
     }
     private func readRegistry() throws -> GraphicalCacheRegistry {
@@ -747,8 +802,9 @@ public final class GraphicalCacheMigrationEngine {
     private func validate(_ record: GraphicalCacheRegistration) throws {
         let components = record.relativeDestination.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard record.candidateID == GraphicalCacheCatalog.chromeCacheID, record.applicationID == GraphicalCacheCatalog.chromeBundleID,
-              record.sourceURL.standardizedFileURL.path == home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).standardizedFileURL.path,
+              GraphicalCacheFiles.normalizedSystemPath(record.sourceURL.path) == GraphicalCacheFiles.normalizedSystemPath(home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path),
               record.volumeIdentity != nil, record.destinationIdentity != nil,
+              record.metadataVerification.map({ $0.policyVersion == 1 }) ?? true,
               components.count == 7, components[0] == "MacCaches", components[1] == "CacheSSD", components[3] == "graphical",
               components[4] == record.candidateID, components[5] == record.id.uuidString, components[6] == "data",
               (!record.isSimulated || allowSimulatedCandidates && permittedRoot != nil),
@@ -780,6 +836,8 @@ public final class GraphicalCacheMigrationEngine {
     private func versionMatches(_ candidate: GraphicalCacheCandidate, record: GraphicalCacheRegistration) -> Bool {
         if record.isSimulated { return allowSimulatedCandidates && candidate.isSimulated && permittedRoot != nil }
         guard candidate.applicationVersion == record.applicationVersion, let app = candidate.applicationURL,
+              GraphicalCacheCatalog.platformIsQualified,
+              GraphicalCacheCatalog.chromeSignatureIsQualified(app),
               !GraphicalCacheCatalog.chromeHasCustomStorage(),
               let info = GenericAppDetector.readBundleInfo(app), info["CFBundleIdentifier"] as? String == record.applicationID,
               info["CFBundleShortVersionString"] as? String == record.applicationVersion else { return false }

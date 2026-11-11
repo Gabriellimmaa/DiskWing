@@ -3,6 +3,34 @@ import Darwin
 
 enum GraphicalCacheFiles {
     private static func failure() -> Error { CacheSSDError.message("O caminho do cache mudou ou não permite uma operação segura. Os dados foram preservados.") }
+    static func openLeaf(_ components: [String], under root: Int32, device: dev_t) throws -> Int32 {
+        guard components.count <= 80, components.allSatisfy(Paths.safeComponent) else { throw failure() }
+        var descriptor = dup(root); guard descriptor >= 0 else { throw failure() }
+        do {
+            for (offset, component) in components.enumerated() {
+                let flags = O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC | (offset + 1 == components.count ? 0 : O_DIRECTORY)
+                let next = openat(descriptor, component, flags)
+                guard next >= 0 else { throw failure() }
+                close(descriptor); descriptor = next
+                var metadata = stat()
+                guard fstat(descriptor, &metadata) == 0, metadata.st_dev == device,
+                      metadata.st_flags & UInt32(SF_DATALESS) == 0,
+                      metadata.st_mode & S_IFMT == S_IFREG || metadata.st_mode & S_IFMT == S_IFDIR else { throw failure() }
+            }
+            return descriptor
+        } catch { close(descriptor); throw error }
+    }
+    static func openBoundDirectory(_ directory: URL, under anchor: URL, expected: GraphicalCacheDirectoryIdentity) throws -> Int32 {
+        let parent = try openParent(of: directory, under: anchor, create: false); defer { close(parent) }
+        let descriptor = openat(parent, directory.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw failure() }
+        var metadata = stat()
+        let birth = fstat(descriptor, &metadata) == 0 ? Int64(metadata.st_birthtimespec.tv_sec) &* 1_000_000_000 &+ Int64(metadata.st_birthtimespec.tv_nsec) : -1
+        guard metadata.st_mode & S_IFMT == S_IFDIR, metadata.st_flags & UInt32(SF_DATALESS) == 0,
+              Int64(metadata.st_dev) == expected.device, UInt64(metadata.st_ino) == expected.inode,
+              birth == expected.birthNanoseconds, metadata.st_uid == expected.owner else { close(descriptor); throw failure() }
+        return descriptor
+    }
     static func createDirectory(_ directory: URL, under anchor: URL) throws {
         let descriptor = try openDirectory(directory, under: anchor, create: true)
         close(descriptor)
@@ -78,9 +106,14 @@ enum GraphicalCacheFiles {
         guard unlinkat(parent, name, AT_REMOVEDIR) == 0 else { throw failure() }
     }
     private static func removeContents(_ descriptor: Int32, device: dev_t, depth: Int, count: inout Int, cancellation: CancellationFlag) throws {
-        guard depth <= 80, let stream = fdopendir(dup(descriptor)) else { throw failure() }
+        var root = stat()
+        guard depth <= 80, fstat(descriptor, &root) == 0, root.st_dev == device,
+              root.st_mode & S_IFMT == S_IFDIR, root.st_flags & UInt32(SF_DATALESS) == 0,
+              let stream = fdopendir(dup(descriptor)) else { throw failure() }
         defer { closedir(stream) }
-        while let entry = readdir(stream) {
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else { guard errno == 0 else { throw failure() }; break }
             guard !cancellation.isCancelled else { throw CacheSSDError.message("Liberação cancelada; a cópia no SSD e a recuperação foram preservadas.") }
             var tuple = entry.pointee.d_name
             let name = withUnsafeBytes(of: &tuple) { bytes in String(cString: bytes.baseAddress!.assumingMemoryBound(to: CChar.self)) }

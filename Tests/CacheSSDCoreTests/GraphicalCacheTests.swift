@@ -291,6 +291,63 @@ final class GraphicalCacheTests: XCTestCase {
         let restored = try FileIdentity(model.sourceURL)
         XCTAssertEqual(restored.device, identity.device); XCTAssertEqual(restored.inode, identity.inode)
     }
+    func testRecoveryAfterLocalRestoreSwapRemovesOnlyItsHeldLink() throws {
+        try seed(); let worker = engine(), model = candidate()
+        _ = try worker.transfer(candidate: model, volume: volume)
+        let record = try XCTUnwrap(try worker.registrations().first)
+        let quarantine = try XCTUnwrap(record.sourceQuarantine)
+        let identity = try FileIdentity(quarantine), operation = UUID()
+        var journal = GraphicalCacheJournal(schemaVersion: 1, id: operation, candidateID: model.id,
+            sourceURL: model.sourceURL, volumeUUID: volume.uuid, relativeDestination: record.relativeDestination,
+            sourceIdentity: identity, sourceDigest: record.sourceDigest, sourceQuarantine: quarantine, stagingURL: nil,
+            phase: .restoring, detail: "Generated hard-crash boundary", registration: record, startedAt: Date(), updatedAt: Date())
+        journal.operation = "restore"; journal.publicationIdentity = identity; journal.heldLinkName = quarantine.lastPathComponent
+        let parent = try GraphicalCacheFiles.openParent(of: model.sourceURL, under: home, create: false); defer { close(parent) }
+        XCTAssertEqual(renameatx_np(parent, quarantine.lastPathComponent, parent, model.sourceURL.lastPathComponent, UInt32(RENAME_SWAP)), 0)
+        try store.writeDurably(journal, name: "graphical-operation-" + operation.uuidString + ".json")
+        available = false
+        XCTAssertEqual(try worker.recover(operationID: operation).state, .none)
+        XCTAssertTrue(try worker.registrations().isEmpty)
+        var missing = stat(); XCTAssertEqual(lstat(quarantine.path, &missing), -1); XCTAssertEqual(errno, ENOENT)
+        XCTAssertEqual(try String(contentsOf: model.sourceURL.appendingPathComponent("Default/Cache/Cache_Data/generated-A")), "generated content")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: URL(fileURLWithPath: record.linkTarget).appendingPathComponent("Default/Cache/Cache_Data/generated-A").path))
+    }
+    func testFutureMetadataPolicyPreservesJournalAndBlocksRegistry() throws {
+        try seed(); let worker = engine(), model = candidate()
+        _ = try worker.transfer(candidate: model, volume: volume)
+        let record = try XCTUnwrap(try worker.registrations().first)
+        let journalName = "graphical-operation-" + record.id.uuidString + ".json"
+        var journal = try store.read(GraphicalCacheJournal.self, name: journalName)
+        journal.phase = .completed
+        journal.metadataVerification = GraphicalCacheVerificationProof(policyVersion: 99, verifiedEntries: 1, quarantine: [])
+        try store.writeDurably(journal, name: journalName)
+        let before = try Data(contentsOf: store.base.appendingPathComponent(journalName))
+        XCTAssertTrue(journal.isUnsupported); XCTAssertTrue(worker.hasUnsafeRecoveryRecords())
+        XCTAssertTrue(worker.protectedPaths().contains(model.sourceURL))
+        XCTAssertTrue(worker.protectedPaths().contains(try XCTUnwrap(record.sourceQuarantine)))
+        XCTAssertThrowsError(try worker.recover(operationID: record.id))
+        XCTAssertEqual(try Data(contentsOf: store.base.appendingPathComponent(journalName)), before)
+        let registryURL = store.base.appendingPathComponent("graphical-caches.json")
+        var registry = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: registryURL)) as? [String: Any])
+        var active = try XCTUnwrap(registry["active"] as? [String: Any])
+        var entry = try XCTUnwrap(active[model.id] as? [String: Any])
+        entry["metadataVerification"] = ["policyVersion": 99, "verifiedEntries": 1, "quarantine": []]
+        active[model.id] = entry; registry["active"] = active
+        let future = try JSONSerialization.data(withJSONObject: registry, options: [.sortedKeys])
+        try future.write(to: registryURL)
+        XCTAssertThrowsError(try worker.registrations())
+        XCTAssertTrue(worker.protectedPaths().contains(URL(fileURLWithPath: record.linkTarget)))
+        XCTAssertTrue(worker.protectedPaths().contains(try XCTUnwrap(record.sourceQuarantine)))
+        XCTAssertEqual(try Data(contentsOf: registryURL), future)
+    }
+    func testUntrustedBundleCannotQualifyByCopyingChromeMetadata() throws {
+        let bundle = root.appendingPathComponent("Google Chrome.app")
+        let contents = bundle.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let metadata: [String: Any] = ["CFBundleIdentifier": GraphicalCacheCatalog.chromeBundleID, "CFBundleShortVersionString": "157.0.8103.39"]
+        try PropertyListSerialization.data(fromPropertyList: metadata, format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
+        XCTAssertFalse(GraphicalCacheCatalog.chromeSignatureIsQualified(bundle))
+    }
     func testCancelledFingerprintAndRemovalPreserveData() throws {
         try seed(); let token = CancellationFlag(); token.cancel()
         XCTAssertThrowsError(try GraphicalCacheActivity.fingerprint(candidate().sourceURL, cancellation: token))
@@ -298,5 +355,48 @@ final class GraphicalCacheTests: XCTestCase {
         let parent = try GraphicalCacheFiles.openParent(of: source, under: home, create: false); defer { close(parent) }
         XCTAssertThrowsError(try GraphicalCacheFiles.removeDirectory(source.lastPathComponent, parent: parent, expectedIdentity: identity, cancellation: token))
         XCTAssertTrue(FileManager.default.fileExists(atPath: source.appendingPathComponent("Default/Cache/Cache_Data/generated-A").path))
+    }
+    func testVerifiedCacheRenameRequiresExplicitRetargetBeforeClaimingSSDUse() throws {
+        try seed(); let worker = engine(observer: simulatedObserver), model = candidate()
+        _ = try worker.transfer(candidate: model, volume: volume)
+        let record = try XCTUnwrap(try worker.registrations().first)
+        try write(URL(fileURLWithPath: record.linkTarget).appendingPathComponent("new-B"))
+        XCTAssertEqual(try worker.verifyUsage(candidate: model).state, .ssdVerified)
+        let renamed = root.appendingPathComponent("Renamed Volume")
+        try FileManager.default.moveItem(at: disk, to: renamed)
+        volume = VolumeInfo(uuid: volume.uuid, name: "Renamed Volume", path: renamed.path, totalBytes: volume.totalBytes, freeBytes: volume.freeBytes, isInternal: false, isWritable: true)
+        let status = worker.status(candidate: model)
+        XCTAssertEqual(status.state, .localTemporary)
+        XCTAssertTrue(status.detail.contains("retomada"))
+    }
+    func testUnknownParentLinkIsNotNormalizedIntoAnEligibleCache() throws {
+        let documents = home.appendingPathComponent("Documents")
+        try write(documents.appendingPathComponent("Chrome/private-project"), "preserve non-cache data")
+        let parent = home.appendingPathComponent("Library/Caches")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: parent.appendingPathComponent("Google"), withDestinationURL: documents)
+        XCTAssertThrowsError(try engine().transfer(candidate: candidate(), volume: volume))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: disk.path).isEmpty)
+        XCTAssertEqual(try String(contentsOf: documents.appendingPathComponent("Chrome/private-project")), "preserve non-cache data")
+    }
+    func testSystemTempAliasAndMissingDirectoryHintRemainScoped() throws {
+        let physical = Paths.physicalURL(FileManager.default.temporaryDirectory).appendingPathComponent("DiskWing-gui-alias-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: physical, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: physical) }
+        let aliasPath = physical.path.hasPrefix("/private/var/") ? String(physical.path.dropFirst("/private".count)) : physical.path
+        let alias = URL(fileURLWithPath: aliasPath, isDirectory: true)
+        let localHome = alias.appendingPathComponent("home", isDirectory: true).standardizedFileURL
+        let localDisk = alias.appendingPathComponent("SSD", isDirectory: true)
+        for path in [localHome, localDisk] { try FileManager.default.createDirectory(at: path, withIntermediateDirectories: false) }
+        let localStore = Store(base: alias.appendingPathComponent("support"))
+        let localVolume = VolumeInfo(uuid: "GENERATED-ALIAS", name: "Generated", path: localDisk.path, totalBytes: 10_000_000_000, freeBytes: 9_000_000_000, isInternal: false, isWritable: true)
+        let model = GraphicalCacheCandidate(id: GraphicalCacheCatalog.chromeCacheID, applicationID: GraphicalCacheCatalog.chromeBundleID,
+            applicationName: "Generated Chrome", applicationVersion: "simulated", applicationURL: nil,
+            sourceURL: URL(fileURLWithPath: localHome.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath).path, isDirectory: true),
+            scopeLabel: "Generated missing cache", canTransfer: true, isSimulated: true)
+        let worker = GraphicalCacheMigrationEngine(store: localStore, home: localHome, volumeProvider: { _ in localVolume },
+            busyCheck: { _, _ in [] }, applicationRunning: { _ in false }, allowSimulatedCandidates: true, permittedRoot: alias)
+        XCTAssertEqual(try worker.transfer(candidate: model, volume: localVolume).state, .configuredNeedsReopen)
+        XCTAssertEqual(worker.status(candidate: model).state, .configuredNeedsReopen)
     }
 }

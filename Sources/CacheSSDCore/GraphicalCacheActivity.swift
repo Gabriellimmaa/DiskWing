@@ -16,18 +16,24 @@ public enum GraphicalCacheActivity {
         var complete = true
         guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in complete = false; return false }) else { throw failure() }
         var combined = [UInt8](repeating: 0, count: 32), count = 0
-        while let item = enumerator.nextObject() as? URL {
-            if count % 128 == 0, cancellation.isCancelled { throw CacheSSDError.message("Operação cancelada; origem preservada.") }
-            count += 1; guard count <= 1_000_000 else { throw failure() }
-            let relative = String(item.path.dropFirst(root.path.count + 1))
-            guard relative.split(separator: "/").count <= 80 else { throw failure() }
-            var metadata = stat()
-            guard lstat(item.path, &metadata) == 0, metadata.st_dev == rootInfo.st_dev,
-                  metadata.st_flags & UInt32(SF_DATALESS) == 0,
-                  metadata.st_mode & S_IFMT == S_IFREG || metadata.st_mode & S_IFMT == S_IFDIR else { throw failure() }
-            let key = "\(relative)\0\(metadata.st_ino)\0\(metadata.st_size)\0\(metadata.st_mtimespec.tv_sec).\(metadata.st_mtimespec.tv_nsec)"
-            let digest = Array(SHA256.hash(data: Data(key.utf8)))
-            for index in combined.indices { combined[index] ^= digest[index] }
+        var finished = false
+        while !finished {
+            try autoreleasepool {
+                for _ in 0..<128 {
+                    guard let item = enumerator.nextObject() as? URL else { finished = true; break }
+                    if count % 128 == 0, cancellation.isCancelled { throw CacheSSDError.message("Operação cancelada; origem preservada.") }
+                    count += 1; guard count <= 1_000_000 else { throw failure() }
+                    let relative = String(item.path.dropFirst(root.path.count + 1))
+                    guard relative.split(separator: "/").count <= 80 else { throw failure() }
+                    var metadata = stat()
+                    guard lstat(item.path, &metadata) == 0, metadata.st_dev == rootInfo.st_dev,
+                          metadata.st_flags & UInt32(SF_DATALESS) == 0,
+                          metadata.st_mode & S_IFMT == S_IFREG || metadata.st_mode & S_IFMT == S_IFDIR else { throw failure() }
+                    let key = "\(relative)\0\(metadata.st_ino)\0\(metadata.st_size)\0\(metadata.st_mtimespec.tv_sec).\(metadata.st_mtimespec.tv_nsec)"
+                    let digest = Array(SHA256.hash(data: Data(key.utf8)))
+                    for index in combined.indices { combined[index] ^= digest[index] }
+                }
+            }
         }
         guard complete else { throw failure() }
         return String(count) + ":" + combined.map { String(format: "%02x", $0) }.joined()
@@ -40,39 +46,62 @@ public enum GraphicalCacheActivity {
     static func observe(_ candidate: GraphicalCacheCandidate, _ destination: URL, _ baseline: String,
                         cancellation: CancellationFlag = CancellationFlag()) throws -> GraphicalCacheUsageEvidence? {
         guard candidate.id == GraphicalCacheCatalog.chromeCacheID, let application = candidate.applicationURL,
-              let version = candidate.applicationVersion,
-              let current = try? fingerprint(destination, cancellation: cancellation), current != baseline else { return nil }
+              let version = candidate.applicationVersion else { return nil }
         let applicationPath = application.resolvingSymlinksInPath().path + "/"
-        let processes = try CommandRunner.run(URL(fileURLWithPath: "/bin/ps"), ["-ww", "-axo", "pid=,comm="], timeout: 10, maxOutputBytes: 8_388_608)
-        guard processes.status == 0, !processes.truncated else { return nil }
-        var selected = Set<Int>()
-        for line in processes.output.split(separator: "\n") {
-            let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            guard parts.count == 2, let pid = Int(parts[0]), pid > 0, pid != getpid(), String(parts[1]).hasPrefix(applicationPath) else { continue }
-            selected.insert(pid)
+        let deadline = DispatchTime.now().uptimeNanoseconds + 8_000_000_000
+        var readers = [Int: GraphicalProcessIdentity](), writers = [Int: GraphicalProcessIdentity]()
+        var selected = Set<Int>(), nextRefresh: UInt64 = 0
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            guard !cancellation.isCancelled else { throw CacheSSDError.message("Operação cancelada; origem preservada.") }
+            if DispatchTime.now().uptimeNanoseconds >= nextRefresh {
+                let processes = try CommandRunner.run(URL(fileURLWithPath: "/bin/ps"), ["-ww", "-axo", "pid=,comm="], timeout: 3, maxOutputBytes: 8_388_608)
+                guard processes.status == 0, !processes.truncated else { return nil }
+                for line in processes.output.split(separator: "\n") {
+                    let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                    if parts.count == 2, let pid = Int(parts[0]), pid > 0, pid != getpid(), String(parts[1]).hasPrefix(applicationPath) { selected.insert(pid) }
+                }
+                for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier == candidate.applicationID && !app.isTerminated {
+                    if app.bundleURL?.resolvingSymlinksInPath().path == application.resolvingSymlinksInPath().path { selected.insert(Int(app.processIdentifier)) }
+                }
+                nextRefresh = DispatchTime.now().uptimeNanoseconds + 500_000_000
+            }
+            let sample = try GraphicalProcessFiles.snapshot(pids: selected, destination: destination, managedSource: candidate.sourceURL, cancellation: cancellation)
+            for file in sample.files {
+                if file.readable { readers[file.process.pid] = file.process }
+                if file.writable { writers[file.process.pid] = file.process }
+            }
+            if !readers.isEmpty && !writers.isEmpty { break }
+            Thread.sleep(forTimeInterval: 0.01)
         }
-        for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier == candidate.applicationID && !app.isTerminated {
-            guard app.bundleURL?.resolvingSymlinksInPath().path == application.resolvingSymlinksInPath().path,
-                  app.executableURL?.resolvingSymlinksInPath().path.hasPrefix(applicationPath) == true else { continue }
-            selected.insert(Int(app.processIdentifier))
+        func valid(_ entry: (key: Int, value: GraphicalProcessIdentity)) -> Bool {
+            GraphicalProcessFiles.isCurrent(entry.value) && signedVersion(pid: entry.key) == version &&
+            belongsToApplication(pid: entry.key, path: applicationPath) && GraphicalProcessFiles.isCurrent(entry.value)
         }
-        guard !selected.isEmpty else { return nil }
-        let result = try CommandRunner.run(URL(fileURLWithPath: "/usr/sbin/lsof"), ["-n", "-P", "-a", "-p", selected.sorted().map(String.init).joined(separator: ","), "-Fpcfatn"], timeout: 20, maxOutputBytes: 8_388_608)
-        guard result.status == 0 || result.status == 1, !result.truncated else { return nil }
-        let observed = accesses(result.output, destination: destination, permittedPIDs: selected)
-        guard observed.read, observed.write else { return nil }
-        guard !cancellation.isCancelled else { throw CacheSSDError.message("Operação cancelada; origem preservada.") }
-        let verifiedPIDs = Set(observed.pids.filter { signedVersion(pid: $0) == version })
-        let verified = accesses(result.output, destination: destination, permittedPIDs: verifiedPIDs)
-        guard verified.read, verified.write else { return nil }
-        return GraphicalCacheUsageEvidence(applicationVersion: version, processIDs: verified.pids.sorted(),
-                                            observedReadAccess: true, observedWriteAccess: true, metadataFingerprint: current)
+        let validReaders = Set(readers.filter(valid).keys)
+        let validWriters = Set(writers.filter(valid).keys)
+        guard !validReaders.isEmpty, !validWriters.isEmpty,
+              let current = try? fingerprint(destination, cancellation: cancellation), current != baseline else {
+            if ProcessInfo.processInfo.environment["DISKWING_RUN_GRAPHICAL_NATIVE_TESTS"] == "1" { print("Generated process observation: readers=\(readers.count), writers=\(writers.count), qualifiedReaders=\(validReaders.count), qualifiedWriters=\(validWriters.count)") }
+            return nil
+        }
+        return GraphicalCacheUsageEvidence(applicationVersion: version, processIDs: validReaders.union(validWriters).sorted(),
+            observedReadAccess: true, observedWriteAccess: true, metadataFingerprint: current)
+    }
+    private static func belongsToApplication(pid: Int, path: String) -> Bool {
+        var code: SecCode?, staticCode: SecStaticCode?, url: CFURL?
+        guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid as String: NSNumber(value: pid)] as CFDictionary, SecCSFlags(rawValue: 0), &code) == errSecSuccess,
+              let code, SecCodeCopyStaticCode(code, SecCSFlags(rawValue: 0), &staticCode) == errSecSuccess,
+              let staticCode, SecCodeCopyPath(staticCode, SecCSFlags(rawValue: 0), &url) == errSecSuccess,
+              let url else { return false }
+        let actual = (url as URL).resolvingSymlinksInPath().path
+        return actual == String(path.dropLast()) || actual.hasPrefix(path)
     }
     private static func signedVersion(pid: Int) -> String? {
         var code: SecCode?
         let attributes = [kSecGuestAttributePid as String: NSNumber(value: pid)] as CFDictionary
         guard SecCodeCopyGuestWithAttributes(nil, attributes, SecCSFlags(rawValue: 0), &code) == errSecSuccess,
-              let code, SecCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), nil) == errSecSuccess else { return nil }
+              let code, let requirement = GraphicalCacheCatalog.chromeProcessRequirement(),
+              SecCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), requirement) == errSecSuccess else { return nil }
         var staticCode: SecStaticCode?
         guard SecCodeCopyStaticCode(code, SecCSFlags(rawValue: 0), &staticCode) == errSecSuccess, let staticCode else { return nil }
         var information: CFDictionary?
@@ -81,11 +110,13 @@ public enum GraphicalCacheActivity {
         return plist["CFBundleShortVersionString"] as? String
     }
 
-    static func accesses(_ output: String, destination: URL, permittedPIDs: Set<Int>) -> (read: Bool, write: Bool, pids: Set<Int>) {
+    static func accesses(_ output: String, destination: URL, permittedPIDs: Set<Int>, source: URL? = nil) -> (read: Bool, write: Bool, pids: Set<Int>) {
         var pid = 0, access = "", type = "", name = "", read = false, write = false, seen = Set<Int>()
         let root = destination.standardizedFileURL.path + "/"
         func consume() {
-            guard permittedPIDs.contains(pid), type == "REG", name.hasPrefix(root),
+            let direct = name.hasPrefix(root)
+            let managedSpelling = source.map { name.hasPrefix($0.path + "/") && Paths.contains(Paths.physicalURL(URL(fileURLWithPath: name)), in: destination) } ?? false
+            guard permittedPIDs.contains(pid), type == "REG", direct || managedSpelling,
                   !name.hasSuffix(" (deleted)") else { return }
             if access == "r" || access == "u" { read = true; seen.insert(pid) }
             if access == "w" || access == "u" { write = true; seen.insert(pid) }

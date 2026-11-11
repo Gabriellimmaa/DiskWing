@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import Darwin
+import AppKit
 @testable import CacheSSDCore
 
 /// Opt-in headed Chrome, generated home/profile, ordinary cache derivation and
@@ -41,29 +42,48 @@ final class GraphicalChromeNativeTests: XCTestCase {
         let protectedBefore = try profileSnapshot(profile)
         XCTAssertGreaterThanOrEqual(protectedBefore.count, 3)
         XCTAssertTrue(FileManager.default.fileExists(atPath: model.sourceURL.appendingPathComponent("GeneratedQualification/Default/Cache/Cache_Data").path))
-        let prepared = try engine.transfer(candidate: model, volume: volume, releaseSource: true)
+        let prepared: CacheTransferItemResult
+        do { prepared = try engine.transfer(candidate: model, volume: volume, releaseSource: true) }
+        catch {
+            if let journal = try? engine.pendingTransfers().first, let staging = journal.stagingURL {
+                let sourceDigest = try? FileTree.digest(model.sourceURL), copiedDigest = try? FileTree.digest(staging)
+                print("Generated Chrome copy diagnostic: sourceStable=\(sourceDigest == journal.sourceDigest), copiedMatches=\(copiedDigest == journal.sourceDigest), identityStable=\((try? FileIdentity(model.sourceURL)) == journal.sourceIdentity)")
+                let original = try? FileTree.manifest(model.sourceURL), copied = try? FileTree.manifest(staging)
+                for item in original ?? [] {
+                    if let match = copied?.first(where: { $0.path == item.path }), item != match { print("Generated cache metadata difference: \(item.path) original=\(item.metadata) copied=\(match.metadata)"); break }
+                }
+            }
+            throw error
+        }
         XCTAssertEqual(prepared.state, .configuredNeedsReopen); XCTAssertFalse(prepared.sourceReleased)
         XCTAssertEqual(try profileSnapshot(profile), protectedBefore)
         let registration = try XCTUnwrap(try engine.registrations().first)
         let quarantine = try XCTUnwrap(registration.sourceQuarantine)
         let quarantineDigest = try FileTree.digest(quarantine)
+        let observationDone = expectation(description: "Real Chrome descriptor observation window")
+        var observation: Result<GraphicalCacheStatus, Error>?
+        DispatchQueue.global(qos: .userInitiated).async {
+            observation = Result { try engine.verifyUsage(candidate: model) }
+            observationDone.fulfill()
+        }
+        Thread.sleep(forTimeInterval: 0.25)
         _ = try harness.command("launch")
-        let reused = try harness.command("fetch", asset: "A")
+        _ = try harness.command("fetch", asset: "B")
+        let reused = try harness.command("hold-read", asset: "A")
         XCTAssertEqual(reused["requests"] as? Int, 1, "A new Chrome process must reuse the transferred HTTP response")
         XCTAssertEqual(reused["fromDiskCache"] as? Bool, true)
         let cookie = try harness.command("cookie")
         XCTAssertTrue(cookie["preserved"] as? Bool == true)
-        _ = try harness.command("fetch", asset: "B")
-        XCTAssertEqual(try FileTree.digest(quarantine), quarantineDigest, "Chrome must not read or update the held old cache path")
-        var verified: GraphicalCacheStatus?
-        for _ in 0..<8 {
-            let state = try engine.verifyUsage(candidate: model)
-            if state.state == .ssdVerified { verified = state; break }
-            Thread.sleep(forTimeInterval: 0.2)
+        if FileManager.default.fileExists(atPath: quarantine.path) {
+            XCTAssertEqual(try FileTree.digest(quarantine), quarantineDigest, "Chrome must not read or update the held old cache path")
         }
-        XCTAssertEqual(verified?.state, .ssdVerified, "Actual Chrome cache descriptors and writes are required; a touched file cannot stand in for use")
-        XCTAssertTrue(verified?.sourceReleased == true)
+        wait(for: [observationDone], timeout: 25)
+        let verified = try XCTUnwrap(observation).get()
+        XCTAssertEqual(verified.state, .ssdVerified, "Actual Chrome cache descriptors and writes are required; a touched file cannot stand in for use")
+        XCTAssertTrue(verified.sourceReleased)
         XCTAssertFalse(FileManager.default.fileExists(atPath: quarantine.path))
+        guard verified.state == .ssdVerified, verified.sourceReleased else { throw CacheSSDError.message("Native Chrome usage was not proved; original remains preserved") }
+        _ = try harness.command("release-read")
         _ = try harness.command("stop")
         _ = try harness.command("launch")
         let newReused = try harness.command("fetch", asset: "B")
@@ -93,14 +113,24 @@ final class GraphicalChromeNativeTests: XCTestCase {
         XCTAssertTrue(try harness.command("cookie")["preserved"] as? Bool == true)
         _ = try harness.command("stop")
         guard let output = ProcessInfo.processInfo.environment["DISKWING_GRAPHICAL_NATIVE_REPORT"] else { return }
+        guard testRun?.failureCount == 0 else { return }
         let report: [String: Any] = ["schemaVersion": 1, "candidateID": model.id, "applicationVersion": version,
             "cacheDirectoryOverrideUsed": false, "sandboxBypassUsed": false, "headedApplication": true,
+            "launchRoute": "NSWorkspace.OpenConfiguration createsNewApplicationInstance",
+            "operatingSystem": ProcessInfo.processInfo.operatingSystemVersionString, "architecture": "arm64", "filesystem": "apfs",
             "normalCacheResolution": "Chromium GetUserCacheDirectory: generated Library/Application Support descendant maps to generated Library/Caches",
             "originalCacheUnavailableAtNormalPath": true, "transferredResponseReusedWithoutNetwork": true,
-            "newResponsePersistedOnSSDAcrossRestart": true, "nativeReadWriteDescriptorsObserved": verified != nil,
-            "sourceReleasedAfterVerifiedUse": verified?.sourceReleased == true, "profileFilesUnchangedDuringTransfer": true,
+            "newResponsePersistedOnSSDAcrossRestart": true, "nativeReadWriteDescriptorsObserved": verified.state == .ssdVerified,
+            "sourceReleasedAfterVerifiedUse": verified.sourceReleased, "profileFilesUnchangedDuringTransfer": true,
             "generatedCookiePreserved": true, "absentSSDFallback": "temporary network/memory; no persistent local cache directory",
             "reconnectWithoutMerge": true, "restoreAndLocalReuse": true, "sameFilesystemFixture": true,
+            "qualifiedDistribution": "Apple Developer ID / Google LLC EQHXZ8M8AV; strict signature and exact version",
+            "metadataCopyPolicy": registration.metadataVerification?.policyVersion ?? 0,
+            "metadataVerifiedEntries": registration.metadataVerification?.verifiedEntries ?? 0,
+            "opaqueQuarantineProof": registration.metadataVerification?.quarantine.map { item -> [String: Any] in
+                ["sourceSHA256": item.sourceSHA256 ?? "absent", "resultSHA256": item.resultSHA256 ?? "absent",
+                 "referenceSHA256": item.referenceSHA256 ?? "absent", "objectType": item.objectType, "count": item.count]
+            } ?? [],
             "physicalDisconnectTested": false, "personalProfilesUsed": false, "date": ISO8601DateFormatter().string(from: Date())]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output), options: .withoutOverwriting)
     }
@@ -136,6 +166,21 @@ private final class ChromeFixtureHarness {
         let ready = try reply(); guard ready["ready"] as? Bool == true else { throw CacheSSDError.message("Generated Chrome probe did not start") }
     }
     func command(_ action: String, asset: String? = nil) throws -> [String: Any] {
+        if action == "launch" {
+            let configuration = try command("prepare-launch")
+            let options = NSWorkspace.OpenConfiguration()
+            options.createsNewApplicationInstance = true; options.activates = true
+            options.arguments = try XCTUnwrap(configuration["arguments"] as? [String])
+            options.environment = try XCTUnwrap(configuration["environment"] as? [String: String])
+            let completed = XCTestExpectation(description: "Launch generated Chrome bundle")
+            var launchError: Error?
+            NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Google Chrome.app"), configuration: options) { _, error in launchError = error; completed.fulfill() }
+            guard XCTWaiter.wait(for: [completed], timeout: 25) == .completed else { throw CacheSSDError.message("Generated Chrome LaunchServices timed out") }
+            if let launchError { throw launchError }
+            let connected = try command("connect")
+            chromeRunning = true
+            return connected
+        }
         var value = ["action": action]; if let asset { value["asset"] = asset }
         var bytes = try JSONSerialization.data(withJSONObject: value); bytes.append(10); try input.write(contentsOf: bytes)
         let response = try reply()
@@ -165,10 +210,11 @@ private final class ChromeFixtureHarness {
         chromeRunning = false
     }
     private static let python = #"""
-import base64,http.server,json,os,pathlib,socket,struct,subprocess,sys,threading,time,urllib.request,urllib.parse,uuid
+import base64,http.server,json,os,pathlib,signal,socket,struct,subprocess,sys,threading,time,urllib.request,urllib.parse,uuid
 root=pathlib.Path(sys.argv[1]);home=root/'home';profile=home/'Library/Application Support/Google/Chrome/GeneratedQualification';profile.mkdir(parents=True,exist_ok=True)
 (root/'tmp').mkdir(exist_ok=True);counts={};sealed=False
 tokens={name:('DISKWING-GENERATED-'+name+'-'+uuid.uuid4().hex+'\n')*8192 for name in ['A','B','C']}
+tokens['A']*=40
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
   global sealed
@@ -219,10 +265,12 @@ def launch():
  if portfile.exists():portfile.unlink()
  log=(root/'chrome-private.log').open('ab')
  args=['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','--user-data-dir='+str(profile),'--remote-debugging-port=0','--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-updater-scheduler','--disable-default-apps','--disable-sync','--metrics-recording-only','--password-store=basic','--use-mock-keychain',base+'/page']
- chrome=subprocess.Popen(args,env=env,stdout=log,stderr=log)
+ return {'arguments':args[1:],'environment':env}
+def connect():
+ global browser,page
+ portfile=profile/'DevToolsActivePort'
  for _ in range(200):
   if portfile.exists():break
-  if chrome.poll() is not None:raise RuntimeError('Chrome exited before debugging endpoint')
   time.sleep(.1)
  port,endpoint=portfile.read_text().splitlines();browser=WS('ws://127.0.0.1:'+port+endpoint)
  for _ in range(100):
@@ -248,6 +296,15 @@ def stop():
   try:chrome.wait(timeout=20)
   except subprocess.TimeoutExpired:chrome.terminate();chrome.wait(timeout=10)
   chrome=None
+ marker='--user-data-dir='+str(profile)
+ def owned_processes():
+  result=subprocess.run(['/bin/ps','-ww','-axo','pid=,command='],capture_output=True,text=True)
+  return [int(line.strip().split(None,1)[0]) for line in result.stdout.splitlines() if marker in line and '/Google Chrome.app/Contents/' in line]
+ deadline=time.time()+20
+ while owned_processes() and time.time()<deadline:time.sleep(.1)
+ for pid in owned_processes():
+  try:os.kill(pid,signal.SIGTERM)
+  except ProcessLookupError:pass
  time.sleep(.3)
  return {'running':False}
 def send(value):print(json.dumps(value),flush=True)
@@ -256,7 +313,8 @@ try:
  for line in sys.stdin:
   try:
    command=json.loads(line);action=command['action']
-   if action=='launch':result=launch()
+   if action=='prepare-launch':result=launch()
+   elif action=='connect':result=connect()
    elif action=='stop':result=stop()
    elif action=='seal-cookie':sealed=True;result={'sealed':True}
    elif action=='cookie':result={'preserved':'diskwing_generated=preserve' in (evaluate('document.cookie') or '')}
@@ -265,6 +323,12 @@ try:
     value=evaluate("fetch('"+url+"').then(r=>r.text()).then(t=>({length:t.length,valid:t.startsWith('DISKWING-GENERATED-"+name+"-')}))")
     if not value or not value.get('valid'):raise RuntimeError('Generated response bytes mismatch')
     time.sleep(.5);result={'length':value['length'],'requests':counts.get('/asset-'+name,0),'fromDiskCache':events.get(url,False)}
+   elif action=='hold-read':
+    page.call('Network.emulateNetworkConditions',{'offline':False,'latency':0,'downloadThroughput':4096,'uploadThroughput':1048576})
+    url=base+'/asset-'+command['asset'];value=evaluate("fetch('"+url+"').then(async r=>{window.generatedReader=r.body.getReader();const p=await window.generatedReader.read();return {length:p.value.length};})")
+    result={'length':value['length'],'requests':counts.get('/asset-'+command['asset'],0),'fromDiskCache':events.get(url,False)}
+   elif action=='release-read':
+    result={'released':evaluate("window.generatedReader.cancel().then(()=>true)")};page.call('Network.emulateNetworkConditions',{'offline':False,'latency':0,'downloadThroughput':-1,'uploadThroughput':-1})
    elif action=='quit':stop();send({'closed':True});break
    else:raise RuntimeError('Unknown generated command')
    send(result)

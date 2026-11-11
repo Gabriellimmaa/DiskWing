@@ -254,6 +254,11 @@ public enum FileTree {
 
     /// Copy-relevant metadata; access times and filesystem compression are not content.
     public static func metadataDigest(_ url: URL) throws -> String {
+        try metadataDigest(url, excludingQuarantine: false)
+    }
+    // Provider-only comparison seam. The public digest and all historical
+    // operation digests retain the exact same quarantine-inclusive bytes.
+    static func metadataDigest(_ url: URL, excludingQuarantine: Bool) throws -> String {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { throw CacheSSDError.message(L10n.text("Não foi possível conferir os metadados.")) }
         guard info.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message(L10n.text("O arquivo não está disponível localmente.")) }
@@ -265,6 +270,7 @@ public enum FileTree {
             guard listxattr(url.path, &names, length, XATTR_NOFOLLOW) == length else { throw CacheSSDError.message(L10n.text("Os atributos mudaram durante a leitura.")) }
             let strings = names.split(separator: 0).map { String(decoding: $0.map { UInt8(bitPattern: $0) }, as: UTF8.self) }.sorted()
             for name in strings where name != "com.apple.decmpfs" && name != "com.apple.lastuseddate#PS" {
+                if excludingQuarantine && name == "com.apple.quarantine" { continue }
                 let count = getxattr(url.path, name, nil, 0, 0, XATTR_NOFOLLOW)
                 guard count >= 0, count <= 16_777_216 else { throw CacheSSDError.message(L10n.text("O atributo está indisponível ou excede o limite desta versão. A origem foi preservada.")) }
                 var data = [UInt8](repeating: 0, count: count)
@@ -278,6 +284,32 @@ public enum FileTree {
             if let text = acl_to_text(acl, &count) { components.append(String(cString: text)); acl_free(text) }
             else { throw CacheSSDError.message(L10n.text("Não foi possível conferir as permissões estendidas.")) }
         } else if errno != ENOENT && errno != ENOTSUP { throw CacheSSDError.message(L10n.text("Não foi possível ler as permissões estendidas.")) }
+        return SHA256.hash(data: Data(components.joined(separator: "|").utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    static func metadataDigest(descriptor: Int32, excludingQuarantine: Bool) throws -> String {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_flags & UInt32(SF_DATALESS) == 0 else { throw CacheSSDError.message("Não foi possível conferir os metadados.") }
+        var components = [String(info.st_mode & 0o777), "\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)"]
+        let length = flistxattr(descriptor, nil, 0, 0)
+        guard length >= 0 else { throw CacheSSDError.message("Não foi possível ler atributos do arquivo.") }
+        if length > 0 {
+            var names = [CChar](repeating: 0, count: length)
+            guard flistxattr(descriptor, &names, length, 0) == length else { throw CacheSSDError.message("Os atributos mudaram durante a leitura.") }
+            let strings = names.split(separator: 0).map { String(decoding: $0.map { UInt8(bitPattern: $0) }, as: UTF8.self) }.sorted()
+            for name in strings where name != "com.apple.decmpfs" && name != "com.apple.lastuseddate#PS" && (!excludingQuarantine || name != "com.apple.quarantine") {
+                let count = fgetxattr(descriptor, name, nil, 0, 0, 0)
+                guard count >= 0, count <= 16_777_216 else { throw CacheSSDError.message("O atributo está indisponível ou excede o limite desta versão. A origem foi preservada.") }
+                var bytes = [UInt8](repeating: 0, count: max(1, count))
+                guard fgetxattr(descriptor, name, &bytes, count, 0, 0) == count else { throw CacheSSDError.message("Os atributos mudaram durante a leitura.") }
+                components.append(name + ":" + SHA256.hash(data: Data(bytes.prefix(count))).map { String(format: "%02x", $0) }.joined())
+            }
+        }
+        if let acl = acl_get_fd(descriptor) {
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            var count = ssize_t(0)
+            guard let text = acl_to_text(acl, &count) else { throw CacheSSDError.message("Não foi possível conferir as permissões estendidas.") }
+            components.append(String(cString: text)); acl_free(text)
+        } else if errno != ENOENT && errno != ENOTSUP { throw CacheSSDError.message("Não foi possível ler as permissões estendidas.") }
         return SHA256.hash(data: Data(components.joined(separator: "|").utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
