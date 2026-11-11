@@ -198,6 +198,41 @@ final class VolumeScanStorageTests: XCTestCase {
         }
         XCTAssertFalse(try index.execute("SELECT 1").isEmpty)
     }
+    func testVolumeScanCacheBudgetRestoresAfterSuccessCancellationErrorAndStorageFailure() throws {
+        enum GeneratedFailure: Error { case expected }
+        let selected = try location(), uuid = selected.storageRoot.volumeUUID
+        var available = true
+        let index = try selected.openIndex(volumeIdentifier: { _ in available ? uuid : "changed-uuid" })
+        defer { try? index.close() }
+        func cacheSize() throws -> Int64 {
+            ScanIndex.integer(try XCTUnwrap(index.execute("PRAGMA cache_size").first), "cache_size")
+        }
+        XCTAssertEqual(try cacheSize(), -4096)
+        for outcome in ["success", "cancelled", "error", "storage"] {
+            let flag = CancellationFlag()
+            do {
+                try index.withVolumeWorkChecks(cancellation: flag, allowed: { true }) {
+                    XCTAssertEqual(try cacheSize(), -65536)
+                    switch outcome {
+                    case "cancelled": flag.cancel(); try index.execute("SELECT 1")
+                    case "error": throw GeneratedFailure.expected
+                    case "storage": available = false; try index.checkVolumeWork()
+                    default: break
+                    }
+                }
+                XCTAssertEqual(outcome, "success")
+            } catch {
+                switch (outcome, error) {
+                case ("cancelled", VolumeScanStop.cancelled), ("storage", VolumeScanStop.storage), ("error", GeneratedFailure.expected): break
+                default: XCTFail("The generated outcome must preserve the original error")
+                }
+            }
+            available = true
+            XCTAssertEqual(try cacheSize(), -4096, "The connection-local budget must restore even when ordinary SQL was stopped")
+            XCTAssertEqual(ScanIndex.integer(try XCTUnwrap(index.execute("PRAGMA synchronous").first), "synchronous"), 2, "FULL durability must remain unchanged")
+            XCTAssertEqual(ScanIndex.integer(try XCTUnwrap(index.execute("PRAGMA wal_autocheckpoint").first), "wal_autocheckpoint"), 1000)
+        }
+    }
     func testInternalExistingLookupDoesNotCreateTheMissingStore() throws {
         let missing = root.appendingPathComponent("not-created/store")
         let selected = try IndexStoragePolicy.location(internalDirectory: missing, installationID: "generated", targetID: "test")

@@ -222,13 +222,29 @@ public final class ScanIndex: @unchecked Sendable {
         lock.lock()
         guard !closed else { lock.unlock(); throw CacheSSDError.message("O índice desta análise foi fechado.") }
         guard volumeSQLControl == nil else { lock.unlock(); throw CacheSSDError.message("Outra análise já está usando este índice.") }
+        // The volume scanner's B-trees outgrow the ordinary 4 MiB query cache.
+        // This is a connection-local memory budget, not a persistent pragma.
+        do { try execute("PRAGMA cache_size=-65536") }
+        catch { lock.unlock(); throw error }
         volumeSQLControl = VolumeSQLControl(cancellation: cancellation, allowed: { [weak self] in
             guard let self, self.storageIsAvailable() else { return false }
             return allowed()
         }, now: now)
         lock.unlock()
-        defer { lock.lock(); volumeSQLControl = nil; lock.unlock() }
+        defer {
+            lock.lock()
+            volumeSQLControl = nil
+            restoreQueryCache()
+            lock.unlock()
+        }
         return try body()
+    }
+    private func restoreQueryCache() {
+        guard !closed, let db else { return }
+        // Only this fixed, connection-local memory setting bypasses execute:
+        // a cancelled/failed storage proof must still release the scan budget.
+        // No user SQL, schema, durability, path or file setting is accepted here.
+        _ = sqlite3_exec(db, "PRAGMA cache_size=-4096", nil, nil, nil)
     }
     func checkVolumeWork() throws {
         lock.lock(); defer { lock.unlock() }
