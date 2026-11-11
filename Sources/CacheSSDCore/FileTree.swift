@@ -321,9 +321,9 @@ public enum FileTree {
         let resolved = immediate.resolvingSymlinksInPath()
         guard Paths.contains(immediate, in: root), Paths.contains(resolved, in: root), FileManager.default.fileExists(atPath: immediate.path), !target.hasPrefix("/") || tool == "bun" else { throw CacheSSDError.message(L10n.text("Este cache contém um link externo e não pode ser migrado por esta versão.")) }
         guard target.hasPrefix("/") else { return target }
-        let parent = link.deletingLastPathComponent().pathComponents, child = resolved.pathComponents
+        let parent = Paths.comparisonPath(link.deletingLastPathComponent()).split(separator: "/"), child = Paths.comparisonPath(resolved).split(separator: "/")
         var common = 0
         while common < min(parent.count, child.count), parent[common] == child[common] { common += 1 }
-        return (Array(repeating: "..", count: parent.count - common) + child.dropFirst(common)).joined(separator: "/")
+        return (Array(repeating: "..", count: parent.count - common) + child.dropFirst(common).map(String.init)).joined(separator: "/")
     }
 }

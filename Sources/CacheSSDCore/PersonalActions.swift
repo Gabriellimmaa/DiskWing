@@ -7,7 +7,7 @@ public enum PersonalActionPolicy {
     /// that the selected data is disposable; the UI still reviews the selection.
     public static func reasonPreventingTrash(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser, storeBase: URL? = nil) -> String? {
         let requestedHome = home
-        let item = url.standardizedFileURL, home = home.standardizedFileURL
+        let item = URL(fileURLWithPath: Paths.comparisonPath(url)), home = URL(fileURLWithPath: Paths.comparisonPath(home))
         // Directory hints on an absent URL differ across Foundation versions.
         // Inspect the actual supplied components, before standardization can
         // abbreviate a physical /private/var path to its /var symlink alias.
@@ -59,7 +59,7 @@ public enum PersonalActionPolicy {
     private static func trashPathsOverlap(_ lhs: URL, _ rhs: URL) -> Bool {
         // Conservatively protect aliases on the usual case-insensitive APFS
         // volume without granting extra access on case-sensitive volumes.
-        let a = lhs.standardizedFileURL.path.lowercased(), b = rhs.standardizedFileURL.path.lowercased()
+        let a = Paths.comparisonPath(lhs).lowercased(), b = Paths.comparisonPath(rhs).lowercased()
         return a == b || a.hasPrefix(b + "/") || b.hasPrefix(a + "/")
     }
 
