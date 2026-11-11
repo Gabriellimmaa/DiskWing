@@ -298,9 +298,13 @@ public final class ScanIndex: @unchecked Sendable {
         }
         if filesOnly { conditions.append("directory=0 AND link=0") }
         conditions.append("logical>=?"); values.append(.integer(max(0, minimumBytes)))
-        let condition = conditions.joined(separator: " AND "), count = try execute("SELECT COUNT(*) AS count FROM entries WHERE " + condition, values)
+        // A leading-wildcard global search must inspect searchable for every
+        // candidate. At a zero effective minimum, the size index adds random
+        // table lookups without filtering rows; scan the table sequentially.
+        let searchTable = parent == nil && !search.isEmpty && minimumBytes <= 0 ? "entries NOT INDEXED" : "entries"
+        let condition = conditions.joined(separator: " AND "), count = try execute("SELECT COUNT(*) AS count FROM " + searchTable + " WHERE " + condition, values)
         let safeOffset = max(0, offset), safeLimit = max(1, min(limit, 500))
-        let rows = try execute("SELECT * FROM entries WHERE " + condition + " ORDER BY " + (allocatedOrder ? "allocated" : "logical") + " DESC,name COLLATE NOCASE,path LIMIT ? OFFSET ?", values + [.integer(Int64(safeLimit)), .integer(Int64(safeOffset))])
+        let rows = try execute("SELECT * FROM " + searchTable + " WHERE " + condition + " ORDER BY " + (allocatedOrder ? "allocated" : "logical") + " DESC,name COLLATE NOCASE,path LIMIT ? OFFSET ?", values + [.integer(Int64(safeLimit)), .integer(Int64(safeOffset))])
         return IndexedPage(items: rows.map { Self.item($0, root: session.root) }, total: Int(count.first.map { Self.integer($0, "count") } ?? 0), offset: safeOffset, limit: safeLimit)
     }
     private static func item(_ row: [String: SQLValue], root: String, children: [ScanItem] = []) -> ScanItem {
