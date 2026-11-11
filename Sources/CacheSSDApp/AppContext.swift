@@ -91,7 +91,7 @@ final class SampleAvailability: @unchecked Sendable {
         try context.requireStorage()
         return context
     }
-    static func sampleFailure() -> Error { CacheSSDError.message(L10n.text("Não foi possível iniciar o modo de amostras. Escolha uma pasta existente, sem links e com espaço disponível.")) }
+    nonisolated static func sampleFailure() -> Error { CacheSSDError.message(L10n.text("Não foi possível iniciar o modo de amostras. Escolha uma pasta existente, sem links e com espaço disponível.")) }
     func allows(_ url: URL) -> Bool {
         guard let container else { return true }
         var rootInfo = stat()
@@ -145,11 +145,18 @@ final class SampleAvailability: @unchecked Sendable {
     }
     nonisolated private static func sampleVolumes(root: URL, home: URL, connected: Bool) -> [VolumeInfo] {
         let free = Volumes.free(at: root), total = free + 8_589_934_592
-        var values = [VolumeInfo(uuid: "DISKWING-SAMPLE-INTERNAL", name: "Mac de amostra", path: home.path, totalBytes: total, freeBytes: free, isInternal: true, isWritable: true)]
+        var values = [VolumeInfo(uuid: "DISKWING-SAMPLE-INTERNAL", name: "Mac de amostra", path: Paths.physicalURL(home).path, totalBytes: total, freeBytes: free, isInternal: true, isWritable: true)]
         let external = root.appendingPathComponent("sample-ssd")
         var info = stat()
         if connected && lstat(external.path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR { values.append(VolumeInfo(uuid: "DISKWING-SAMPLE-EXTERNAL", name: "SSD de amostra", path: external.path, totalBytes: total, freeBytes: free, isInternal: false, isWritable: true)) }
         return values
+    }
+    func scanVolumes() async -> [VolumeInfo] {
+        if isSamples { return volumes() }
+        return await Task.detached(priority: .userInitiated) {
+            let urls = (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? []) + [URL(fileURLWithPath: "/"), DataVolumePaths.dataRoot]
+            return Self.operationVolumes(urls: urls)
+        }.value
     }
     func volume(_ uuid: String) -> VolumeInfo? { volumes().first { $0.uuid == uuid } }
     func scanVolumeIdentifier() -> (URL) -> String {
@@ -162,6 +169,16 @@ final class SampleAvailability: @unchecked Sendable {
             }
         }
         return { (try? $0.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? "" }
+    }
+    func volumeIdentityProvider() -> (URL) -> String {
+        if let root = container, let availability = samples?.availability {
+            let external = root.appendingPathComponent("sample-ssd")
+            return { url in
+                if Paths.contains(url, in: external) { return availability.connected ? "DISKWING-SAMPLE-EXTERNAL" : "" }
+                return "DISKWING-SAMPLE-INTERNAL"
+            }
+        }
+        return IndexStoragePolicy.volumeIdentifier
     }
     func scopeAvailable(_ url: URL) -> Bool {
         // Permission/coverage errors belong to the scanner's partial result;
@@ -186,7 +203,7 @@ final class SampleAvailability: @unchecked Sendable {
         if isSamples { return Self.sampleAdapterStatus(tool) }
         return CacheAdapters.inspect(tool, home: home)
     }
-    nonisolated private static func sampleAdapterStatus(_ tool: CacheDescriptor) -> AdapterStatus {
+    nonisolated static func sampleAdapterStatus(_ tool: CacheDescriptor) -> AdapterStatus {
         let version = CacheAdapters.qualifiedVersions[tool.id]
         let qualified = version != nil
         return AdapterStatus(toolID: tool.id, adapterVersion: CacheAdapters.version, version: version, effectiveCachePath: tool.source.path,
@@ -210,11 +227,80 @@ final class SampleAvailability: @unchecked Sendable {
         } else { inspector = nil }
         return MigrationEngine(store: store, home: home, volumeProvider: provider, verifyNative: !isSamples, busyCheck: operationBusyCheck, adapterInspector: inspector)
     }
-    func personalActions() -> PersonalActions {
-        guard let root = container else { return PersonalActions(home: home, store: store) }
+    func operationVolumeProvider() -> (String) -> VolumeInfo? {
+        if let root = container, let availability = samples?.availability {
+            let home = home
+            return { uuid in
+                let matches = Self.sampleVolumes(root: root, home: home, connected: availability.connected).filter { $0.uuid == uuid }
+                return matches.count == 1 ? matches[0] : nil
+            }
+        }
+        return { uuid in
+            let matches = Self.operationVolumes().filter { $0.uuid.caseInsensitiveCompare(uuid) == .orderedSame }
+            return matches.count == 1 ? matches[0] : nil
+        }
+    }
+    nonisolated private static func operationVolumes(urls supplied: [URL]? = nil) -> [VolumeInfo] {
+        let urls = supplied ?? (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []) + [URL(fileURLWithPath: "/"), DataVolumePaths.dataRoot]
+        var seen = Set<String>()
+        return urls.compactMap { source in
+            let url = Paths.physicalURL(source)
+            guard let identity = try? FileIdentity(url), let values = try? url.resourceValues(forKeys: [.volumeUUIDStringKey, .volumeNameKey, .volumeIsInternalKey, .volumeIsReadOnlyKey, .volumeTotalCapacityKey]), let uuid = values.volumeUUIDString,
+                  seen.insert(uuid + ":" + String(identity.device) + ":" + String(identity.inode)).inserted else { return nil }
+            return VolumeInfo(uuid: uuid, name: values.volumeName ?? url.lastPathComponent, path: url.path, totalBytes: Int64(values.volumeTotalCapacity ?? 0), freeBytes: Volumes.free(at: url), isInternal: values.volumeIsInternal ?? false, isWritable: !(values.volumeIsReadOnly ?? true) && FileManager.default.isWritableFile(atPath: url.path))
+        }
+    }
+    func protectedOperationRoots() -> [URL] {
+        let installation = store.settings().installationID
+        return [store.base, Bundle.main.bundleURL] + volumes().map { URL(fileURLWithPath: $0.path).appendingPathComponent("MacCaches/CacheSSD/" + installation) } + graphicalEngine().protectedPaths()
+    }
+    func graphicalCandidates() async -> [GraphicalCacheCandidate] {
+        let candidateHome = home, sampleMode = isSamples
+        return await Task.detached(priority: .userInitiated) {
+            Self.discoverGraphicalCandidates(home: candidateHome, sampleMode: sampleMode)
+        }.value
+    }
+    nonisolated private static func discoverGraphicalCandidates(home: URL, sampleMode: Bool) -> [GraphicalCacheCandidate] {
+        if sampleMode {
+            let source = home.appendingPathComponent(GraphicalCacheCatalog.chromeRelativePath), size = FileTree.measure(source)
+            return [GraphicalCacheCandidate(id: GraphicalCacheCatalog.chromeCacheID, applicationID: GraphicalCacheCatalog.chromeBundleID, applicationName: "Google Chrome", applicationVersion: "sample", applicationURL: nil, sourceURL: source, scopeLabel: "Cache gerado do Chrome; perfis reais não são usados.", logicalBytes: size.logical, allocatedBytes: size.allocated, measurementComplete: size.isComplete || size.missing, isMissing: size.missing, canTransfer: true, isSimulated: true)] +
+            [("cursor.http-cache", "Cursor"), ("xcode.derived-data", "Xcode"), ("safari.http-cache", "Safari")].map { id, name in
+                GraphicalCacheCandidate(id: id, applicationID: id, applicationName: name, applicationVersion: "sample", applicationURL: nil, sourceURL: home.appendingPathComponent("Library/Caches/" + id), scopeLabel: "Aplicativo gerado para demonstrar exceções.", canTransfer: false, blockedReason: "Esta integração ainda não foi qualificada.", isSimulated: true)
+            }
+        }
+        return GraphicalCacheCatalog.candidates(home: home, applications: [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Applications"), home.appendingPathComponent("Applications")])
+    }
+    func requestGracefulTermination(applications: [URL]) -> [String] {
+        if let samples { samples.record("close-applications"); return [] }
+        let paths = Set(applications.map { Paths.physicalURL($0).path })
+        return NSWorkspace.shared.runningApplications.filter { app in
+            app.bundleURL.map { paths.contains(Paths.physicalURL($0).path) } == true
+        }.compactMap { app in
+            app.terminate() ? nil : (app.localizedName ?? app.bundleIdentifier ?? "")
+        }
+    }
+    func graphicalEngine() -> GraphicalCacheMigrationEngine {
+        let observer: GraphicalCacheUsageObserver?
+        if let root = container, let identity = containerIdentity {
+            observer = { candidate, destination, _ in
+                let now = try FileIdentity(root)
+                guard candidate.isSimulated, now.device == identity.device, now.inode == identity.inode,
+                      Paths.contains(destination, in: root), Paths.physicalURL(destination).path == destination.path else { throw Self.sampleFailure() }
+                let marker = destination.appendingPathComponent("sample-observed-write-" + UUID().uuidString)
+                try Data("Generated sample cache write; no real application profile.".utf8).write(to: marker, options: .withoutOverwriting)
+                return GraphicalCacheUsageEvidence(applicationVersion: candidate.applicationVersion ?? "sample", processIDs: [Int(getpid())], observedReadAccess: true, observedWriteAccess: true, metadataFingerprint: try GraphicalCacheActivity.fingerprint(destination), isSimulated: true)
+            }
+        } else { observer = nil }
+        return GraphicalCacheMigrationEngine(store: store, home: home, volumeProvider: operationVolumeProvider(), busyCheck: operationBusyCheck,
+                                             applicationRunning: isSamples ? { _ in false } : nil, usageObserver: observer,
+                                             allowSimulatedCandidates: isSamples, permittedRoot: container)
+    }
+    func personalActions(scope: VolumeTrashScope? = nil) -> PersonalActions {
+        let provider = operationVolumeProvider(), protected = protectedOperationRoots()
+        guard let root = container else { return PersonalActions(home: home, store: store, volumeProvider: provider, protectedRoots: protected) }
         let identity = containerIdentity
         return PersonalActions(home: home, store: store, trashHandler: { source in
-            let path = root.appendingPathComponent("sample-trash/\(UUID().uuidString)/\(source.lastPathComponent)")
+            let path = scope.map { URL(fileURLWithPath: $0.originalMountPath).appendingPathComponent(".Trashes/\(getuid())/\(UUID().uuidString)/\(source.lastPathComponent)") } ?? root.appendingPathComponent("sample-trash/\(UUID().uuidString)/\(source.lastPathComponent)")
             func validate() throws {
                 var info = stat()
                 guard let identity, lstat(root.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
@@ -237,9 +323,9 @@ final class SampleAvailability: @unchecked Sendable {
             try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
             try validate()
             try FileManager.default.moveItem(at: source, to: path); return path
-        }, busyCheck: operationBusyCheck)
+        }, busyCheck: operationBusyCheck, volumeProvider: provider, protectedRoots: protected, finderTrashAvailable: { _ in true })
     }
-    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: container, busyCheck: operationBusyCheck) }
+    func recovery() -> RecoveryManager { RecoveryManager(store: store, home: home, permittedRoot: container, busyCheck: operationBusyCheck, volumeProvider: operationVolumeProvider(), protectedRoots: protectedOperationRoots(), finderTrashAvailable: isSamples ? { _ in true } : VolumeTrashScope.qualifiedFinderTrash) }
     func reveal(_ urls: [URL]) throws { try require(urls); if let samples { samples.record("reveal"); return }; NSWorkspace.shared.activateFileViewerSelecting(urls) }
     func open(_ url: URL) throws { try require([url]); if let samples { samples.record("open"); return }; NSWorkspace.shared.open(url) }
     func openPrivacy() { if let samples { samples.record("privacy"); return }; NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!) }

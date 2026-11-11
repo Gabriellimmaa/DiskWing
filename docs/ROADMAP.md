@@ -2,7 +2,7 @@
 
 Approved scope: complete disk exploration **and** reviewed cache/SSD management in the first public version. Apple Silicon first, macOS 14+, Portuguese and English, local data, explicit review, preserved browser/project/SDK data. Historical plans remain in plans/.
 
-The maintainer's [2026-11-10 expansion](plans/SCOPE-EXPANSION-2026-11-10.md) adds explicit manual Trash for eligible application caches and additional home content, separate from the stricter Move policy; internal data-volume discovery; future-write setup with an empty/absent cache; and additional per-tool cache adapters. These requirements are implemented in [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22) and qualified in local build 8; the normal installed build 6 remains preserved. See [expanded evidence](validation/EXPANDED-FLOWS-2026-11-10.md). Graphical applications require their own supported mechanisms and evidence rather than inheriting terminal coverage.
+The maintainer's [2026-11-10 expansion](plans/SCOPE-EXPANSION-2026-11-10.md) adds explicit manual Trash for eligible application caches and additional home content, separate from the stricter Move policy; internal data-volume discovery; future-write setup with an empty/absent cache; and additional per-tool cache adapters. These requirements are implemented in [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22) and qualified in local build 8; the installed build 8 and its build 6/earlier backups remain preserved. See [expanded evidence](validation/EXPANDED-FLOWS-2026-11-10.md). Graphical applications require their own supported mechanisms and evidence rather than inheriting terminal coverage.
 
 The machine-readable source of requirement IDs, issues, acceptance criteria, validation state and external dependencies is [TRACEABILITY.json](TRACEABILITY.json). Implementation, isolated tests, native checks, cross-machine validation and beta are different states. Do not close a milestone solely because code exists.
 
@@ -10,9 +10,9 @@ The machine-readable source of requirement IDs, issues, acceptance criteria, val
 |---|---|---|
 | [M0](https://github.com/Gabriellimmaa/DiskWing/issues/1) | Traceability | Every requirement maps to an issue, acceptance criteria, tests and evidence |
 | [M1](https://github.com/Gabriellimmaa/DiskWing/issues/2) | Safe operations | Fail-closed reads, shared cross-process lease, durable checkpoints and recoverable injected failures |
-| [M2](https://github.com/Gabriellimmaa/DiskWing/issues/3) | Complete scoped explorer | Paginated private SQLite index, global scoped search and bounded memory with explicit partial coverage |
-| [M3](https://github.com/Gabriellimmaa/DiskWing/issues/4) | Personal actions | Copy/metadata verification, conflicts/space/cloud protection, recovery after interruptions |
-| [M4](https://github.com/Gabriellimmaa/DiskWing/issues/5) | Qualified cache workflows | Actual temporary installs/builds and documented offline/SSD-absent scenarios for seven versioned integrations |
+| [M2](https://github.com/Gabriellimmaa/DiskWing/issues/3) | Complete logical-volume explorer | Physical source identities, durable resume, private paged SQLite, tree/treemap, bounded memory and explicit partial coverage |
+| [M3](https://github.com/Gabriellimmaa/DiskWing/issues/4) | Personal actions | Reviewed per-volume Trash and identity-bound recovery; separate Move policy; conflicts/space/cloud protection |
+| [M4](https://github.com/Gabriellimmaa/DiskWing/issues/5) | Qualified cache workflows | Actual version/platform-bound CLI and graphical workflows, normal launch, existing-data reuse, future writes, absence/reconnection and source handling |
 | [M5](https://github.com/Gabriellimmaa/DiskWing/issues/6) | Growth tracking | Opt-in advisory events, comparable snapshots, honest unavailable state and bounded retention |
 | [M6](https://github.com/Gabriellimmaa/DiskWing/issues/7) | Public UX | PT/EN, keyboard/VoiceOver, clear permissions, review and recovery |
 | [M7](https://github.com/Gabriellimmaa/DiskWing/issues/8) | Distribution | Internal installation, Developer ID/notarization, consented signed updates and removal |
@@ -20,7 +20,9 @@ The machine-readable source of requirement IDs, issues, acceptance criteria, val
 
 ## Implementation status — 2026-11-10
 
-Current engineering delivery is [PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22), merged at e3ab12e with [main CI passing on macOS 15/26](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358). Local build 8 passed exact-archive installation/helper/removal qualification and PT/EN sample journeys. npm 10.9.2, Yarn Classic 1.22.22 and Go 1.27.3 have the documented native evidence; ccache remains inactive. The installed build 6 and backup are preserved. [Expanded evidence](validation/EXPANDED-FLOWS-2026-11-10.md) separates local developer results from external release acceptance.
+The active increment is [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24) under the [approved simpler cache/whole-volume plan](plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md). It adds two primary routes, application-oriented batch transfer, exact-version/platform Google Chrome qualification, explicit local exceptions, whole logical volumes, durable resume, virtual tree/treemap and volume-bound Trash. Native Chrome and disposable APFS/HFS+ Trash/refusal evidence are independently reviewed; the full >1M filesystem test, query replay and exact build 11 package have their own evidence; final PR/main bookkeeping retains its own gates. See [current state](context/CURRENT_STATE.md), [graphical matrix](validation/GRAPHICAL-CACHES-2026-11-10.md) and [review boundaries](validation/CACHE-VOLUME-REVIEW-2026-11-10.md).
+
+The installed normal build 8 and build 6/build 3 backups remain unchanged. Build 9 is an intermediate uninstalled candidate; the final build 11 is separately archived and passed its own exact-package checks. No personal cache selection was executed. Earlier PR #22/build 8 evidence remains [historical validation](validation/EXPANDED-FLOWS-2026-11-10.md), and does not qualify this increment automatically.
 
 ### Previous build 6 engineering baseline
 
@@ -36,7 +38,7 @@ The follow-on portable acceptance kit adds self-contained bundled checks, a real
 
 The next independent gates, in order of prerequisites, are:
 
-1. Collect the maintainer's feedback on qualified build 8 (M6), while preserving installed build 6 and its backup; a new installation is a separate reviewed action. This is not yet a completed human acceptance result.
+1. Complete the active cache/volume increment's final scale/candidate/UI/CI gates and preserve build 8 plus its backups. A new normal installation and personal-cache operations remain separate reviewed actions; developer observations are not human acceptance.
 2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a build number greater than 8 and its own affected qualification; protected signing/update keys remain external prerequisites.
 3. Another Apple Silicon Mac/macOS 14 disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7), plus hands-on keyboard/VoiceOver and both-language acceptance across the two core flows (M6). The packaged helper/lifecycle runner and [manual handoff](acceptance/SECOND_MAC.md) keep generated checks distinct from independent human evidence.
 4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness. Private participant outreach requires specific authorization.
@@ -53,13 +55,13 @@ Partial baseline capabilities: bounded explorer/search, personal actions with po
 
 GUI and helper share operation planning, execution and recovery. A versioned SQLite index stores paginated metadata locally. Adapters describe effective configuration, eligibility, tested versions and recovery. Existing CacheSSD identifiers, settings paths and integration markers stay compatible.
 
-Source release follows verified copy, source stability and tool qualification. Bun/uv/Yarn/Go originals remain local in the current supported increment. Chrome, credentials, SDKs, emulators and projects are protected. Personal sources go to Trash; the app never empties Trash.
+Source release follows verified copy, source stability and tool qualification. Bun/uv/Yarn/Go originals remain local in the current supported increment. Chrome profiles, credentials, SDKs, emulators and projects are protected; only individually qualified cache scopes may transfer. Personal sources go to Trash; the app never empties Trash.
 
 Filesystem events are advisory; dropped events require a rescan. Root scope, permissions and unavailable volumes must be comparable before showing growth or reclaimed-space claims. Public export is always reviewed; no telemetry or automatic cleanup.
 
 ## Release gates
 
-Exercise missing/renamed/read-only/full/disconnected SSD and full internal disk, file changes, protected content, links, cloud placeholders and application termination at operation boundaries. Test trees up to one million entries and keep progress/cancellation responsive. Prove restore/disable/removal on another Mac.
+Exercise missing/renamed/read-only/full/disconnected SSD and full internal disk, file changes, protected content, links, cloud placeholders and application termination at operation boundaries. Test the new volume engine above one million entries and keep progress/cancellation responsive. Prove restore/disable/removal on another Mac.
 
 Production distribution requires Developer ID, hardened signing and Apple notarization; ad-hoc signatures do not satisfy this gate. Use Sparkle 2 for signed, consented updates, keeping local development usable without release credentials.
 

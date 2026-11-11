@@ -50,6 +50,9 @@ public struct OperationJournal: Codable, Identifiable, Sendable {
     public var staging: String?
     public var quarantine: String?
     public var trashPath: String?
+    public var volumeTrashScope: VolumeTrashScope?
+    public var trashRelativePath: String?
+    public var trashIdentity: FileIdentity?
     public var sourceDigest: String?
     public var destinationDigest: String?
     public let sourceIdentity: FileIdentity
@@ -58,9 +61,11 @@ public struct OperationJournal: Codable, Identifiable, Sendable {
     public let startedAt: Date
     public var updatedAt: Date
     public var isPending: Bool { phase != .completed && phase != .resolved }
-    public init(kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil) throws {
+    public var hasUnsupportedVolumeTrashScope: Bool { kind == "volumeTrash" && volumeTrashScope?.schemaVersion != 1 }
+    public init(kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil, volumeTrashScope: VolumeTrashScope? = nil) throws {
         schemaVersion = 1; self.id = id; self.kind = kind; self.toolID = toolID
         self.sourceVolumeUUID = sourceVolumeUUID
+        self.volumeTrashScope = volumeTrashScope
         self.source = source.path; self.destination = destination?.path
         sourceIdentity = try FileIdentity(source)
         phase = .preparing; detail = "Origem preservada"
@@ -72,9 +77,9 @@ public final class OperationContext {
     public let store: Store
     public var journal: OperationJournal
     private let checkpoint: (OperationJournal) throws -> Void
-    public init(store: Store, kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) throws {
+    public init(store: Store, kind: String, source: URL, destination: URL? = nil, toolID: String? = nil, id: UUID = UUID(), sourceVolumeUUID: String? = nil, volumeTrashScope: VolumeTrashScope? = nil, checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) throws {
         self.store = store; self.checkpoint = checkpoint
-        journal = try OperationJournal(kind: kind, source: source, destination: destination, toolID: toolID, id: id, sourceVolumeUUID: sourceVolumeUUID)
+        journal = try OperationJournal(kind: kind, source: source, destination: destination, toolID: toolID, id: id, sourceVolumeUUID: sourceVolumeUUID, volumeTrashScope: volumeTrashScope)
         try advance(.preparing)
     }
     public func advance(_ phase: OperationPhase, detail: String? = nil) throws {
@@ -113,12 +118,19 @@ public final class RecoveryManager {
     private let permittedRootIdentity: FileIdentity?
     private let busyCheck: BusyCheck
     private let checkpoint: (OperationJournal) throws -> Void
-    private let supportedKinds: Set<String> = ["migration", "personalMove", "trash", "restore"]
+    private let volumeProvider: (String) -> VolumeInfo?
+    private let protectedRoots: [URL]
+    private let finderTrashAvailable: (VolumeInfo) -> Bool
+    private let supportedKinds: Set<String> = ["migration", "personalMove", "trash", "volumeTrash", "restore"]
     public init(store: Store = Store(), home: URL = FileManager.default.homeDirectoryForCurrentUser, permittedRoot: URL? = nil,
                 busyCheck: @escaping BusyCheck = { try BusyInspector.inspect(paths: $0, tool: $1) },
-                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in }) {
+                checkpoint: @escaping (OperationJournal) throws -> Void = { _ in },
+                volumeProvider: @escaping (String) -> VolumeInfo? = { Volumes.find(uuid: $0) },
+                protectedRoots: [URL] = [],
+                finderTrashAvailable: @escaping (VolumeInfo) -> Bool = VolumeTrashScope.qualifiedFinderTrash) {
         self.store = store; self.home = home; self.checkpoint = checkpoint
         self.busyCheck = busyCheck
+        self.volumeProvider = volumeProvider; self.protectedRoots = protectedRoots; self.finderTrashAvailable = finderTrashAvailable
         self.permittedRoot = permittedRoot.map(Paths.physicalURL)
         permittedRootIdentity = permittedRoot.flatMap { try? FileIdentity($0) }
     }
@@ -196,6 +208,12 @@ public final class RecoveryManager {
             guard (try? validateJournalScope(journal)) != nil else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "O modo de amostras só permite os arquivos gerados para este teste.") }
             guard journal.schemaVersion == 1 else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Registro de uma versão mais recente. Preserve as cópias e atualize o aplicativo.") }
             guard supportedKinds.contains(journal.kind) else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Tipo de operação desconhecido. Preserve o registro e as cópias para revisão.") }
+            if journal.kind == "volumeTrash" {
+                do {
+                    let (source, _) = try volumeTrashLocations(journal)
+                    return RecoveryAssessment(journal: journal, canRestoreSource: !exists(source), explanation: exists(source) ? "A origem já existe e não será sobrescrita. Revise a Lixeira no Finder." : "O item pode voltar da Lixeira do mesmo volume após conferência, sem copiar ou sobrescrever arquivos.")
+                } catch { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Conecte o volume original e revise a Lixeira no Finder. A recuperação automática não está disponível para este registro.") }
+            }
             if journal.kind == "restore" {
                 guard let (tool, target) = try? restoreTarget(journal) else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "O destino da restauração não corresponde ao cache local. Preserve o registro para revisão.") }
                 guard let settings = try? restoreSettings() else { return RecoveryAssessment(journal: journal, canRestoreSource: false, explanation: "Não foi possível ler a configuração da restauração. Os arquivos foram preservados.") }
@@ -224,6 +242,11 @@ public final class RecoveryManager {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         guard var journal = try operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("O registro de recuperação não está disponível.")) }
         try validateJournalScope(journal)
+        if journal.kind == "volumeTrash" {
+            guard journal.volumeTrashScope?.schemaVersion == 1 else { throw VolumeTrashScope.failure() }
+            try restoreVolumeTrash(&journal, cancellation: cancellation, progress: progress)
+            return
+        }
         if journal.kind == "restore" {
             if !journal.isPending { return }
             let (tool, _) = try restoreTarget(journal)
@@ -281,6 +304,55 @@ public final class RecoveryManager {
     }
 
     private func exists(_ url: URL) -> Bool { var info = stat(); return lstat(url.path, &info) == 0 }
+
+    private func volumeTrashLocations(_ journal: OperationJournal) throws -> (URL, URL) {
+        guard journal.schemaVersion == 1, journal.kind == "volumeTrash", let scope = journal.volumeTrashScope,
+              scope.schemaVersion == 1, journal.sourceVolumeUUID?.caseInsensitiveCompare(scope.volumeUUID) == .orderedSame,
+              let relative = journal.trashRelativePath, PersonalActions.isTrashRelativePath(relative),
+              let recorded = journal.trashIdentity, recorded.inode == scope.itemIdentity.inode,
+              recorded.device == scope.itemIdentity.device,
+              journal.sourceIdentity.device == scope.itemIdentity.device, journal.sourceIdentity.inode == scope.itemIdentity.inode,
+              journal.sourceDigest != nil else { throw VolumeTrashScope.failure() }
+        let (volume, _) = try scope.resolvedVolume(volumeProvider: volumeProvider, forRecovery: true)
+        guard finderTrashAvailable(volume) else { throw VolumeTrashScope.failure() }
+        let source = try scope.resolve(volumeProvider: volumeProvider, forRecovery: true, requireItem: false)
+        let trash = try scope.trashURL(relative: relative, volumeProvider: volumeProvider)
+        try validateScope([source, trash])
+        if let reason = PersonalActionPolicy.reasonPreventingTrash(source, on: volume, home: home, storeBase: store.base, protectedRoots: protectedRoots) { throw CacheSSDError.message(reason) }
+        let current = try FileIdentity(trash)
+        guard current.inode == recorded.inode, current.size == recorded.size,
+              current.modifiedNanoseconds == recorded.modifiedNanoseconds else { throw VolumeTrashScope.failure() }
+        return (source, trash)
+    }
+
+    private func restoreVolumeTrash(_ journal: inout OperationJournal, cancellation: CancellationFlag, progress: @escaping (String) -> Void) throws {
+        guard journal.isPending else { throw VolumeTrashScope.failure() }
+        do {
+            let (source, copy) = try volumeTrashLocations(journal)
+            guard !exists(source), !cancellation.isCancelled,
+                  try busyCheck([source.deletingLastPathComponent(), copy], nil).isEmpty,
+                  let expected = journal.sourceDigest,
+                  try FileTree.digest(copy, cancellation: cancellation, workspace: store.base, progress: progress) == expected else { throw VolumeTrashScope.failure() }
+            let (latestSource, latestCopy) = try volumeTrashLocations(journal)
+            guard latestSource.path == source.path, latestCopy.path == copy.path,
+                  !exists(source), !cancellation.isCancelled else { throw VolumeTrashScope.failure() }
+            journal.phase = .publishing; journal.updatedAt = Date()
+            try store.writeDurably(journal, name: "operation-\(journal.id.uuidString).json"); try checkpoint(journal)
+            let (finalSource, finalCopy) = try volumeTrashLocations(journal)
+            guard finalSource.path == source.path, finalCopy.path == copy.path, !exists(source), !cancellation.isCancelled else { throw VolumeTrashScope.failure() }
+            // A same-filesystem exclusive rename preserves the item in low space.
+            // No cross-volume copy or permanent-delete fallback is attempted.
+            try FileTree.publishWithoutReplacing(copy, to: source)
+            journal.phase = .resolved; journal.updatedAt = Date(); journal.detail = "Item recuperado da Lixeira do mesmo volume; nenhum arquivo foi sobrescrito"
+            try store.writeDurably(journal, name: "operation-\(journal.id.uuidString).json")
+            try store.append(OperationRecord(title: "Origem recuperada", detail: journal.detail, recoveryPath: source.path))
+        } catch {
+            journal.phase = cancellation.isCancelled ? .cancelled : .interrupted
+            journal.detail = error.localizedDescription; journal.updatedAt = Date()
+            try? store.writeDurably(journal, name: "operation-\(journal.id.uuidString).json")
+            throw error
+        }
+    }
 
     private func restoreTarget(_ journal: OperationJournal) throws -> (CacheDescriptor, URL) {
         guard let id = journal.toolID, let tool = CacheCatalog.find(id, home: home), let path = journal.destination else { throw restoreConflict() }
@@ -401,6 +473,9 @@ public final class RecoveryManager {
         let lease = try OperationLease(store: store); defer { withExtendedLifetime(lease) {} }
         guard var journal = try operations().first(where: { $0.id == id }), journal.schemaVersion == 1, supportedKinds.contains(journal.kind) else { throw CacheSSDError.message(L10n.text("Registro não encontrado.")) }
         try validateJournalScope(journal)
+        if journal.kind == "volumeTrash" {
+            guard journal.volumeTrashScope?.schemaVersion == 1 else { throw VolumeTrashScope.failure() }
+        }
         if journal.kind == "restore" { _ = try restoreTarget(journal) }
         journal.phase = .resolved; journal.updatedAt = Date(); journal.detail = "Registro encerrado após revisão; nenhuma cópia foi removida"
         try store.writeDurably(journal, name: "operation-\(id.uuidString).json")

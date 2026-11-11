@@ -36,3 +36,42 @@ Updates is compiled only under DISKWING_ENABLE_UPDATER=1, with exact Sparkle 2.1
 Read docs/COMPATIBILITY.md before changing persisted names. .local/ is private and never an API/input to public CI.
 
 AcceptanceRunner is an explicit helper-only diagnostic using generated homes/stores, injected SSD availability and Trash, and no native installs or GUI actions. It records fixed check statuses and pending human gates, preserving failed fixtures and restoring its in-process language selection. Reports contain no user paths or raw errors and never overwrite files/links. scripts/qualify_bundle.py adds real temporary internal installation, clean-environment packaged helper execution, SHA-256 equality and reviewed fixture removal. Neither output changes release-readiness or user preferences.
+
+## Reviewed cache transfers and whole-volume exploration
+
+The primary app routes are **Explore volumes** and **Caches on SSD**. Selecting a
+scan target never changes the selected cache destination. `VolumeScanTarget`
+groups System/Data only with proven APFS group metadata; entries retain their
+physical root/relative path. Unknown Data mappings stay in a distinct virtual
+namespace. Actions resolve source identity through the index, not the virtual
+path. Other mounted filesystems are separate targets.
+
+`VolumeScanner` uses no-follow POSIX directory enumeration, a durable SQLite work
+queue, source proofs and disk-backed hard-link accounting. Resume revalidates
+completed directories and files before declaring completion. Cancellation,
+identity loss, access and storage limits retain partial coverage. The new flow has
+no fixed depth/entry/visible-row cutoff. `VolumeTreeView` draws a virtual outline
+using native table rows, expanded directory counts and a bounded SQL-page cache;
+it does not retain an object per indexed entry. `TreemapLayout` adapts DiskPilot's
+MIT squarify layout with attribution; rectangles use the selected metric and an
+exact omitted-items aggregate. The full tree remains keyboard-accessible.
+
+`CacheTransferPlan` captures the selected applications, SSD, scope, quantities and
+expected source handling. One reviewed batch invokes existing qualified CLI
+operations and independent graphical transfers. Copy/configuration/observed use
+are separate states. Per-application results survive partial failure; completing
+one application never rolls back an already completed independent transfer.
+`GraphicalCacheMigrationEngine` retains originals in a private quarantine after
+copy verification and individually redirects only the qualified application's
+cache directory. A usage observer must provide application read/write evidence
+and changed destination metadata before reviewed source release. Profiles and
+other persistent application data stay outside this operation. Sample evidence
+is explicitly simulated and cannot qualify production providers.
+
+`VolumeTrashScope` binds a reviewed item to its mounted volume, root identity and
+relative path. Generic Move policy is unchanged. The GUI's new volume flow never
+silently falls back to the old home-only Trash API. Managed graphical/CLI caches,
+indexes, journals and recovery generations and their ancestors are protected.
+Native filesystem support is an explicit qualification: unsupported Trash is
+refused, without permanent deletion. Recovery renames a verified same-volume
+Trash original without overwriting a new source.

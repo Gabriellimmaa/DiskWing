@@ -118,16 +118,22 @@ jobs:
         env:
           DISKWING_RUN_SCALE_TESTS: '1'
           DISKWING_SCALE_REPORT: ${{ runner.temp }}/diskwing-scale-report.json
+          DISKWING_RUN_VOLUME_SCALE_TESTS: '1'
+          DISKWING_VOLUME_SCALE_REPORT: ${{ runner.temp }}/diskwing-volume-scale-report.json
         run: |
           mkdir -p "$RUNNER_TEMP/diskwing-scale"
-          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter ScaleTests
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --filter '^CacheSSDCoreTests.ScaleTests/'
+          CACHESSD_TEST_TEMP="$RUNNER_TEMP/diskwing-scale" swift test -j 2 --skip-build --filter '^CacheSSDCoreTests.VolumeScanScaleTests/'
           test -s "$DISKWING_SCALE_REPORT"
+          test -s "$DISKWING_VOLUME_SCALE_REPORT"
       - name: Preserve sanitized explorer scale report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: explorer-scale-qualification
-          path: ${{ runner.temp }}/diskwing-scale-report.json
+          path: |
+            ${{ runner.temp }}/diskwing-scale-report.json
+            ${{ runner.temp }}/diskwing-volume-scale-report.json
           if-no-files-found: ignore
           retention-days: 14
 

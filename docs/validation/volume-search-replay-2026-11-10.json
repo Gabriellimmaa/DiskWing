@@ -1,0 +1,78 @@
+{
+  "allocatedBytes": 8192,
+  "coldFilesystemCacheClaimed": false,
+  "databaseAndMarkerUnchanged": true,
+  "databaseBytes": 1476980736,
+  "databaseSHA256": "258ef09337f187847df48e8b9c3471fb33a3ff4b6734d81ac89aea38459407f4",
+  "date": "2026-11-11T02:08:28Z",
+  "entries": 1002003,
+  "entriesCountedInRetainedDatabase": 1002003,
+  "files": 1001001,
+  "finalHashSeconds": 3.661265458,
+  "generatedByEngine": "3e37ce9",
+  "initialHashSeconds": 3.703447708,
+  "logicalBytes": 52,
+  "notAuthorizedForActions": true,
+  "operatingSystem": "Version 26.5.2 (Build 25F84)",
+  "originalScannerElapsedTimeIncluded": false,
+  "peakRSSIncludesTestRunnerAndHashVerification": true,
+  "processPeakRSSAfterQueries": 29818880,
+  "processPeakRSSBeforeQueries": 29818880,
+  "qualification": "retained-generated-index-read-only-query-replay",
+  "queries": [
+    {
+      "countPlan": [
+        "SCAN entries"
+      ],
+      "hasNext": false,
+      "items": 1,
+      "pagePlan": [
+        "SCAN entries",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "query": "tail-resource",
+      "seconds": 45.340323958,
+      "total": 1
+    },
+    {
+      "countPlan": [
+        "SCAN entries"
+      ],
+      "hasNext": false,
+      "items": 1,
+      "pagePlan": [
+        "SCAN entries",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "query": "changed-after-pause",
+      "seconds": 69.170344041,
+      "total": 1
+    },
+    {
+      "countPlan": [
+        "SEARCH entries USING INDEX entries_parent (session=? AND parent=? AND logical>?)"
+      ],
+      "hasNext": false,
+      "items": 1,
+      "offset": 999,
+      "pagePlan": [
+        "SEARCH entries USING INDEX entries_parent (session=? AND parent=? AND logical>?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "query": "parent-allocated-last-page",
+      "seconds": 0.014446583,
+      "total": 1000
+    }
+  ],
+  "queriesFollowFullDatabaseHashVerification": true,
+  "queryChangeSource": "b706651b71c501531bdf651ac20b9c751aadb024",
+  "queryWindowSeconds": 114.529789959,
+  "readOnlyBoundOpenIndex": true,
+  "recordedSessionFinishedAt": "2026-11-11T01:35:20Z",
+  "recordedSessionScanResumeAggregationSeconds": 3010.2921380996704,
+  "recordedSessionStartedAt": "2026-11-11T00:45:09Z",
+  "scannerRerun": false,
+  "schemaVersion": 1,
+  "sourceTreeTraversed": false,
+  "state": "complete"
+}

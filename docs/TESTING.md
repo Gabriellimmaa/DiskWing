@@ -125,3 +125,46 @@ If macOS has not permitted the separate samples domain to access a removable vol
 Selections and outputs are restricted to the generated session; redirected storage fails closed. Login, notification, Xcode, Finder/open and eject are substitutes. The SSD switch renames only its generated directory, preserves bytes and exercises absence without touching a mounted disk. Native tools and Sparkle are disabled. Process-use checks are controlled in generated GUI/helper fixtures; production constructors keep the real inspector. Checkpoint tests use explicit injection and prove the intended boundary, while the real-open-file test qualifies the default separately. The sample-only window menu selects the minimum 1050 × 690 content size or the default size; it changes no normal-window preferences. AppAcceptanceTests cover journeys, scope isolation, fresh consent, reconnect and energy resumption; native GUI checks supplement these tests and never attest human VoiceOver usability.
 
 CI runs on macos-15 and macos-26. The macOS 14 minimum requires external validation. Manual heavy jobs run serially (scale, filesystems, written copy), preserve sanitized JSON reports and upload no application binaries or raw logs. Optional updater compilation is distinct from signed-update acceptance.
+
+
+## New cache/volume experience
+
+The current [approved increment](plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md) has
+independent acceptance. `VolumeScanTests` cover APFS grouping/alias proofs, hidden
+and deep paths, queued resume, changed directories/files, hard links, future
+formats, guarded retention/reset/aggregation and explicit partial coverage.
+`VolumeTrashTests` cover mounted identity, relative recovery after rename,
+conflicts and no permanent-delete fallback. The default app suite also exercises
+one reviewed cache batch, unknown graphical records before any CLI configuration,
+volume selection independent of cache SSD, stale/unloaded row action safety,
+nested tree/map selection, and original index storage on resume.
+
+The new volume scanner's heavy test is separate from the historical scanner:
+
+~~~sh
+DISKWING_RUN_VOLUME_SCALE_TESTS=1 CACHESSD_TEST_TEMP=/existing/ssd/fixtures \
+  DISKWING_VOLUME_SCALE_REPORT=/private/report.json \
+  swift test -j 2 --filter VolumeScanScaleTests
+~~~
+
+It requires at least 8 GiB free, creates over one million real generated files,
+pauses and resumes after changing a completed directory, and checks complete
+coverage, last-page/global search access, bytes and peak memory below 512 MiB.
+Run it serially with other native/filesystem/scale suites. The manual CI scale
+job runs both historical and new volume benchmarks and preserves separate
+sanitized reports.
+
+`DISKWING_RUN_FILESYSTEM_TESTS=1` additionally enables native Finder Trash on a
+new APFS image, UUID-bound recovery after volume rename/detach/remount, conflict
+preservation and safe ExFAT Trash refusal. Only devices returned for each newly
+created image may be renamed or detached. The developer SSD is never a test
+fault target. Image APFS support is not physical cable-removal qualification.
+
+Graphical provider acceptance must use a real application, transferred response
+reuse without the original, new SSD writes, persistent profile preservation and
+absence/reconnection. A redirected cache argument alone is not qualifying proof.
+Generated GUI samples are explicitly simulated, cannot qualify providers and
+must not touch installed application profiles. Starting the samples from an
+internal temporary directory avoids requiring broader removable-volume access;
+never grant a real data permission merely to make the samples pass. The installed
+build 8 remains preserved while new candidates are qualified separately.

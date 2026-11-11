@@ -18,7 +18,7 @@ struct ContentView: View {
                     Image(systemName: "externaldrive.fill").font(.system(size: 27)).foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 2) { Text("DiskWing").font(.system(size: 19, weight: .semibold)); Text(L10n.text("Espaço para o que importa")).font(.caption).foregroundStyle(.secondary) }
                 }.padding(.horizontal, 18).padding(.top, 20).padding(.bottom, 24)
-                List(AppSection.allCases) { section in
+                List([AppSection.explorer, .caches, .history, .preferences]) { section in
                     Button { model.section = section } label: { HStack { Label(L10n.message(section.rawValue), systemImage: section.symbol); Spacer(minLength: 0) }.padding(.vertical, 7).contentShape(Rectangle()) }
                         .buttonStyle(.plain)
                         .listRowBackground(model.section == section ? Palette.accent.opacity(0.18) : Color.clear)
@@ -26,7 +26,7 @@ struct ContentView: View {
                         .accessibilityAddTraits(model.section == section ? .isSelected : [])
                 }.listStyle(.sidebar)
                 VStack(alignment: .leading, spacing: 6) {
-                    Label(model.selectedVolume?.name ?? L10n.text("SSD desconectado"), systemImage: model.selectedVolume == nil ? "externaldrive.badge.xmark" : "externaldrive.badge.checkmark")
+                    Label(L10n.text("Dados no seu Mac e SSD"), systemImage: "internaldrive")
                     Text(model.isProductionBuild ? L10n.text("Processamento local") : L10n.text("Processamento local · prévia de desenvolvimento")).font(.caption).foregroundStyle(.secondary)
                 }.padding(18)
             }.navigationSplitViewColumnWidth(min: 215, ideal: 225, max: 260)
@@ -59,7 +59,7 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                ToolbarItem { Button { model.chooseFolder() } label: { Label(L10n.text("Analisar pasta"), systemImage: "folder.badge.plus") }.disabled(model.busy || model.isScanning).help(L10n.text("Escolher uma pasta para analisar, sem alterar arquivos")) }
+                ToolbarItem { Button { model.chooseVolume() } label: { Label(L10n.text("Escolher volume"), systemImage: "externaldrive") }.disabled(model.busy || model.isScanning) }
                 ToolbarItem { Button { model.refreshVolumes() } label: { Image(systemName: "arrow.clockwise") }.help(L10n.text("Atualizar os discos conectados")).accessibilityLabel(L10n.text("Atualizar os discos conectados")) }
             }
         }
@@ -145,87 +145,7 @@ struct QuickScan: View {
 }
 
 struct ExplorerView: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        GeometryReader { geometry in
-        let compact = geometry.size.width < 1000
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 17) {
-                PageHeader(title: L10n.text("Explorar espaço"), subtitle: L10n.text("Os maiores itens aparecem primeiro. Abra uma pasta para entender seu conteúdo."))
-                if model.isScanning {
-                    HStack { ProgressView().controlSize(.small); VStack(alignment: .leading, spacing: 4) { Text(L10n.text("Lendo \(model.scanProgress?.entries.formatted(.number.locale(L10n.locale)) ?? "0") itens…")).font(.headline); Text(model.scanProgress?.currentPath ?? L10n.text("Preparando análise")).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }; Spacer(); Button(L10n.text("Interromper")) { model.cancel() } }.padding(13).background(Palette.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
-                }
-                if let report = model.report {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: compact ? 12 : 22) {
-                            Metric(label: L10n.text("Tamanho encontrado"), value: model.sizeText(report.root)).frame(maxWidth: .infinity, alignment: .leading)
-                            Metric(label: L10n.text("Blocos alocados apontados"), value: model.sizeText(report.root, allocated: true)).frame(maxWidth: .infinity, alignment: .leading)
-                            Metric(label: L10n.text("Arquivos lidos"), value: report.root.fileCount.formatted(.number.locale(L10n.locale))).frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        Label(model.analysisNeedsRefresh ? L10n.text("Análise desatualizada") : !model.currentScopeAvailable ? L10n.text("Análise indisponível") : report.isPartial ? L10n.text("Análise parcial") : L10n.text("Análise concluída"), systemImage: model.analysisNeedsRefresh || !model.currentScopeAvailable || report.isPartial ? "exclamationmark.circle" : "checkmark.circle").font(.caption).foregroundStyle(model.analysisNeedsRefresh || !model.currentScopeAvailable || report.isPartial ? Palette.orange : Palette.accent)
-                        if model.analysisNeedsRefresh {
-                            Button(L10n.text("Atualizar análise")) { model.scan(report.root.url, focus: false) }.disabled(model.busy || model.isScanning)
-                        }
-                    }
-                }
-            }.padding(.horizontal, compact ? 20 : 28).padding(.vertical, compact ? 16 : 24)
-            if let report = model.report {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Button { model.goBack() } label: { Image(systemName: "chevron.left") }.disabled(model.breadcrumbs.count <= 1).accessibilityLabel(L10n.text("Voltar à pasta anterior"))
-                        Text(model.currentFolder?.path ?? report.root.path).font(.callout).lineLimit(1).truncationMode(.middle).textSelection(.enabled).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    }
-                    HStack {
-                        Picker(L10n.text("Exibir"), selection: $model.showLargest) { Text(L10n.text("Pastas e arquivos")).tag(false); Text(L10n.text("Maiores arquivos")).tag(true) }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
-                        Toggle(L10n.text("Acompanhar pasta"), isOn: Binding(get: { model.isWatchingCurrentRoot }, set: { model.watchCurrentRoot($0) })).toggleStyle(.checkbox)
-                        Spacer(minLength: 0)
-                        Button { model.exportReport() } label: { Image(systemName: "square.and.arrow.up") }.help(L10n.text("Exportar relatório com nomes e caminhos")).accessibilityLabel(L10n.text("Exportar relatório com nomes e caminhos")).disabled(model.busy || model.isScanning)
-                    }
-                }.padding(.horizontal, compact ? 20 : 24).padding(.bottom, 12)
-                HSplitView {
-                    VStack(spacing: 0) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField(L10n.text("Buscar em toda a análise"), text: $model.search).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-search")
-                            HStack {
-                                TextField(L10n.text("Mínimo MiB"), text: $model.minimumMiB).textFieldStyle(.roundedBorder).accessibilityIdentifier("explorer-minimum-size").frame(width: 105)
-                                Toggle(L10n.text("Ordenar por blocos"), isOn: $model.allocatedOrder).toggleStyle(.checkbox).font(.caption)
-                                Spacer(minLength: 0)
-                            }
-                        }.padding(.horizontal, 18).padding(.bottom, 9)
-                        HStack {
-                            Button(L10n.text("Anterior")) { model.previousPage() }.disabled(model.indexOffset == 0 || model.indexLoading)
-                            Text(L10n.text("\(model.indexTotal == 0 ? 0 : model.indexOffset + 1)–\(min(model.indexTotal, model.indexOffset + model.indexedItems.count)) de \(model.indexTotal)")).font(.caption).monospacedDigit()
-                            if model.indexLoading { ProgressView().controlSize(.mini) }
-                            Spacer()
-                            Button(L10n.text("Próxima")) { model.nextPage() }.disabled(model.indexOffset + model.indexedItems.count >= model.indexTotal || model.indexLoading)
-                        }.padding(.horizontal, 18).padding(.bottom, 8)
-                        Table(model.visibleItems, selection: $model.selectedPath) {
-                            TableColumn(L10n.text("Nome")) { item in
-                                HStack(spacing: 9) { Image(systemName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc").foregroundStyle(item.isDirectory ? Palette.secondary : .secondary); VStack(alignment: .leading, spacing: 3) { Text(item.name).lineLimit(1); if let issue = item.issue { Text(L10n.message(issue)).font(.caption2).foregroundStyle(.secondary).lineLimit(1) } } }.padding(.vertical, 4).onTapGesture(count: 2) { model.openFolder(item) }.contextMenu { ItemMenu(item: item) }
-                            }.width(min: 120, ideal: compact ? 200 : 300)
-                            TableColumn(L10n.text("Tamanho")) { item in Text(model.sizeText(item)).monospacedDigit().foregroundStyle(item.logicalBytes > 0 ? .primary : .secondary) }.width(min: 96, ideal: compact ? 110 : 150)
-                            TableColumn(L10n.text("Categoria")) { item in Text(L10n.message(item.category.rawValue)).font(.caption).foregroundStyle(.secondary).lineLimit(2) }.width(min: 90, ideal: compact ? 120 : 150)
-                        }
-                        .accessibilityIdentifier("explorer-table")
-                        .contextMenu(forSelectionType: String.self) { paths in
-                            if let path = paths.first, let item = model.visibleItems.first(where: { $0.path == path }) { ItemMenu(item: item) }
-                        } primaryAction: { paths in
-                            if let path = paths.first, let item = model.visibleItems.first(where: { $0.path == path }), !model.busy, !model.isScanning { model.openFolder(item) }
-                        }
-                    }.frame(minWidth: compact ? 360 : 460, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    InspectorView(item: model.selectedItem).frame(minWidth: compact ? 210 : 235, idealWidth: compact ? 230 : 265, maxWidth: compact ? 260 : 310)
-                }.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                VStack(alignment: .leading, spacing: 4) {
-                    if let issue = model.currentFolder?.issue { Text(L10n.message(issue)).foregroundStyle(Palette.orange) }
-                    if !report.unreadablePaths.isEmpty { Text(L10n.text("\(report.unreadablePaths.count) áreas ou itens não puderam ser lidos. Esses tamanhos são desconhecidos.")).foregroundStyle(Palette.orange) }
-                    Text(L10n.text("Blocos APFS podem ser compartilhados. Links e outros volumes não são percorridos. O índice limita itens, profundidade e espaço; análises parciais indicam quando aprofundar em uma subpasta.")).foregroundStyle(.secondary)
-                }.font(.caption).padding(16)
-            } else if !model.isScanning {
-                ContentUnavailableView { Label(L10n.text("Escolha por onde começar"), systemImage: "folder") } description: { Text(L10n.text("A análise encontra arquivos grandes sem alterar seus dados.")) } actions: { Button(L10n.text("Escolher pasta…")) { model.chooseFolder() }.buttonStyle(.borderedProminent) }
-            } else { Spacer() }
-        }.frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-        }
-    }
+    var body: some View { VolumeExplorerContent() }
 }
 
 struct Metric: View {
@@ -238,10 +158,10 @@ struct ItemMenu: View {
     let item: ScanItem
     var body: some View {
         Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }
-        if item.isDirectory { Button(L10n.text("Analisar esta pasta")) { model.scan(item.url) }.disabled(model.isScanning || model.busy) }
+        if item.isDirectory { Button(L10n.text("Abrir pasta")) { model.openFolder(item) }.disabled(model.isScanning || model.busy) }
         Divider()
         Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.cachePolicyReason(item) != nil || model.busy || model.isScanning)
-        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.trashPolicyReason(item) != nil || model.busy || model.isScanning)
+        Button(L10n.text("Revisar envio à Lixeira…")) { model.reviewTrash(item) }.disabled(model.trashPolicyReason(item) != nil || model.busy || model.isScanning)
     }
 }
 
@@ -253,8 +173,8 @@ struct InspectorView: View {
             if let item {
                 VStack(alignment: .leading, spacing: 16) {
                     Image(systemName: item.isDirectory ? "folder" : "doc").font(.system(size: 40, weight: .ultraLight)).foregroundStyle(Palette.accent)
-                    Text(item.name).font(.headline).textSelection(.enabled)
-                    Text(model.sizeText(item)).font(.system(size: 25, weight: .medium, design: .rounded))
+                    Text(model.explorerName(item)).font(.headline).textSelection(.enabled)
+                    Text(model.sizeText(item, allocated: model.allocatedOrder)).font(.system(size: 25, weight: .medium, design: .rounded))
                     Text(L10n.message(item.category.rawValue)).foregroundStyle(.secondary)
                     Text(item.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     Divider()
@@ -263,7 +183,6 @@ struct InspectorView: View {
                     Button(L10n.text("Mostrar no Finder")) { model.showInFinder(item) }.frame(maxWidth: .infinity, alignment: .leading)
                     if item.isDirectory {
                         Button(L10n.text("Abrir pasta")) { model.openFolder(item) }.disabled(model.isScanning || model.busy)
-                        Button(L10n.text("Analisar esta pasta")) { model.scan(item.url) }.disabled(model.isScanning || model.busy)
                     }
                     if model.cachePolicyReason(item) == nil {
                         Button(L10n.text("Revisar movimentação…")) { model.reviewMove(item) }.disabled(model.busy || model.isScanning)
@@ -272,7 +191,7 @@ struct InspectorView: View {
                         Text(L10n.message(reason)).font(.caption).foregroundStyle(.secondary)
                     } else {
                         if let warning = model.trashWarning(item) { Text(warning).font(.caption).foregroundStyle(Palette.orange) }
-                        Button(L10n.text("Revisar envio à Lixeira…")) { model.review = .trash(item) }.disabled(model.busy || model.isScanning)
+                        Button(L10n.text("Revisar envio à Lixeira…")) { model.reviewTrash(item) }.disabled(model.busy || model.isScanning)
                     }
                     if item.category == .cache || item.category == .developer { Button(L10n.text("Ver integrações de cache")) { model.section = .caches } }
                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
@@ -282,48 +201,7 @@ struct InspectorView: View {
 }
 
 struct CachesView: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 23) {
-                PageHeader(title: L10n.text("Caches e SSD"), subtitle: L10n.text("Migre arquivos recriáveis de ferramentas compatíveis, com conferência antes de liberar a origem."))
-                HStack {
-                    VStack(alignment: .leading, spacing: 5) { Text(L10n.text("Disco de destino")).font(.headline); Text(L10n.text("Sem o disco, novas execuções usam o cache local.")).font(.caption).foregroundStyle(.secondary) }
-                    Spacer()
-                    Picker("SSD", selection: Binding(get: { model.settings.selectedVolumeUUID ?? "" }, set: { model.settings.selectedVolumeUUID = $0.isEmpty ? nil : $0; model.saveSettings() })) {
-                        Text(L10n.text("Escolher disco…")).tag("")
-                        ForEach(model.volumes.filter { !$0.isInternal }) { volume in Text(L10n.text("\(volume.name) — \(ByteText.format(volume.freeBytes)) livres")).tag(volume.uuid) }
-                        if let uuid = model.settings.selectedVolumeUUID, !model.volumes.contains(where: { $0.uuid == uuid }) { Text(L10n.text("Disco desconectado")).tag(uuid) }
-                    }.frame(maxWidth: 330).disabled(model.busy)
-                }.padding(18).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
-                if let issue = model.destinationIssue { Label(issue, systemImage:"exclamationmark.circle").font(.callout).foregroundStyle(Palette.orange) }
-                HStack {
-                    Label(model.integrationIsCurrent ? L10n.text("Integração preparada para novos terminais") : model.settings.shellIntegrationEnabled ? L10n.text("Atualização da integração pendente") : L10n.text("Integração com o terminal ainda não ativada"), systemImage: model.integrationIsCurrent ? "checkmark.circle" : "terminal").font(.callout)
-                    Spacer()
-                    if !model.settings.shellIntegrationEnabled { Button(L10n.text("Revisar integração…")) { model.review = .integration }.disabled(model.busy) }
-                    else {
-                        Button(L10n.text("Revisar atualização da integração…")) { model.review = .integration }.disabled(model.busy)
-                        Toggle(L10n.text("Usar SSD nas novas execuções"), isOn: $model.settings.useExternal).onChange(of: model.settings.useExternal) { model.saveSettings() }.toggleStyle(.switch).controlSize(.small).disabled(model.busy)
-                    }
-                }
-                HStack {
-                    Text(L10n.text("\(ByteText.format(model.candidates)) encontrados nos caches locais")).font(.title3.weight(.semibold))
-                    Spacer()
-                    if model.inventoryRunning { ProgressView().controlSize(.small); Text(L10n.text("Medindo…")).font(.caption).foregroundStyle(.secondary) }
-                    Button(L10n.text("Medir novamente")) { model.refreshInventory() }.disabled(model.inventoryRunning || model.busy)
-                }
-                VStack(spacing: 0) {
-                    ForEach(model.tools) { tool in
-                        CacheRow(tool: tool)
-                        if tool.id != model.tools.last?.id { Divider().padding(.leading, 18) }
-                    }
-                }.background(Palette.panel, in: RoundedRectangle(cornerRadius: 9)).overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.quaternary))
-                HStack(alignment: .top, spacing: 12) { Image(systemName: "info.circle").foregroundStyle(Palette.accent); Text(L10n.text("O Chrome, seus perfis, cookies e senhas ficam fora da migração. SDKs, emuladores, projetos e executáveis de serviços também permanecem no local atual. Aplicativos abertos pelo Dock usam suas próprias configurações; esta integração cobre o terminal e o executor do DiskWing.")).font(.callout).foregroundStyle(.secondary) }
-                Text(L10n.text("Cópias de recuperação ficam no SSD. Ao voltar ao Mac, caches vazios podem exigir downloads e tornar o primeiro uso mais lento. A desconexão física durante uma operação pode interrompê-la.")).font(.caption).foregroundStyle(.secondary)
-                if let volume = model.selectedVolume { Button(L10n.text("Preparar para ejetar \(volume.name)…")) { model.review = .eject(volume) }.disabled(model.busy || model.isScanning) }
-            }.padding(30)
-        }.onAppear { if model.toolSizes.isEmpty { model.refreshInventory() } }
-    }
+    var body: some View { CacheWorkflowContent() }
 }
 
 struct CacheRow: View {
@@ -362,6 +240,13 @@ struct HistoryView: View {
             if model.hasUnreadableRecoveryRecords {
                 Label(L10n.text("Há registros de recuperação ou configuração pendentes. Eles foram preservados; abra os registros locais para revisão."), systemImage: "exclamationmark.triangle").foregroundStyle(Palette.orange)
                 Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
+            }
+            ForEach(model.graphicalPendingTransfers) { record in
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(L10n.text("Transferência de cache precisa de revisão"), systemImage: "exclamationmark.circle").font(.headline)
+                    Text(L10n.message(record.detail)).font(.caption)
+                    Button(L10n.text("Revisar recuperação…")) { model.review = .graphicalRecover(record.id) }.disabled(model.busy)
+                }.padding(12).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
             }
             if !model.recoveries.isEmpty {
                 ForEach(model.recoveries) { assessment in
@@ -436,7 +321,7 @@ struct PreferencesView: View {
                 UpdateSettings(updates: model.updates).id(model.preferences.language)
                 GroupBox(L10n.text("Acompanhamento opcional")) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(L10n.text("Selecione Acompanhar pasta no explorador para registrar mudanças. Nenhuma pasta é acompanhada por padrão."))
+                        Text(L10n.text("Pastas acompanhadas anteriormente continuam disponíveis no histórico. Para um volume, use Atualizar análise. Nenhuma pasta é acompanhada por padrão."))
                         Toggle(L10n.text("Atualizar análises em segundo plano"), isOn: Binding(get: { model.preferences.backgroundRescans }, set: { model.preferences.backgroundRescans = $0; model.savePreferences() }))
                         Toggle(L10n.text("Alertar quando uma pasta crescer mais de 1 GiB"), isOn: Binding(get: { model.preferences.growthAlerts }, set: { model.setGrowthAlerts($0) }))
                         Text(L10n.text("As análises automáticas respeitam um intervalo mínimo de 15 minutos e pausam no modo de pouca energia. Os alertas são limitados a um por pasta por dia.")).font(.caption).foregroundStyle(.secondary)
@@ -512,6 +397,13 @@ struct ReviewSheet: View {
             Label(action.title, systemImage: symbol).font(.title2.weight(.semibold))
             Text(description).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             switch action {
+            case .graphicalRestore(let id), .graphicalResume(let id):
+                fact(L10n.text("Cache"), model.cacheEntries.first(where: { $0.id == id })?.title ?? id)
+                Text(L10n.text("Feche o aplicativo antes de continuar. Dados já existentes não serão sobrescritos; cópias e caches temporários serão preservados para recuperação.")).font(.callout).foregroundStyle(.secondary)
+            case .graphicalRecover(let id):
+                Text(L10n.text("A operação interrompida será revista usando suas identidades e cópias verificadas. Nenhum dado existente será substituído.")).font(.callout)
+                if let record = model.graphicalPendingTransfers.first(where: { $0.id == id }) { fact(L10n.text("Origem"), record.sourceURL.path); Text(L10n.message(record.detail)).font(.caption) }
+            case .cacheTransfer(let plan): CacheTransferReviewContent(plan: plan)
             case .migration(let tool):
                 fact(L10n.text("Ferramenta"), tool.name)
                 fact(L10n.text("Origem"), tool.source.path)
@@ -525,8 +417,15 @@ struct ReviewSheet: View {
                 fact(L10n.text("Ferramenta"), tool.name)
                 fact(L10n.text("Destino"), model.selectedVolume?.name ?? L10n.text("SSD não conectado"))
                 Text(L10n.text("Prepara uma pasta vazia no SSD para novas gravações. Nenhum cache local será criado ou removido. O direcionamento exige a integração atualizada em um novo terminal.")).font(.callout)
+            case .volumeTrash(let item, let scope):
+                fact(L10n.text("Volume"), model.context.operationVolumeProvider()(scope.volumeUUID)?.name ?? L10n.text("Volume indisponível"))
+                fact(L10n.text("Item"), (try? scope.resolve(volumeProvider: model.context.operationVolumeProvider()))?.path ?? scope.reviewedPath)
+                fact(L10n.text("Tamanho lógico"), model.sizeText(item))
+                if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
+                Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)
             case .trash(let item):
-                fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
+                fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho lógico"), model.sizeText(item))
                 if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
                 Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)
@@ -548,12 +447,16 @@ struct ReviewSheet: View {
         }.frame(width: 560).frame(minHeight: 320, idealHeight: 500, maxHeight: 620)
     }
     private func fact(_ label: String, _ value: String) -> some View { VStack(alignment: .leading, spacing: 5) { Text(label).font(.caption).foregroundStyle(.secondary); Text(value).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) } }
-    private var symbol: String { switch action { case .trash: return "trash"; case .eject: return "eject.circle"; case .integration, .disableIntegration: return "terminal"; default: return "externaldrive.badge.checkmark" } }
+    private var symbol: String { switch action { case .volumeTrash, .trash: return "trash"; case .eject: return "eject.circle"; case .integration, .disableIntegration: return "terminal"; default: return "externaldrive.badge.checkmark" } }
     private var description: String {
         switch action {
+        case .graphicalRestore: return L10n.text("Retorne o cache ao Mac usando uma cópia verificada, sem sobrescrever dados locais.")
+        case .graphicalResume: return L10n.text("Revise o retorno ao SSD e preserve os dados temporários sem misturar gerações.")
+        case .graphicalRecover: return L10n.text("Revise a recuperação deste cache antes de continuar.")
+        case .cacheTransfer: return L10n.text("Revise os aplicativos e o SSD. O resultado será acompanhado por aplicativo, sem esconder exceções.")
         case .migration: return L10n.text("Confira a origem e o destino. A migração copia o conteúdo, verifica sua integridade e valida a ferramenta antes de liberar a origem.")
         case .prepareCache: return L10n.text("Escolha onde serão gravados os próximos caches desta ferramenta.")
-        case .trash: return L10n.text("Este item será enviado à Lixeira do macOS. Revise seu conteúdo antes de confirmar.")
+        case .volumeTrash, .trash: return L10n.text("Este item será enviado à Lixeira do macOS. Revise seu conteúdo antes de confirmar.")
         case .move: return L10n.text("O aplicativo confere a cópia antes de enviar a origem à Lixeira. Nada existente no destino será sobrescrito.")
         case .integration: return L10n.text("Ative o direcionamento nas novas execuções do terminal. A ausência do SSD devolve os padrões locais.")
         case .disableIntegration: return L10n.text("Remova a integração dos novos terminais e volte a usar os caches locais.")

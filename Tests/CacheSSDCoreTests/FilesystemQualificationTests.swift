@@ -143,4 +143,81 @@ final class FilesystemQualificationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath:mounted.appendingPathComponent("MacCaches").path))
         try record("apfs-low-space-refusal",filesystem:"APFS",extra:["originalPreserved":true,"diskReservationMiB":written])
     }
+    func testExternalAPFSFinderTrashRemountConflictAndRecovery() throws { try qualifyExternalFinderTrash("APFS") }
+    func testExternalHFSFinderTrashRemountConflictAndRecovery() throws { try qualifyExternalFinderTrash("HFS+") }
+    private func qualifyExternalFinderTrash(_ filesystem: String) throws {
+        let mounted = try attach(filesystem)
+        func volume(at url: URL) throws -> VolumeInfo {
+            let values = try url.resourceValues(forKeys: [.volumeUUIDStringKey])
+            return VolumeInfo(uuid: try XCTUnwrap(values.volumeUUIDString), name: "Disposable volume", path: url.path,
+                totalBytes: 2_147_483_648, freeBytes: Volumes.free(at: url), isInternal: false, isWritable: true)
+        }
+        let personal = mounted.appendingPathComponent("Personal/generated.txt")
+        try FileManager.default.createDirectory(at: personal.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("Generated disposable external Trash fixture".utf8).write(to: personal)
+        let digest = try FileTree.digest(personal), originalIdentity = try FileIdentity(personal)
+        var currentVolume = try volume(at: mounted)
+        XCTAssertTrue(VolumeTrashScope.qualifiedFinderTrash(currentVolume))
+        let scope = try VolumeTrashScope(item: personal, volume: currentVolume, expectedIdentity: originalIdentity)
+        let actions = PersonalActions(home: home, store: store, volumeProvider: { $0 == currentVolume.uuid ? currentVolume : nil })
+        _ = try actions.trash(personal, expectedIdentity: originalIdentity, scope: scope)
+        var journal = try XCTUnwrap(store.operations().first { $0.kind == "volumeTrash" })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: personal.path))
+        XCTAssertNotNil(journal.trashRelativePath)
+        let trashBefore = URL(fileURLWithPath: try XCTUnwrap(journal.trashPath))
+        XCTAssertEqual(try FileTree.digest(trashBefore), digest)
+        XCTAssertEqual(try FileIdentity(trashBefore), originalIdentity)
+        XCTAssertTrue(Paths.contains(trashBefore, in: mounted), "The OS must use this volume's Trash")
+        journal.phase = .interrupted
+        try store.writeDurably(journal, name: "operation-\(journal.id.uuidString).json")
+        // Only the device returned for this newly created fixture is renamed
+        // and detached. Never use a discovered user volume as a test target.
+        let newName = "DWT" + UUID().uuidString.prefix(7)
+        let renamed = try CommandRunner.run(URL(fileURLWithPath: "/usr/sbin/diskutil"), ["renameVolume", try XCTUnwrap(device), newName], timeout: 30)
+        XCTAssertEqual(renamed.status, 0, renamed.output)
+        guard renamed.status == 0 else { return }
+        let detached = try CommandRunner.run(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["detach", try XCTUnwrap(device)], timeout: 30)
+        XCTAssertEqual(detached.status, 0, detached.output)
+        guard detached.status == 0 else { return }
+        device = nil; mount = nil
+        let attached = try CommandRunner.run(URL(fileURLWithPath: "/usr/bin/hdiutil"), ["attach", "-nobrowse", "-plist", image.path], timeout: 90)
+        guard attached.status == 0, let plist = try PropertyListSerialization.propertyList(from: Data(attached.output.utf8), format: nil) as? [String: Any],
+              let entities = plist["system-entities"] as? [[String: Any]], let entry = entities.first(where: { $0["mount-point"] != nil }),
+              let path = entry["mount-point"] as? String, let returnedDevice = entry["dev-entry"] as? String,
+              returnedDevice.hasPrefix("/dev/disk") else { throw CacheSSDError.message("Could not remount owned disposable image") }
+        device = returnedDevice; mount = URL(fileURLWithPath: path)
+        currentVolume = try volume(at: try XCTUnwrap(mount))
+        XCTAssertEqual(currentVolume.uuid, scope.volumeUUID); XCTAssertNotEqual(currentVolume.path, scope.originalMountPath)
+        let recoveredSource = try XCTUnwrap(mount).appendingPathComponent(scope.relativePath)
+        let trashAfter = try XCTUnwrap(mount).appendingPathComponent(try XCTUnwrap(journal.trashRelativePath))
+        XCTAssertEqual(try FileTree.digest(trashAfter), digest)
+        let manager = RecoveryManager(store: store, home: home, volumeProvider: { $0 == currentVolume.uuid ? currentVolume : nil })
+        let conflict = Data("Generated conflicting file that must be preserved".utf8)
+        try conflict.write(to: recoveredSource)
+        XCTAssertThrowsError(try manager.restoreSource(id: journal.id))
+        XCTAssertEqual(try Data(contentsOf: recoveredSource), conflict)
+        XCTAssertEqual(try FileTree.digest(trashAfter), digest)
+        try FileManager.default.moveItem(at: recoveredSource, to: try XCTUnwrap(mount).appendingPathComponent("preserved-conflict"))
+        try manager.restoreSource(id: journal.id)
+        XCTAssertEqual(try FileTree.digest(recoveredSource), digest)
+        XCTAssertEqual(try FileIdentity(recoveredSource).inode, originalIdentity.inode)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: trashAfter.path))
+        try record(filesystem == "APFS" ? "apfs-finder-trash-remount-recovery" : "hfs-finder-trash-remount-recovery", filesystem: filesystem, extra: ["nativeFinderTrash": true, "volumeIdentityRemount": true, "changedMountPath": true, "conflictPreserved": true, "restoredByRename": true])
+    }
+    func testExternalExFATTrashRefusesBeforeCallingOS() throws {
+        let mounted = try attach("ExFAT", size: "128m")
+        let file = mounted.appendingPathComponent("personal.txt"), bytes = Data("Generated ExFAT refusal fixture".utf8)
+        try bytes.write(to: file)
+        let uuid = try XCTUnwrap(try mounted.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString)
+        let volume = VolumeInfo(uuid: uuid, name: "Disposable ExFAT", path: mounted.path, totalBytes: 134_217_728, freeBytes: Volumes.free(at: mounted), isInternal: false, isWritable: true)
+        let scope = try VolumeTrashScope(item: file, volume: volume)
+        var called = false
+        let actions = PersonalActions(home: home, store: store, trashHandler: { _ in called = true; return nil }, volumeProvider: { $0 == uuid ? volume : nil })
+        XCTAssertFalse(VolumeTrashScope.qualifiedFinderTrash(volume))
+        XCTAssertThrowsError(try actions.trash(file, scope: scope))
+        XCTAssertFalse(called); XCTAssertEqual(try Data(contentsOf: file), bytes)
+        XCTAssertTrue(store.operations().isEmpty)
+        try record("exfat-trash-safe-refusal", filesystem: "ExFAT", extra: ["nativeTrashNotCalled": true, "originalPreserved": true])
+    }
+
 }

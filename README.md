@@ -10,17 +10,17 @@ DiskWing is an open source macOS utility for exploring disk usage and reviewing 
 
 ## What it does
 
-- Explore a paginated private SQLite index, search the entire selected scope, filter/order sizes, inspect the largest files, and reveal items in Finder.
-- Distinguish logical size from allocated blocks, with progress, cancellation, and partial-result indicators.
-- Review migrations for npm, Bun, CocoaPods, pip, Homebrew, Gradle, uv, Yarn Classic, Go build cache and ccache; compatibility and source release remain version/configuration-specific.
-- Prepare future SSD writes even when the local cache is empty or absent; review terminal integration separately.
-- Route new zsh commands to the available cache location. Without the selected SSD, new commands fall back to local defaults.
-- Send selected eligible home content, including application caches, to macOS Trash with review, application-data warnings and recovery records. Generic file relocation keeps a separate, stricter policy.
-- Opt into folder-change tracking, comparable growth snapshots and rate-limited notifications. Select Portuguese or English.
+- **Explore volumes:** select a mounted volume, navigate a virtual tree and synchronized space map, search the entire indexed volume and reveal eligible items in Finder.
+- Keep logical size, estimated allocated blocks and observed free space distinct. Hidden files are included; inaccessible, interrupted and unverified areas remain explicit.
+- **Caches on SSD:** choose an SSD, analyze applications, review one selection, transfer and activate, then check each application's result.
+- Distinguish no transfer, configured destination, verified SSD use, temporary fallback and exceptions. Choosing an SSD or enabling shell integration alone never proves a transfer.
+- Review eligible personal files, including unmanaged application caches, for the volume's macOS Trash. System roots, known sensitive data, installations, managed caches and recovery records stay protected. Trash is never emptied.
+- Keep a private SQLite index with paged navigation and a durable resume queue. New indexes can use the chosen APFS SSD; internal indexes keep their storage budget.
+- Use Portuguese or English. Existing optional folder monitoring remains opt-in.
 
-Opening DiskWing never starts a cache migration. Chrome profiles, history, cookies, passwords, and browser caches are outside the migration catalog. SDKs, emulator data, projects, and local npx executables stay in place. Bun, uv and Yarn Classic source caches are retained because installed environments/projects may reference them. Go sources are also retained while effective-source verification remains conservative. New adapters require an exactly qualified version for activation and routing; ccache remains inactive until native qualification.
+Opening DiskWing never starts migration or cleanup. The catalog includes CLI tools and a graphical compatibility matrix for Chrome, Cursor, Xcode and Safari. **A catalog entry is not a compatibility guarantee.** Graphical transfer requires exact-version qualification, normal application cache-path behavior and fallback evidence. Unsupported applications stay local with a visible reason; see [current evidence](docs/context/CURRENT_STATE.md). No broad `Library/Caches` redirect is used. Profiles, history, cookies, passwords, SDKs, projects and installed environments are preserved.
 
-The internal-storage shortcut scans the accessible APFS data volume rather than treating the sealed system root as the entire Mac. Other filesystems and inaccessible/limited areas remain explicit. Manual Trash currently operates inside the home folder and preserves structural roots, known credentials/profiles, protected installations, DiskWing records, links and cloud placeholders. Trash is not emptied by the app and does not immediately free space.
+System/Data appear together only when their APFS volume group is proven. Each item retains its physical filesystem identity; other mounts are separate scan targets. A partial scan is never called complete. The tree remains accessible without using the map.
 
 ## Build
 
@@ -59,13 +59,17 @@ The native checks require npm, Bun, CocoaPods, Python with pip, uv, Homebrew, Ja
 
 ## Use and limitations
 
-Choose a folder in **Explorar espaço**, or inspect recognized caches in **Caches e SSD**. Review each operation. Shell routing requires the separate **Revisar integração** action and a new terminal session. Dock-launched applications retain their own settings.
+Choose **Explore volumes**, select a volume and navigate its tree or space map. Opening a folder keeps that volume selected. The cache SSD is chosen separately in **Caches on SSD**.
 
-Use **Preparar para ejetar** before disconnecting. Existing processes retain their environment; physical disconnection can interrupt them. Local fallback may need internet to download missing dependencies.
+For caches, follow **Choose SSD → Analyze caches → Review → Transfer and activate → Check results**. Quit the listed applications and save work before continuing; DiskWing never forces them to quit. Command-line routing requires a reviewed terminal update and a new terminal. A graphical provider uses only its own qualified cache directory. Configuration is not proof of SSD use, and a retained local copy is not counted as released space.
 
-Personal-file movement verifies a copy and sends the source to Trash. Space is not recovered until you review and empty Trash in Finder. DiskWing never empties Trash. APFS shared blocks and snapshots mean file-size totals are not a promise of recoverable space.
+Without the SSD, qualified applications continue using their documented fallback, which may require network access. Chrome can use network and memory while its persistent SSD cache is absent. Reopening may be required after reconnecting. Temporary generations are preserved; arbitrary cache databases are not merged. Unexpected cable removal during an operation remains unqualified.
 
-Analysis is local, does not follow links, and does not intentionally download cloud placeholders. Limits are one million entries, depth 80 and a 512 MiB index budget, with explicit partial coverage. Navigation/search are paginated; exports stream all indexed entries. Reports contain paths: inspect them before sharing. There is no telemetry or automatic cleanup. Optional events currently trigger full scoped rescans at least fifteen minutes apart; missing/partial scopes never imply saved space.
+Use **Prepare to eject** and wait for macOS before disconnecting. Existing processes may still hold SSD files. Restoring or resuming a graphical cache requires its own reviewed action.
+
+Trash is reviewed per item and rechecks the mounted volume and identity. Native Trash must be qualified for that filesystem; unsupported volumes are refused without a permanent-delete alternative. Space remains occupied until you empty Trash in Finder. Shared APFS blocks and snapshots prevent promising recoverable space from summed file sizes.
+
+Analysis does not follow links or intentionally download cloud placeholders. The volume scanner has no fixed depth, entry-count or visible-row cutoff. Internal indexes keep a 512 MiB budget and 256 MiB reserve; optional external APFS indexes use a 1 GiB reserve. Limits and interruption preserve partial results and a durable queue; resume revalidates changed directories. Search and navigation are paged and exports stream indexed entries. Exported paths should be reviewed before sharing. There is no telemetry or automatic cleanup.
 
 Install on the internal disk with python3 scripts/install_local.py dist/DiskWing.app to keep the application available without the SSD. Public signing, updater consent and removal are described in [distribution](docs/DISTRIBUTION.md). Human beta and seven-day evidence remain required before v1; see [release gates](docs/beta/PROTOCOL.md).
 

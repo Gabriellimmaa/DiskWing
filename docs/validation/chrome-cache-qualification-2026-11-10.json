@@ -1,0 +1,77 @@
+{
+  "absentSSDFallback": "temporary network/memory; no persistent local cache directory",
+  "applicationVersion": "157.0.8103.39",
+  "architecture": "arm64",
+  "cacheDirectoryOverrideUsed": false,
+  "candidateID": "chrome.cache-root",
+  "date": "2026-11-11T00:14:57Z",
+  "filesystem": "apfs",
+  "generatedCookiePreserved": true,
+  "headedApplication": true,
+  "integratedCodeCommit": "9676655",
+  "launchRoute": "NSWorkspace.OpenConfiguration createsNewApplicationInstance",
+  "metadataCopyPolicy": 1,
+  "metadataVerifiedEntries": 87,
+  "nativeReadWriteDescriptorsObserved": true,
+  "newResponsePersistedOnSSDAcrossRestart": true,
+  "normalCacheResolution": "Chromium GetUserCacheDirectory: generated Library/Application Support descendant maps to generated Library/Caches",
+  "opaqueQuarantineProof": [
+    {
+      "count": 12,
+      "objectType": "directory",
+      "referenceSHA256": "a01abf34bfdc469fcc409810752f62f39f32f2cc262c68e89274f48ea619b708",
+      "resultSHA256": "a01abf34bfdc469fcc409810752f62f39f32f2cc262c68e89274f48ea619b708",
+      "sourceSHA256": "642a4c630277fbdd19050d3bab40152c8c26232c08a10932f9ffd292c52dd1a9"
+    },
+    {
+      "count": 54,
+      "objectType": "file",
+      "referenceSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "resultSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "sourceSHA256": "1b2d90cc463a80fd78951cb3b5552701515973a94c4097ab3acc4cc1d163e8f5"
+    },
+    {
+      "count": 10,
+      "objectType": "file",
+      "referenceSHA256": "a807eb80ff3e4ec5d88818c49aae42ab7619e36abcf9733a49494ce32b31f9fc",
+      "resultSHA256": "a807eb80ff3e4ec5d88818c49aae42ab7619e36abcf9733a49494ce32b31f9fc",
+      "sourceSHA256": "1b2d90cc463a80fd78951cb3b5552701515973a94c4097ab3acc4cc1d163e8f5"
+    },
+    {
+      "count": 6,
+      "objectType": "file",
+      "referenceSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "resultSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "sourceSHA256": "501388d7ddce61ad9a5ffa07af04c8db4d033b911e7ba4e7c59098b98935b289"
+    },
+    {
+      "count": 1,
+      "objectType": "file",
+      "referenceSHA256": "a807eb80ff3e4ec5d88818c49aae42ab7619e36abcf9733a49494ce32b31f9fc",
+      "resultSHA256": "a807eb80ff3e4ec5d88818c49aae42ab7619e36abcf9733a49494ce32b31f9fc",
+      "sourceSHA256": "890f64ca580724bbbd5b620bf81a196c820d6bd7f70c548f8360fef125fbe739"
+    },
+    {
+      "count": 4,
+      "objectType": "file",
+      "referenceSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "resultSHA256": "48d96161067faba3134acbb6872d6e925f015e0262dc1aedb672a3966c518f5b",
+      "sourceSHA256": "ec18add7dff3ca8bc73ddad708e1024f6b4a26a7fd9e1960ed3cf1ee329920cb"
+    }
+  ],
+  "operatingSystem": "Version 26.5.2 (Build 25F84)",
+  "originalCacheUnavailableAtNormalPath": true,
+  "personalProfilesUsed": false,
+  "physicalDisconnectTested": false,
+  "profileFilesUnchangedDuringTransfer": true,
+  "qualifiedDistribution": "Apple Developer ID / Google LLC EQHXZ8M8AV; strict signature and exact version",
+  "reconnectWithoutMerge": true,
+  "restoreAndLocalReuse": true,
+  "review": "Independent code, native test log and sanitized evidence reviewed; no human acceptance implied.",
+  "sameFilesystemFixture": true,
+  "sandboxBypassUsed": false,
+  "schemaVersion": 1,
+  "sourceReleasedAfterVerifiedUse": true,
+  "testedSourceCommit": "46e7148c1bdd2bf77159561ca5aabd11a436e664",
+  "transferredResponseReusedWithoutNetwork": true
+}

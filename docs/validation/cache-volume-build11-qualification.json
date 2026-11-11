@@ -1,0 +1,97 @@
+{
+  "candidate": {
+    "archiveSHA256": "79b3658490c84cf08f276a193a4766dc3fb765360cd325a07b5ceb4a3d5d8149",
+    "buildNumber": "11",
+    "commit": "2380b1a6048e1cb82d280e498f72fdb560b06fca",
+    "version": "1.0.0"
+  },
+  "checks": {
+    "archiveIdentity": true,
+    "extractedBundleIdentity": true,
+    "internalLifecycle": true,
+    "safeArchivePaths": true
+  },
+  "date": "2026-11-11T02:09:55.132081+00:00",
+  "fixtureDisposition": "removed",
+  "lifecycle": {
+    "applicationVersion": "1.0.0",
+    "buildNumber": "11",
+    "checks": {
+      "installedHelperAndResources": true,
+      "internalInstallationAndSignature": true,
+      "temporaryAppRemovedEvidenceRetained": true
+    },
+    "core": {
+      "architecture": "arm64",
+      "checks": [
+        {
+          "id": "bundled-resources-pt-en",
+          "status": "passed"
+        },
+        {
+          "id": "indexed-explorer",
+          "status": "passed"
+        },
+        {
+          "id": "personal-copy-recovery",
+          "status": "passed"
+        },
+        {
+          "id": "cache-copy-restore-local-fallback",
+          "status": "passed"
+        },
+        {
+          "id": "isolated-shell-disable",
+          "status": "passed"
+        }
+      ],
+      "finishedAt": "2026-11-11T02:09:56Z",
+      "fixtureDisposition": "removed",
+      "helperSHA256": "2ae587e2712b0a8a33d2fa9c65e20f0bf24946331d44d7fa0deef529af0600b4",
+      "macOS": "26.5.2",
+      "passed": true,
+      "pendingManualGates": [
+        "second-mac-human-acceptance",
+        "voiceover-keyboard-pt-en",
+        "developer-id-notarization",
+        "signed-update-accept-reject",
+        "physical-cable-power-faults",
+        "ten-person-seven-day-beta"
+      ],
+      "schemaVersion": 1,
+      "scope": "Generated fixtures; same-volume simulated SSD and Trash; no native tools, GUI, network, mounts or personal data",
+      "startedAt": "2026-11-11T02:09:56Z",
+      "suite": "diskwing-portable-acceptance-v1"
+    },
+    "date": "2026-11-11T02:09:55.229980+00:00",
+    "fixtureDisposition": "removed",
+    "helperSHA256": "2ae587e2712b0a8a33d2fa9c65e20f0bf24946331d44d7fa0deef529af0600b4",
+    "passed": true,
+    "pendingManualGates": [
+      "second-mac-human-acceptance",
+      "voiceover-keyboard-pt-en",
+      "developer-id-notarization",
+      "signed-update-accept-reject",
+      "physical-cable-power-faults",
+      "ten-person-seven-day-beta"
+    ],
+    "schemaVersion": 1,
+    "scope": "Temporary internal app installation; generated same-volume fixtures, simulated SSD/Trash; no GUI, native package install, physical unplug or public signing acceptance",
+    "suite": "diskwing-bundle-lifecycle-v1"
+  },
+  "passed": true,
+  "pendingManualGates": [
+    "second-mac-human-acceptance",
+    "voiceover-keyboard-pt-en",
+    "developer-id-notarization",
+    "signed-update-accept-reject",
+    "physical-cable-power-faults",
+    "ten-person-seven-day-beta"
+  ],
+  "profile": "candidate",
+  "publicV1Ready": false,
+  "schemaVersion": 1,
+  "scope": "Exact archive; temporary internal installation and generated helper fixtures. No GUI, other physical Mac, public signing/update or human acceptance claim.",
+  "sourceDirty": false,
+  "suite": "diskwing-candidate-qualification-v1"
+}

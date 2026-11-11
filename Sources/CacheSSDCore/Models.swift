@@ -130,10 +130,42 @@ public enum ByteText {
 
 public enum Paths {
     public static var support: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/CacheSSD", isDirectory: true) }
+    /// Lexical containment must not depend on whether a leaf already exists.
+    /// Foundation may abbreviate only an existing /private/var directory, which
+    /// otherwise makes a missing child appear outside its own parent.
+    public static func comparisonPath(_ url: URL) -> String {
+        var parts: [Substring] = []
+        for part in url.path.split(separator: "/") {
+            if part == "." { continue }
+            if part == ".." { if !parts.isEmpty { parts.removeLast() }; continue }
+            parts.append(part)
+        }
+        var value = "/" + parts.joined(separator: "/")
+        for (alias, physical) in trustedSystemAliases {
+            if value == alias { value = physical; break }
+            if value.hasPrefix(alias + "/") { value = physical + value.dropFirst(alias.count); break }
+        }
+        return value
+    }
+    private static let trustedSystemAliases: [(String, String)] = {
+        [("/var", "/private/var"), ("/tmp", "/private/tmp"), ("/etc", "/private/etc")].filter { alias, physical in
+            var link = stat(), destination = stat(), followed = stat()
+            guard lstat(alias, &link) == 0, link.st_mode & S_IFMT == S_IFLNK, link.st_uid == 0,
+                  lstat(physical, &destination) == 0, destination.st_mode & S_IFMT == S_IFDIR, destination.st_uid == 0,
+                  stat(alias, &followed) == 0, followed.st_dev == destination.st_dev, followed.st_ino == destination.st_ino else { return false }
+            var bytes = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+            let count = readlink(alias, &bytes, bytes.count)
+            guard count > 0, count < bytes.count else { return false }
+            let target = String(decoding: bytes.prefix(count).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            return target == physical || "/" + target == physical
+        }
+    }()
     public static func contains(_ path: URL, in parent: URL) -> Bool {
-        let p = path.standardizedFileURL.path, r = parent.standardizedFileURL.path
+        guard path.isFileURL, parent.isFileURL else { return false }
+        let p = comparisonPath(path), r = comparisonPath(parent)
         return p == r || p.hasPrefix(r == "/" ? "/" : r + "/")
     }
+
     public static func safeComponent(_ value: String) -> Bool {
         !value.isEmpty && value != "." && value != ".." && !value.contains("/") && !value.contains("\n") && !value.contains("\t")
     }

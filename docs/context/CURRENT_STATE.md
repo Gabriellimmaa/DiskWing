@@ -1,105 +1,35 @@
 # Current state
 
-Updated 2026-11-10. The expanded cache/explorer scope is integrated through
-[PR #22](https://github.com/Gabriellimmaa/DiskWing/pull/22), merge e3ab12e. Its exact
-PR head passed macOS 15/26 tests, packaging/lifecycle checks and both optional
-updater builds. [Post-merge main CI](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358) also passed; TRACEABILITY.json records the handoff.
-Apple Silicon, macOS 14+, Lift, MIT and PT/EN remain the approved scope.
+Updated 2026-11-10. The maintainer's [cache/volume experience plan](../plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md) is implemented on `codex/cache-volume-ux` in [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24). All local functional gates now have evidence: real Chrome, native Trash filesystems, complete >1M-entry scan, query replay, PT/EN sample journeys and exact candidate qualification. PR promotion/main verification is recorded in the live ledger. Apple Silicon, macOS 14+, Lift, MIT and PT/EN remain the app scope; provider qualification has narrower explicit limits.
 
-## Current candidate and installed application
+## Two primary flows
 
-Local **1.0.0 build 8**, source `9be84dd`, has a clean-source
-[manifest](../validation/candidate-1.0.0-build8-local.json) and successful
-[exact-archive qualification](../validation/expanded-build8-qualification.json).
-Its runtime source files match the implementation merged into main. Build 7 is
-superseded; previous artifacts remain preserved. The normal installed app is
-still build 6 and its earlier backup remains intact. No personal-file migration or deletion,
-real shell/Xcode/login activation or physical disk fault was
-performed by this delivery.
+**Explore volumes** selects a mounted volume, independently from the cache SSD. Proven APFS System/Data members appear in one logical tree; every actionable entry retains its physical source/root identity. Hidden entries are included; unknown, protected, interrupted and other-mount coverage is explicit. A virtual native tree and attributed MIT treemap share metric/selection/navigation, including a containing-block highlight for nested selection. SQL pages and three global pending reads bound UI memory, including replaced views.
 
-The [expanded contract](../plans/SCOPE-EXPANSION-2026-11-10.md),
-[live roadmap](../ROADMAP.md), [ledger](../TRACEABILITY.json) and
-[qualification record](../validation/EXPANDED-FLOWS-2026-11-10.md) describe the
-current increment. Earlier engineering/installation history remains in
-[the session record](SESSION-2026-11-10.md) and
-[build 6 installation evidence](../validation/LOCAL-INSTALLATION-2026-11-10.md).
+The new scanner has no fixed depth/item/row cutoff. Durable directory work, source revalidation, hard-link accounting, guarded retention/reset/aggregation and explicit fresh-versus-resume behavior preserve honest totals. Indexes can use the selected APFS SSD with a 1 GiB reserve; internal indexes retain 512 MiB/256 MiB protections. Storage opening is UUID/device/inode-bound and no-follow; existing-index discovery is read-only. Ejection suspends metadata discovery and closes actual old/current index connections. A missing source/index never becomes a complete zero-size result.
 
-## Implemented
+**Caches on SSD** chooses SSD → analyzes applications → reviews one selection → transfers/activates → tracks each result. Selected SSD/integration flags with no destinations show **No caches transferred**. Copy/configuration/verified current use are separate; retained local copies do not claim released space. CLI integration is part of the selected review, and empty caches are prepared within the same flow. Existing terminals need reopening. CLI executions that already ended are not claimed as runtime-observed.
 
-- Reviewed manual Trash for eligible home descendants, including application
-  caches/data, with independent eligibility from generic Move. Structural roots,
-  known credentials/profiles, protected installations and private records remain
-  protected. Links/placeholders/special files are refused; Trash is never emptied.
-- Explicit internal APFS data-volume exploration, paginated SQLite navigation,
-  global scoped search, size filters and streamed export. Identity-proven Data
-  aliases preserve scope/mount boundaries and exclude private index records.
-  Post-action analysis/inventory refresh prevents stale results being current.
-- Future-cache setup with an empty/absent local source, durable configuration
-  checkpoints and no-follow destination/settings checks. Opening the app does
-  not migrate or clean data; integration updates require review and a new terminal.
-- Seven legacy cache adapters plus exactly qualified Yarn Classic/Go build
-  caching. npm 10.9.2 has source-unavailable offline SSD reuse and npx-preservation
-  evidence; validation preserves unindexed cache content. Bun/uv/Yarn/Go origins
-  remain local; ccache is inactive until native qualification. Explicit native,
-  project, environment and command preferences prevail; Dock applications need
-  their own supported mechanism.
-- Shared cross-process operation lease, streamed verified copies, source
-  stability checks, metadata/ACL/resource-fork preservation, conflict/space
-  guards and guided recovery. Existing CacheSSD identifiers, formats and paths
-  remain compatible; missing Trash-source directory hints now work on macOS 15.
-- Metadata scans avoid link/other-mount traversal and intentional cloud downloads.
-  Limits remain one million entries, depth 80, 512 MiB index and 256 MiB free-space
-  floor; coverage is complete/partial/unknown. Logical/allocated/free space are
-  distinct. Two indexed trees per root and fifty comparable snapshots are bounded.
-- Optional growth monitoring/alerts, fifteen-minute rescan spacing and Low Power
-  Mode pause. Nothing is watched by default; no telemetry or automatic cleanup.
-- PT/EN and sample UI/keyboard journeys, portable generated acceptance checks,
-  temporary internal installer/removal qualification and optional pinned updater
-  compilation. Actual public signing/update acceptance remains separate.
+Google Chrome 157.0.8103.39 has real normal-launch qualification on macOS 26.5.2(25F84), arm64/APFS. The derived Library/Caches directory can transfer; four fixed Application Support subcaches remain separately measured local exceptions. Cursor/Xcode/Safari remain explicit exceptions; Safari effective total is unconfirmed. Google identity, version/platform, root/link and durable copy-policy contracts are checked. The original is released only after reviewed source stability and real application access evidence. Missing SSD can use Chrome network/memory; reconnect/reopening is distinct from unexpected physical unplug. See [graphical evidence](../validation/GRAPHICAL-CACHES-2026-11-10.md).
 
-## Verification and limits
+Manual **Trash** has a separate policy from generic Move and works for eligible personal content on qualified volumes, including unmanaged caches. Volume/item identity is rechecked; native APFS/HFS+ Trash and same-volume recovery after rename/remount/conflict passed; ExFAT refusal passed. No permanent-delete fallback or empty-Trash action exists. Managed caches, recovery, credentials/profiles, system roots, installations, links/placeholders and unknown unsafe data remain protected.
 
-The combined isolated suite passed 244 cases discovered, 219 executed, 25 explicit
-skips and zero failures. The npm qualification binding passed 18 targeted cases
-(one explicit native skip); all 51 packaging tests passed. Native follow-up
-passed 48 of 49 cases with only ccache skipped: 35 core/configuration, nine legacy/
-regression and four expanded native workflows. CocoaPods profiles are explicit;
-adapter inspection in the inherited test environment does not establish a
-universal application default. Runtime/gem installations were not changed.
+After a reviewed volume removal, the row stays marked **In Trash** with stale totals until explicit refresh. Pagination/ordinals do not shift under a pending query. Another unchanged item may be reviewed without a full-volume rescan, with all current filesystem checks preserved. Cache operations mark an old explorer snapshot stale without starting a hidden scan that blocks their result/verification flow.
 
-Generated APFS and temporary-directory alias regressions passed; 23 Trash tests
-were independently repeated after the directory-hint/journal-ID follow-ups.
-Build 8 samples native UI was observed in PT/EN at minimum 1050 × 690: reviewed Trash,
-cancel/confirm/rescan, missing-cache preparation, fixture integration, blocked
-unqualified operations and basic keyboard worked without functional clipping.
-The sample process was closed and fixtures/private observations retained.
-These are developer observations, not maintainer/human VoiceOver/beta approval.
+## Preservation and evidence
 
-Build 8's exact ZIP passed identity, extraction, temporary internal installation,
-signature/helper/resources and removal. It is locally ad-hoc signed, not
-notarized or a public release. No storage-saving claim is made. Native cache
-fixtures used the same filesystem and simulated availability; real physical
-unplug/cross-device throughput is not established. Resource benchmarks and
-filesystem-image evidence retain their own source/artifact limits. A Data entry
-that disappears before identity proof can still stop a scan explicitly.
+The installed normal **1.0.0 build 8** and build 6/build 3 backups remain preserved. All 12 installed archive-file bytes and strict signatures were rechecked. No personal cache migration, file deletion, shell/Xcode/login activation or physical disk fault was performed. Earlier installation records remain [here](../validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md).
 
-## Next actions and external gates
+The final integrated default suite passed 389 discovered cases: 358 executed, 31 explicit skips, zero failures. Earlier component counts retain their own source boundaries. All 51 packaging cases passed. Independent review covers the cache, storage, source guards and UI; the real Chrome workflow passed both in the worker (50.672s) and integrated coordinator (35.492s). New samples were observed in PT/EN at minimum size; their findings led to small result-navigation/translation/layout fixes awaiting final-package recheck. See [review](../validation/CACHE-VOLUME-REVIEW-2026-11-10.md) and [native UI notes](../validation/CACHE-VOLUME-UI-2026-11-10.md).
 
-1. Preserve build 8's exact archive and the installed build 6/backup. Inspect
-   actual main/CI state when resuming and collect the maintainer's feedback;
-   its installation and personal-cache operations require their actual reviewed
-   selections and are not implied by sample tests.
-2. With actual Developer ID/notarization/update credentials, create a new
-   production artifact with a larger build number and qualify signed valid/
-   tampered updates, consent, operation blocking and deferred restart.
-3. Qualify that artifact on another physical Apple Silicon Mac/macOS 14 and a
-   separate disposable physical-fault device; perform hands-on PT/EN keyboard/
-   VoiceOver acceptance across both flows.
-4. With specific outreach authorization, record five general users plus five
-   developers, at least 80% independent success per group and seven real days.
-   Participant evidence is never simulated by agents.
+Earlier new-volume scale attempts were explicitly aborted for performance and their own generated fixtures removed. They are not accepted evidence. The final run on the bound factory passed with 1,002,003 entries, 90.42 MiB peak RSS and resumed changes/search/last-page assertions. It took 69min53s including cleanup and auxiliary work; this Debug/same-SSD result is not a claim of fast release scanning. [Scale evidence](../validation/VOLUME-SCALE-2026-11-10.md) records the original duration and a separate subsequent search-plan replay. FULL durability and all transaction/resource/source identity boundaries remain enforced. No prior legacy benchmark is used to attest the new engine.
 
-publicV1Ready remains false. No unintegrated implementation is pending and no
-background agent service is assumed after the active session. Further ccache,
-pnpm stores/metadata, graphical-app adapters, duplicate detection, assisted
-uninstall and Intel support need their own bounded scope and qualification.
+Intermediate local builds 9 and 10 are preserved separately and were not installed. Final local **1.0.0 build 11**, source `2380b1a`, incorporates the search-plan correction. Its [clean-source manifest](../validation/candidate-1.0.0-build11-local.json) and [exact ZIP qualification](../validation/cache-volume-build11-qualification.json) passed. It was temporarily installed only inside an isolated internal fixture, checked and removed; it did not replace the maintainer's installed build 8. Neither a successful local build nor these developer observations is notarization or human acceptance.
+
+## Remaining gates
+
+1. Preserve the final artifact and installed build 8/backups. The read-only query replay passed: rare searches took 45.340s and 69.170s, parent last-page lookup 0.01445s. This is correctness/plan evidence, not an instant-search claim; large-volume Debug scanning/search remains a measured performance limitation.
+2. Finish PR/main exact-head CI and integration bookkeeping. The candidate/package and native sample checks have passed; another new installation or actual personal-cache transfer still requires its real reviewed selection.
+3. With actual resources: Developer ID/notarization and signed-update exercise; another physical Apple Silicon Mac/macOS 14; a disposable physical-fault device; hands-on PT/EN keyboard/VoiceOver and five general plus five developer participants with seven real days. Agent/CI evidence never substitutes for these gates.
+
+`publicV1Ready` remains false. The [roadmap](../ROADMAP.md), [ledger](../TRACEABILITY.json), [earlier expanded-flow record](../validation/EXPANDED-FLOWS-2026-11-10.md) and [historical session](SESSION-2026-11-10.md) retain their own source/artifact boundaries. Further ccache/pnpm/store breadth, duplicate detection, assisted uninstall and Intel support remain outside the currently qualified set. No background agent service is assumed after the active session.
