@@ -18,7 +18,11 @@ The machine-readable source of requirement IDs, issues, acceptance criteria, val
 | [M7](https://github.com/Gabriellimmaa/DiskWing/issues/8) | Distribution | Internal installation, Developer ID/notarization, consented signed updates and removal |
 | [M8](https://github.com/Gabriellimmaa/DiskWing/issues/9) | Beta and v1 | Five users per audience, four of five succeed per group, immediate/seven-day results, no critical blockers |
 
-## Implementation status — 2026-11-10
+## History follow-up — 2026-11-11
+
+The maintainer's History overflow report is fixed in [PR #25](https://github.com/Gabriellimmaa/DiskWing/pull/25). One scroll viewport keeps recovery cards and operations inside the window. Independent review, PT/EN minimum-size regression and native samples, full local checks, macOS 15/26 PR CI and exact build 12 package qualification passed. Build 12 is installed; build 11 and earlier backups are preserved. [Scoped evidence](validation/HISTORY-LAYOUT-2026-11-11.md) records the actual normal-app observation and unchanged state-file checks. This resolves the reported defect without closing human or public-v1 gates.
+
+## Earlier cache/volume implementation status — 2026-11-10
 
 The active increment is [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24) under the [approved simpler cache/whole-volume plan](plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md). It adds two primary routes, application-oriented batch transfer, exact-version/platform Google Chrome qualification, explicit local exceptions, whole logical volumes, durable resume, virtual tree/treemap and volume-bound Trash. Native Chrome and disposable APFS/HFS+ Trash/refusal evidence are independently reviewed; the full >1M filesystem test, query replay and exact build 11 package have their own evidence; final PR/main bookkeeping retains its own gates. See [current state](context/CURRENT_STATE.md), [graphical matrix](validation/GRAPHICAL-CACHES-2026-11-10.md) and [review boundaries](validation/CACHE-VOLUME-REVIEW-2026-11-10.md).
 
@@ -38,8 +42,8 @@ The follow-on portable acceptance kit adds self-contained bundled checks, a real
 
 The next independent gates, in order of prerequisites, are:
 
-1. Complete the active cache/volume increment's final scale/candidate/UI/CI gates and preserve build 8 plus its backups. A new normal installation and personal-cache operations remain separate reviewed actions; developer observations are not human acceptance.
-2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a build number greater than 8 and its own affected qualification; protected signing/update keys remain external prerequisites.
+1. Collect maintainer feedback on installed build 12 after the scoped History fix. Preserve build 11/build 8/build 6/build 3 backups and the original performance evidence. Personal-cache operations require their own actual selection and review; developer observations are not human acceptance.
+2. Developer ID/notarization and a hosted signed-update acceptance/rejection exercise, including consent, operation blocking and deferred restart (M7). Use a new production artifact with a build number greater than 12 and its own affected qualification; protected signing/update keys remain external prerequisites.
 3. Another Apple Silicon Mac/macOS 14 disposable filesystem and application install/restore/disable/removal matrix (M1/M3/M7), plus hands-on keyboard/VoiceOver and both-language acceptance across the two core flows (M6). The packaged helper/lifecycle runner and [manual handoff](acceptance/SECOND_MAC.md) keep generated checks distinct from independent human evidence.
 4. Five general users plus five developers; immediate task results, at least 80 percent independent success per group and actual seven-day diaries (M8). Resolve all critical findings before v1 readiness. Private participant outreach requires specific authorization.
 
