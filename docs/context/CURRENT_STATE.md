@@ -1,5 +1,7 @@
 # Current state
 
+2026-11-11 follow-up: the maintainer reported a broken layout when opening History. The installed build 11 reproduces clipped content and a displaced sidebar with pending recovery cards. A [scoped correction](../validation/HISTORY-LAYOUT-2026-11-11.md) gives the whole page one scroll viewport; its PT/EN minimum-size regression and independent source review passed. Full local checks, sample GUI observation and a new candidate are in progress. The installed app, ongoing scan and earlier backups remain preserved. This feedback is a defect report, not acceptance of the remaining interface or release gates.
+
 Updated 2026-11-10. The maintainer's [cache/volume experience plan](../plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md) was merged in [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24) at `d4b9337`. All local functional gates now have evidence: real Chrome, native Trash filesystems, complete >1M-entry scan, query replay, PT/EN sample journeys and exact candidate qualification. Exact PR-head and [post-merge main CI](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42945444516) passed on macOS 15/26, including optional updater compilation. The final bookkeeping commit changes documentation only; tested runtime source matches the candidate. Apple Silicon, macOS 14+, Lift, MIT and PT/EN remain the app scope; provider qualification has narrower explicit limits.
 
 ## Two primary flows

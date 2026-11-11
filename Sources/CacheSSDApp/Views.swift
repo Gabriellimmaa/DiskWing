@@ -235,73 +235,79 @@ struct CacheRow: View {
 struct HistoryView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            PageHeader(title: L10n.text("Histórico"), subtitle: L10n.text("Operações realizadas neste Mac, com o resultado e o local de recuperação quando disponível."))
-            if model.hasUnreadableRecoveryRecords {
-                Label(L10n.text("Há registros de recuperação ou configuração pendentes. Eles foram preservados; abra os registros locais para revisão."), systemImage: "exclamationmark.triangle").foregroundStyle(Palette.orange)
-                Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
-            }
-            ForEach(model.graphicalPendingTransfers) { record in
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(L10n.text("Transferência de cache precisa de revisão"), systemImage: "exclamationmark.circle").font(.headline)
-                    Text(L10n.message(record.detail)).font(.caption)
-                    Button(L10n.text("Revisar recuperação…")) { model.review = .graphicalRecover(record.id) }.disabled(model.busy)
-                }.padding(12).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
-            }
-            if !model.recoveries.isEmpty {
-                ForEach(model.recoveries) { assessment in
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PageHeader(title: L10n.text("Histórico"), subtitle: L10n.text("Operações realizadas neste Mac, com o resultado e o local de recuperação quando disponível."))
+                if model.hasUnreadableRecoveryRecords {
+                    Label(L10n.text("Há registros de recuperação ou configuração pendentes. Eles foram preservados; abra os registros locais para revisão."), systemImage: "exclamationmark.triangle").foregroundStyle(Palette.orange)
+                    Button(L10n.text("Mostrar registros locais")) { model.openRecords() }
+                }
+                ForEach(model.graphicalPendingTransfers) { record in
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(model.recoveryTitle(assessment)).font(.headline)
-                        Text(L10n.message(assessment.explanation)).font(.callout)
-                        Text(assessment.journal.source).font(.caption).textSelection(.enabled)
-                        HStack {
-                            if assessment.canRestoreSource { Button(assessment.journal.kind == "restore" ? L10n.text("Concluir restauração…") : L10n.text("Revisar recuperação…")) { model.review = .recover(assessment) } }
-                            Button(L10n.text("Revisar encerramento…")) { model.review = .resolve(assessment) }
-                        }
+                        Label(L10n.text("Transferência de cache precisa de revisão"), systemImage: "exclamationmark.circle").font(.headline)
+                        Text(L10n.message(record.detail)).font(.caption)
+                        Button(L10n.text("Revisar recuperação…")) { model.review = .graphicalRecover(record.id) }.disabled(model.busy)
                     }.padding(12).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
                 }
-            }
-            if !model.interrupted.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label(L10n.text("\(model.interrupted.count) registros de migração incompleta"), systemImage: "exclamationmark.circle").foregroundStyle(Palette.orange).font(.headline)
-                    ForEach(model.interrupted.prefix(5)) { journal in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.text("\(journal.toolID): \(journal.detail)")).font(.callout)
-                            if let path = journal.localQuarantine, FileManager.default.fileExists(atPath: path) { Button(L10n.text("Mostrar origem preservada")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
+                if !model.recoveries.isEmpty {
+                    ForEach(model.recoveries) { assessment in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(model.recoveryTitle(assessment)).font(.headline)
+                            Text(L10n.message(assessment.explanation)).font(.callout)
+                            Text(assessment.journal.source).font(.caption).textSelection(.enabled)
+                            HStack {
+                                if assessment.canRestoreSource { Button(assessment.journal.kind == "restore" ? L10n.text("Concluir restauração…") : L10n.text("Revisar recuperação…")) { model.review = .recover(assessment) } }
+                                Button(L10n.text("Revisar encerramento…")) { model.review = .resolve(assessment) }
+                            }
+                        }.padding(12).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                if !model.interrupted.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(L10n.text("\(model.interrupted.count) registros de migração incompleta"), systemImage: "exclamationmark.circle").foregroundStyle(Palette.orange).font(.headline)
+                        ForEach(model.interrupted.prefix(5)) { journal in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(L10n.text("\(journal.toolID): \(journal.detail)")).font(.callout)
+                                if let path = journal.localQuarantine, FileManager.default.fileExists(atPath: path) { Button(L10n.text("Mostrar origem preservada")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
+                            }
+                        }
+                        Button(L10n.text("Abrir registros de recuperação")) { model.openRecords() }
+                    }.padding(16).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+                }
+                if let comparison = model.growthComparison {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker(L10n.text("Comparar com"), selection: $model.growthDays) {
+                            Text(L10n.text("Análise anterior")).tag(0); Text(L10n.text("7 dias")).tag(7); Text(L10n.text("30 dias")).tag(30)
+                        }.frame(maxWidth: 340)
+                        if let delta = comparison.logicalDelta {
+                            Text(L10n.text("Variação nos arquivos: \(delta >= 0 ? "+" : "−")\(ByteText.format(abs(delta)))")).font(.headline)
+                            ForEach(comparison.folders.prefix(8)) { item in
+                                HStack { Text(URL(fileURLWithPath: item.path).lastPathComponent); Spacer(); Text("\(item.logicalDelta >= 0 ? "+" : "−")\(ByteText.format(abs(item.logicalDelta)))").monospacedDigit() }
+                            }
+                        }
+                        if let reason = comparison.reason { Text(L10n.message(reason)).font(.caption).foregroundStyle(.secondary) }
+                        Text(L10n.text("Variação de arquivos não é uma promessa de espaço recuperável. As análises precisam ter o mesmo escopo e acesso.")).font(.caption).foregroundStyle(.secondary)
+                    }.padding(14).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
+                }
+                if !model.monitoringStatus.isEmpty { Text(L10n.message(model.monitoringStatus)).font(.caption).foregroundStyle(.secondary) }
+                if model.history.isEmpty { ContentUnavailableView(L10n.text("Nenhuma operação realizada"), systemImage: "clock", description: Text(L10n.text("Analisar espaço não move nem apaga seus arquivos."))) }
+                else {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(model.history) { record in
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack { Text(L10n.message(record.title)).font(.headline); Spacer(); Text(record.date, format: .dateTime.day().month().hour().minute()).font(.caption).foregroundStyle(.secondary) }
+                                Text(L10n.message(record.detail)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                                if let delta = record.measuredFreeDelta { Text(L10n.text("Variação observada do espaço livre: \(delta >= 0 ? "+" : "−")\(ByteText.format(abs(delta)))")).font(.caption).foregroundStyle(Palette.accent) }
+                                if let path = record.recoveryPath { Button(L10n.text("Mostrar local de recuperação")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
+                            }.padding(.vertical, 10).padding(.horizontal, 16)
+                            .accessibilityElement(children: .contain)
+                            if record.id != model.history.last?.id { Divider().padding(.horizontal, 16) }
                         }
                     }
-                    Button(L10n.text("Abrir registros de recuperação")) { model.openRecords() }
-                }.padding(16).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
-            }
-            if let comparison = model.growthComparison {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker(L10n.text("Comparar com"), selection: $model.growthDays) {
-                        Text(L10n.text("Análise anterior")).tag(0); Text(L10n.text("7 dias")).tag(7); Text(L10n.text("30 dias")).tag(30)
-                    }.frame(maxWidth: 340)
-                    if let delta = comparison.logicalDelta {
-                        Text(L10n.text("Variação nos arquivos: \(delta >= 0 ? "+" : "−")\(ByteText.format(abs(delta)))")).font(.headline)
-                        ForEach(comparison.folders.prefix(8)) { item in
-                            HStack { Text(URL(fileURLWithPath: item.path).lastPathComponent); Spacer(); Text("\(item.logicalDelta >= 0 ? "+" : "−")\(ByteText.format(abs(item.logicalDelta)))").monospacedDigit() }
-                        }
-                    }
-                    if let reason = comparison.reason { Text(L10n.message(reason)).font(.caption).foregroundStyle(.secondary) }
-                    Text(L10n.text("Variação de arquivos não é uma promessa de espaço recuperável. As análises precisam ter o mesmo escopo e acesso.")).font(.caption).foregroundStyle(.secondary)
-                }.padding(14).background(Palette.panel, in: RoundedRectangle(cornerRadius: 8))
-            }
-            if !model.monitoringStatus.isEmpty { Text(L10n.message(model.monitoringStatus)).font(.caption).foregroundStyle(.secondary) }
-            if model.history.isEmpty { ContentUnavailableView(L10n.text("Nenhuma operação realizada"), systemImage: "clock", description: Text(L10n.text("Analisar espaço não move nem apaga seus arquivos."))) }
-            else {
-                List(model.history) { record in
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack { Text(L10n.message(record.title)).font(.headline); Spacer(); Text(record.date, format: .dateTime.day().month().hour().minute()).font(.caption).foregroundStyle(.secondary) }
-                        Text(L10n.message(record.detail)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                        if let delta = record.measuredFreeDelta { Text(L10n.text("Variação observada do espaço livre: \(delta >= 0 ? "+" : "−")\(ByteText.format(abs(delta)))")).font(.caption).foregroundStyle(Palette.accent) }
-                        if let path = record.recoveryPath { Button(L10n.text("Mostrar local de recuperação")) { model.reveal([URL(fileURLWithPath: path)]) }.font(.caption) }
-                    }.padding(.vertical, 10)
-                }.listStyle(.inset)
-            }
-            Text(L10n.text("A variação de espaço livre inclui a atividade de outros aplicativos. Arquivos na Lixeira ainda ocupam espaço.")).font(.caption).foregroundStyle(.secondary)
-        }.padding(30)
+                }
+                Text(L10n.text("A variação de espaço livre inclui a atividade de outros aplicativos. Arquivos na Lixeira ainda ocupam espaço.")).font(.caption).foregroundStyle(.secondary)
+            }.padding(30)
+        }.accessibilityIdentifier("history-scroll")
     }
 }
 
