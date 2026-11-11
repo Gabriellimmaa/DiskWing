@@ -184,8 +184,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         return L10n.text("Destinos preparados; uso ainda não comprovado")
     }
     var cacheWorkflowDetail: String {
+        if cacheStateUnknown { return L10n.text("Abra o histórico e revise os registros preservados antes de transferir novos caches.") }
         if !hasRegisteredCacheDestinations { return L10n.text("Escolha o SSD e analise os aplicativos para revisar a primeira transferência.") }
-        if !canVerifyGraphicalCacheUsage { return L10n.text("Destinos de terminal preparados. Abra um novo terminal. Nesta versão, o DiskWing não verifica execuções já encerradas.") }
+        if !canVerifyGraphicalCacheUsage {
+            if !cacheRegisteredIDs.subtracting(Set(settings.locations.keys)).isEmpty { return L10n.text("Analise os aplicativos para atualizar os destinos registrados e verificar seu uso. Nenhuma transferência começa automaticamente.") }
+            return L10n.text("Destinos de terminal preparados. Abra um novo terminal. Nesta versão, o DiskWing não verifica execuções já encerradas.")
+        }
         return L10n.text("Reabra os aplicativos ou use um novo terminal. A verificação distingue configuração de gravação real no SSD.")
     }
     func cacheSizeKnown(_ entry: CacheTransferEntry) -> Bool {

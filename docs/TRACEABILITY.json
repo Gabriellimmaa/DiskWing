@@ -785,14 +785,18 @@
           "Sources/CacheSSDCore/CacheTransfer*",
           "Tests/CacheSSDCoreTests/Graphical*"
         ],
-        "status": "implemented_graphical_native_qualification_in_progress",
-        "evidence": [],
-        "nextAction": "Complete opaque OS-managed quarantine-copy proof and actual read/write observer; native Chrome final pass, platform-limited qualification and independent review.",
+        "status": "implemented_independently_reviewed_native_qualified_local",
+        "evidence": [
+          "docs/validation/GRAPHICAL-CACHES-2026-11-10.md",
+          "docs/validation/chrome-cache-qualification-2026-11-10.json"
+        ],
+        "nextAction": "Final integrated-source native repeat and new-candidate UI/packaging; keep unsupported caches as visible exceptions.",
         "implementationCommits": [
           "3f22f5481244e099b457ed5a0d8b847f56e0f130",
           "d973726452ca27d0541acb03ace740d54e5b1594"
         ],
-        "validation": "42 isolated cache/proof cases passed in worker; normal NSWorkspace Chrome launch and HTTP reuse/new writes/fallback/restore exercised but final observer/source-release gate not passed yet. Browser version remains provisional and cannot be promoted before final native success and independent review."
+        "validation": "46 isolated cache/proof tests;10 libproc own-PID tests. Real Chrome workflow1/0fail50.672s via NSWorkspace and actual kernel read/write evidence with source release, fallback/reconnect/restore. Qualified only157.0.8103.39/macOS26/arm64/APFS; no personal profiles or physical disconnect.",
+        "reviewedCommit": "46e7148c1bdd2bf77159561ca5aabd11a436e664"
       },
       {
         "id": "UX-VOLUME-01",
@@ -818,7 +822,7 @@
           "4bdf0eb5ef769ae009bc3b522b28ea0c0394802e",
           "4043c0c9bdd315786cb80e78af36c33d4d8dc0b6"
         ],
-        "validation": "57 isolated targeted cases passed, including default temporary spelling, source/root bindings, read-only lookup and explicit close. First >1M attempt aborted for performance and fixture removed; hotpath optimized, final benchmark pending."
+        "validation": "57 isolated targeted cases passed, including default temporary spelling, source/root bindings, read-only lookup and explicit close. First >1M attempt aborted for performance and fixture removed; hotpath optimized, final benchmark pending. Final constructor preflight66e84e0 independently approved;15 storage cases independently repeated. Final >1M bound-factory benchmark is running."
       },
       {
         "id": "UX-TRASH-01",
@@ -868,7 +872,7 @@
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
-    "lastIntegratedCommit": "9df022bdb07f2f2bb8d56f3707616bd9ba15fae3",
+    "lastIntegratedCommit": "9676655",
     "nextAction": "Finish graphical native acceptance and final volume benchmark, independent reviews, PT/EN native samples, exact new candidate and CI/PR. Preserve installed build8 and backups; no personal migrations.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "integrationBranch": "codex/cache-volume-ux",
