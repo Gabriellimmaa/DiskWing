@@ -72,16 +72,32 @@ enum GraphicalCacheVerification {
                     if resultQ == expectedQ { matched = true; break }
                 }
                 guard matched else { throw failure() }
-                guard sourceQ == nil || expectedQ != nil, expectedQ == resultQ else { debug("opaque reference mismatch at " + parts.joined(separator: "/") + " source=" + (sourceQ.map(hash) ?? "none") + " result=" + (resultQ.map(hash) ?? "none") + " reference=" + (expectedQ.map(hash) ?? "none")); throw failure() }
+                let originalHash: String? = sourceQ.map { hash($0) }
+                let resultHash: String? = resultQ.map { hash($0) }
+                let expectedHash: String? = expectedQ.map { hash($0) }
+                let sourceIsRepresented: Bool = sourceQ == nil || expectedQ != nil
+                let opaqueValuesMatch: Bool = expectedQ == resultQ
+                guard sourceIsRepresented, opaqueValuesMatch else {
+                    let relativePath: String = parts.joined(separator: "/")
+                    let details: [String] = [
+                        "opaque reference mismatch at " + relativePath,
+                        "source=" + (originalHash ?? "none"),
+                        "result=" + (resultHash ?? "none"),
+                        "reference=" + (expectedHash ?? "none")
+                    ]
+                    debug(details.joined(separator: " "))
+                    throw failure()
+                }
                 guard sourceQ == nil || resultQ != nil,
                       try FileTree.metadataDigest(descriptor: from, excludingQuarantine: true) == FileTree.metadataDigest(descriptor: to, excludingQuarantine: true) else { throw failure() }
                 if let sourcePayload { guard try hashFile(to, cancellation: cancellation) == sourcePayload else { throw failure() } }
-                let originalHash = sourceQ.map(hash), resultHash = resultQ.map(hash), expectedHash = expectedQ.map(hash)
-                let key = (directory ? "directory" : "file") + ":" + (originalHash ?? "none") + ":" + (resultHash ?? "none")
+                let objectType: String = directory ? "directory" : "file"
+                let keyParts: [String] = [objectType, originalHash ?? "none", resultHash ?? "none"]
+                let key: String = keyParts.joined(separator: ":")
                 if var existing = proof[key] { existing.count += 1; proof[key] = existing }
                 else {
                     guard proof.count < 64 else { throw failure() }
-                    var entry = GraphicalQuarantineCopyProof(sourceSHA256: originalHash, resultSHA256: resultHash, referenceSHA256: expectedHash, objectType: directory ? "directory" : "file", count: 1)
+                    var entry = GraphicalQuarantineCopyProof(sourceSHA256: originalHash, resultSHA256: resultHash, referenceSHA256: expectedHash, objectType: objectType, count: 1)
                     entry.sourceValueBase64 = sourceQ?.base64EncodedString()
                     entry.resultValueBase64 = resultQ?.base64EncodedString()
                     entry.referenceValueBase64 = expectedQ?.base64EncodedString()
