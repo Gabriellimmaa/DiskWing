@@ -31,3 +31,11 @@ Durable private proof retains bounded opaque values and hashes; public evidence 
 ## Limits
 
 The generated home and SSD directories share a filesystem; availability is simulated by moving only the generated destination. This does not prove physical cable removal, another Mac, macOS 14/15 graphical operation, all future Chrome releases, user VoiceOver/beta acceptance or notarization. Existing processes may need reopening to switch destinations. Runtime verification observes current access during its window; it does not reconstruct reads that already ended.
+
+## Source references and integrated repeat
+
+The path equivalence was checked against Chromium's [GetUserCacheDirectory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_paths_mac.mm) (consulted blob6829c9cb92c228dd19d44c9f739bf4595720cc2d) and [Foundation directory roots](https://chromium.googlesource.com/chromium/src.git/+/refs/heads/main/base/base_paths_mac.mm) (consulted blob ef6a07a7a18e34331e5a3c0b318d294c2e9390bd). These consulted main-branch sources are not misrepresented as a checked Chrome157 source tag. The generated paths were also verified in the running application.
+
+Apple's historical [CF home-directory implementation](https://github.com/apple-oss-distributions/CF/blob/main/CFPlatform.c) explains CFFIXED_USER_HOME; that historical mechanism is not a public compatibility promise. Actual isolation was exercised on the stated OS. Opening uses the documented [NSWorkspace configuration API](https://developer.apple.com/documentation/appkit/nsworkspace/openconfiguration). The opaque-copy policy follows the standard [copyfile implementation](https://github.com/apple-oss-distributions/copyfile/blob/main/copyfile.c) and [manual](https://github.com/apple-oss-distributions/copyfile/blob/main/copyfile.3), without private flags or raw quarantine repair.
+
+After integration and the coordinator's generic path-safety fix, the real Chrome test was independently repeated in the coordinator checkout: one test, zero failures,35.492s. The installed distribution, normal launch, source release and absence/reconnection assertions remained unchanged. The compile-only expression refactor for older Swift is behavior-equivalent and independently reviewed; macOS15 is still not a graphical qualification platform.
