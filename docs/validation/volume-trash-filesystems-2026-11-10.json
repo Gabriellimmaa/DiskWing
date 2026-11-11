@@ -1,0 +1,40 @@
+{
+  "coreImplementationCommit": "d67bb0e21a5bbd4a86a3c1b5baf8657a9743bff1",
+  "scenarios": [
+    {
+      "changedMountPath": true,
+      "conflictPreserved": true,
+      "date": "2026-11-10T22:00:43Z",
+      "filesystem": "APFS",
+      "nativeFinderTrash": true,
+      "restoredByRename": true,
+      "result": "passed",
+      "scenario": "apfs-finder-trash-remount-recovery",
+      "scope": "Disposable disk image; no physical cable removal",
+      "volumeIdentityRemount": true
+    },
+    {
+      "date": "2026-11-10T22:00:47Z",
+      "filesystem": "ExFAT",
+      "nativeTrashNotCalled": true,
+      "originalPreserved": true,
+      "result": "passed",
+      "scenario": "exfat-trash-safe-refusal",
+      "scope": "Disposable disk image; no physical cable removal"
+    },
+    {
+      "changedMountPath": true,
+      "conflictPreserved": true,
+      "date": "2026-11-10T23:44:28Z",
+      "filesystem": "HFS+",
+      "nativeFinderTrash": true,
+      "restoredByRename": true,
+      "result": "passed",
+      "scenario": "hfs-finder-trash-remount-recovery",
+      "scope": "Disposable disk image; no physical cable removal",
+      "volumeIdentityRemount": true
+    }
+  ],
+  "schemaVersion": 1,
+  "scope": "Generated disk images only; no personal files or physical cable test"
+}

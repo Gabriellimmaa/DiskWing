@@ -22,13 +22,13 @@ The installed normal **1.0.0 build 8** and build 6/build 3 backups remain preser
 
 The integrated default suite passed378 discovered/348 executed/30 explicit skips, then383 discovered/353 executed/30 skips after later fixes, with zero failures. All 51 packaging cases passed. Independent review covers the cache, storage, source guards and UI; the real Chrome workflow passed both in the worker (50.672s) and integrated coordinator (35.492s). New samples were observed in PT/EN at minimum size; their findings led to small result-navigation/translation/layout fixes awaiting final-package recheck. See [review](../validation/CACHE-VOLUME-REVIEW-2026-11-10.md) and [native UI notes](../validation/CACHE-VOLUME-UI-2026-11-10.md).
 
-Earlier new-volume scale attempts were explicitly aborted for performance and their own generated fixtures removed. They are not accepted evidence. A final run on the bound factory, with scoped validation amortization and a scoped 64 MiB SQLite cache restored after the operation, is in progress. FULL durability and all transaction/resource/source identity boundaries remain enforced. No prior legacy benchmark is used to attest the new engine.
+Earlier new-volume scale attempts were explicitly aborted for performance and their own generated fixtures removed. They are not accepted evidence. The final run on the bound factory passed with 1,002,003 entries, 90.42 MiB peak RSS and resumed changes/search/last-page assertions. It took 69min53s including cleanup and auxiliary work; this Debug/same-SSD result is not a claim of fast release scanning. [Scale evidence](../validation/VOLUME-SCALE-2026-11-10.md) records the original duration and a separate subsequent search-plan replay. FULL durability and all transaction/resource/source identity boundaries remain enforced. No prior legacy benchmark is used to attest the new engine.
 
-The intermediate local build 9 is preserved separately and was not installed; a newer final candidate will have its own clean-source manifest, exact ZIP and qualification. Neither a successful local build nor these developer observations is notarization or human acceptance.
+Intermediate local builds 9 and 10 are preserved separately and were not installed. The final candidate incorporates the search-plan correction and has its own clean-source manifest, exact ZIP and qualification. Neither a successful local build nor these developer observations is notarization or human acceptance.
 
 ## Remaining gates
 
-1. Finish the actual new >1M-entry run and record measured time/RSS/coverage/totals/resume/search/last-page evidence.
+1. Complete the separate read-only replay of the corrected query plan against the preserved generated >1M index; the original full filesystem run has passed and retains its actual time.
 2. Recheck the final sample package after the small UI findings, qualify the exact new normal ZIP with a disposable internal lifecycle, and pass PR/main CI on macOS 15/26 with optional updater compilation.
 3. With actual resources: Developer ID/notarization and signed-update exercise; another physical Apple Silicon Mac/macOS 14; a disposable physical-fault device; hands-on PT/EN keyboard/VoiceOver and five general plus five developer participants with seven real days. Agent/CI evidence never substitutes for these gates.
 
