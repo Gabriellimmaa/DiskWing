@@ -36,6 +36,7 @@ final class GraphicalChromeNativeTests: XCTestCase {
         _ = try harness.command("launch")
         let seed = try harness.command("fetch", asset: "A")
         XCTAssertGreaterThan(seed["length"] as? Int ?? 0, 100_000)
+        XCTAssertEqual(try harness.command("read-set")["requests"] as? Int, 64)
         _ = try harness.command("seal-cookie")
         _ = try harness.command("stop")
         let profile = home.appendingPathComponent("Library/Application Support/Google/Chrome/GeneratedQualification")
@@ -60,6 +61,9 @@ final class GraphicalChromeNativeTests: XCTestCase {
         let registration = try XCTUnwrap(try engine.registrations().first)
         let quarantine = try XCTUnwrap(registration.sourceQuarantine)
         let quarantineDigest = try FileTree.digest(quarantine)
+        _ = try harness.command("launch")
+        _ = try harness.command("fetch", asset: "B")
+        XCTAssertEqual(try FileTree.digest(quarantine), quarantineDigest)
         let observationDone = expectation(description: "Real Chrome descriptor observation window")
         var observation: Result<GraphicalCacheStatus, Error>?
         DispatchQueue.global(qos: .userInitiated).async {
@@ -67,23 +71,19 @@ final class GraphicalChromeNativeTests: XCTestCase {
             observationDone.fulfill()
         }
         Thread.sleep(forTimeInterval: 0.25)
-        _ = try harness.command("launch")
-        _ = try harness.command("fetch", asset: "B")
-        let reused = try harness.command("hold-read", asset: "A")
-        XCTAssertEqual(reused["requests"] as? Int, 1, "A new Chrome process must reuse the transferred HTTP response")
-        XCTAssertEqual(reused["fromDiskCache"] as? Bool, true)
-        let cookie = try harness.command("cookie")
-        XCTAssertTrue(cookie["preserved"] as? Bool == true)
-        if FileManager.default.fileExists(atPath: quarantine.path) {
-            XCTAssertEqual(try FileTree.digest(quarantine), quarantineDigest, "Chrome must not read or update the held old cache path")
-        }
+        let resourceReuse = try harness.command("read-set")
+        XCTAssertEqual(resourceReuse["requests"] as? Int, 64, "All generated resources must come from the transferred cache without new HTTP requests")
+        XCTAssertEqual(resourceReuse["fromDiskCache"] as? Bool, true)
         wait(for: [observationDone], timeout: 25)
         let verified = try XCTUnwrap(observation).get()
         XCTAssertEqual(verified.state, .ssdVerified, "Actual Chrome cache descriptors and writes are required; a touched file cannot stand in for use")
         XCTAssertTrue(verified.sourceReleased)
         XCTAssertFalse(FileManager.default.fileExists(atPath: quarantine.path))
         guard verified.state == .ssdVerified, verified.sourceReleased else { throw CacheSSDError.message("Native Chrome usage was not proved; original remains preserved") }
-        _ = try harness.command("release-read")
+        let reused = try harness.command("fetch", asset: "A")
+        XCTAssertEqual(reused["requests"] as? Int, 1, "A new Chrome process must reuse the transferred HTTP response after the old copy is gone")
+        XCTAssertEqual(reused["fromDiskCache"] as? Bool, true)
+        XCTAssertTrue(try harness.command("cookie")["preserved"] as? Bool == true)
         _ = try harness.command("stop")
         _ = try harness.command("launch")
         let newReused = try harness.command("fetch", asset: "B")
@@ -215,6 +215,8 @@ root=pathlib.Path(sys.argv[1]);home=root/'home';profile=home/'Library/Applicatio
 (root/'tmp').mkdir(exist_ok=True);counts={};sealed=False
 tokens={name:('DISKWING-GENERATED-'+name+'-'+uuid.uuid4().hex+'\n')*8192 for name in ['A','B','C']}
 tokens['A']*=40
+reader_names=['R'+str(index) for index in range(64)]
+tokens.update({name:('DISKWING-GENERATED-'+name+'-'+uuid.uuid4().hex+'\n')*8192 for name in reader_names})
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
   global sealed
@@ -323,6 +325,11 @@ try:
     value=evaluate("fetch('"+url+"').then(r=>r.text()).then(t=>({length:t.length,valid:t.startsWith('DISKWING-GENERATED-"+name+"-')}))")
     if not value or not value.get('valid'):raise RuntimeError('Generated response bytes mismatch')
     time.sleep(.5);result={'length':value['length'],'requests':counts.get('/asset-'+name,0),'fromDiskCache':events.get(url,False)}
+   elif action=='read-set':
+    urls=[base+'/asset-'+name for name in reader_names]
+    value=evaluate('Promise.all('+json.dumps(urls)+'.map(url=>fetch(url).then(r=>r.text()).then(t=>t.startsWith("DISKWING-GENERATED-R"))))')
+    if not value or not all(value):raise RuntimeError('Generated cache resource set mismatch')
+    result={'requests':sum(counts.get('/asset-'+name,0) for name in reader_names),'fromDiskCache':all(events.get(url,False) for url in urls)}
    elif action=='hold-read':
     page.call('Network.emulateNetworkConditions',{'offline':False,'latency':0,'downloadThroughput':4096,'uploadThroughput':1048576})
     url=base+'/asset-'+command['asset'];value=evaluate("fetch('"+url+"').then(async r=>{window.generatedReader=r.body.getReader();const p=await window.generatedReader.read();return {length:p.value.length};})")
