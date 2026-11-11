@@ -243,7 +243,8 @@
         "docs/validation/LOCAL-CANDIDATE-2026-11-10.md",
         "docs/validation/candidate-1.0.0-local.json",
         "docs/context/SESSION-2026-11-10.md",
-        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
+        "docs/validation/LOCAL-INSTALLATION-2026-11-10.md",
+        "docs/validation/LOCAL-INSTALLATION-BUILD11-2026-11-10.md"
       ],
       "externalDependencies": [
         "Developer ID Application identity and notarization profile unavailable.",
@@ -880,11 +881,27 @@
           "ec65e6ec9381c671035aea2c5bc945fd08b38001"
         ],
         "reviewEvidence": "docs/validation/CACHE-VOLUME-REVIEW-2026-11-10.md"
+      },
+      {
+        "id": "LOCAL-INSTALL-03",
+        "requirement": "M7",
+        "priority": "maintainer_validation",
+        "classification": "explicitly_authorized",
+        "title": "Install and open qualified build11, preserving build8 and all earlier backups without personal migration",
+        "owner": "coordinator",
+        "status": "complete_local",
+        "branch": "main",
+        "baseSHA": "8d49c25983482a13c531df7c28b5596934538b88",
+        "candidateCommit": "2380b1a6048e1cb82d280e498f72fdb560b06fca",
+        "evidence": [
+          "docs/validation/LOCAL-INSTALLATION-BUILD11-2026-11-10.md"
+        ],
+        "nextAction": "Maintainer feedback; no personal cache transfer without actual selected review."
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42945444516",
     "lastIntegratedCommit": "d4b9337bcf6e49df8f823c410482cd99c7fa9117",
-    "nextAction": "Collect maintainer feedback on separate build11. Actual personal-cache transfer requires its real selected review; installed8/backups preserved. Remaining external gates: signing/notarization/signed updates, another physical Mac/macOS14, physical fault device and human VoiceOver/beta. Large-volume Debug scan/search latency remains explicit.",
+    "nextAction": "Collect maintainer feedback on installed build11; preserve build8/build6/build3 backups. Actual personal-cache transfer requires its real selected review. External signing/platform/physical/human gates and measured large-volume performance limitations remain unchanged.",
     "lastVerifiedMainCommit": "d4b9337bcf6e49df8f823c410482cd99c7fa9117",
     "integrationBranch": "codex/cache-volume-ux",
     "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/24",
@@ -902,15 +919,23 @@
     "sessionContext": "docs/context/SESSION-CACHE-VOLUME-2026-11-10.md",
     "localInstallation": {
       "version": "1.0.0",
-      "buildNumber": "8",
+      "buildNumber": "11",
       "scope": "Explicitly authorized installation and launch only; no personal cache migration",
-      "evidence": "docs/validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md",
-      "previousBuildBackup": "6",
+      "evidence": "docs/validation/LOCAL-INSTALLATION-BUILD11-2026-11-10.md",
+      "previousBuildBackup": "8",
       "earlierBackupsPreserved": true,
       "normalWindowObserved": true,
       "trackedSettingsAndIntegrationUnchanged": true,
       "operationRecordsUnchanged": true,
-      "maintainerAcceptance": "pending"
+      "maintainerAcceptance": "pending",
+      "date": "2026-11-10",
+      "status": "installed_and_launched",
+      "archiveHashVerified": true,
+      "allInstalledRegularFilesMatchCandidate": true,
+      "allEarlierBackupRegularFilesMatchPreflight": true,
+      "installedAndAllBackupSignaturesVerified": true,
+      "trackedStateFileCount": 15,
+      "newTrackedRecords": 0
     },
     "scopeExpansionPlan": "docs/plans/SCOPE-EXPANSION-2026-11-10.md",
     "agentCapacityPolicy": {
@@ -925,7 +950,7 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateStatus": "local_qualified_separate_uninstalled_ad_hoc",
+    "candidateStatus": "local_qualified_installed_and_open_ad_hoc_maintainer_feedback_pending",
     "combinedLocalRegression": {
       "discovered": 389,
       "executed": 358,
@@ -999,6 +1024,18 @@
       "version": "1.0.0"
     },
     "scaleEvidence": "docs/validation/volume-scale-2026-11-10.json",
-    "queryReplayEvidence": "docs/validation/volume-search-replay-2026-11-10.json"
+    "queryReplayEvidence": "docs/validation/volume-search-replay-2026-11-10.json",
+    "previousBuild8Installation": {
+      "version": "1.0.0",
+      "buildNumber": "8",
+      "scope": "Explicitly authorized installation and launch only; no personal cache migration",
+      "evidence": "docs/validation/LOCAL-INSTALLATION-BUILD8-2026-11-10.md",
+      "previousBuildBackup": "6",
+      "earlierBackupsPreserved": true,
+      "normalWindowObserved": true,
+      "trackedSettingsAndIntegrationUnchanged": true,
+      "operationRecordsUnchanged": true,
+      "maintainerAcceptance": "pending"
+    }
   }
 }
