@@ -15,10 +15,17 @@ The reviewer did not author the coordinator UI/volume engine. The coordinator re
 
 New disposable APFS and HFS+ images passed native macOS Trash, rename/detach/remount, conflict preservation and recovery by exclusive rename. ExFAT passed refusal before invoking Trash, with the original unchanged. Each image was created for its test and only its returned device was renamed/detached; no existing disk was used for fault injection. These cases do not establish physical cable-removal safety or another Mac.
 
-## Gates still open
+## Gates at the initial review checkpoint
 
 Graphical cache acceptance requires the real application's normal LaunchServices path, transferred-content reuse, new destination writes, persistent-profile preservation, fallback/reconnection and actual observer/source-release evidence. A touched marker, metadata configuration or successful copy is insufficient. An opaque macOS-managed quarantine-copy contract has separate bounded, versioned verification and must not rewrite unknown security bits or alter legacy digests; final cache review is recorded only after the exact implementation and native results pass.
 
 The first new >1M-entry run was aborted for insufficient performance, and only its fixture was removed. It is not accepted scale evidence. The optimized bound-storage path must pass a fresh complete run.
 
 Final PT/EN native sample UI, exact new-candidate qualification, exact-head CI and final integration remain separate gates. Developer observations and test counts never attest human beta, VoiceOver, macOS 14/another physical Mac, public signing or notarization.
+
+
+## Final local closure
+
+Chrome source46e7148 and the sanitized real test evidence were independently approved; the coordinator repeated the real workflow after integration. The original new-volume >1M run completed normally with all assertions and peak RSS, not a synthetic count. The subsequent query-only plan change b706651 and read-only retained-index test fcf215f received separate review and execution evidence. Standard API opaque metadata, source hashes, filesystem identity and recovered legacy digests remain explicit.
+
+The final integrated default suite passed389 discovered/358 executed/31 explicit skips with zero failures; all51 packaging cases passed. Build11 exact ZIP/temporary internal lifecycle and PT/EN sample-package recheck passed. Static approval covers Root b34659d/ec65e6e and backend3e37ce9/b706651. Public source promotion still requires exact-head PR/main CI; physical/another-Mac/human/signing gates remain external, not agent-attested.

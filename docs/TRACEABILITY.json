@@ -281,7 +281,7 @@
     "schemaVersion": 1,
     "plan": "docs/AUTONOMOUS-DELIVERY.md",
     "baseSHA": "635b85708b2088eaf3786383a4056ca536e7ace6",
-    "phase": "cache_volume_experience_implementation",
+    "phase": "cache_volume_experience_final_CI_merge",
     "tasks": [
       {
         "id": "AUTO-00",
@@ -785,12 +785,12 @@
           "Sources/CacheSSDCore/CacheTransfer*",
           "Tests/CacheSSDCoreTests/Graphical*"
         ],
-        "status": "implemented_independently_reviewed_native_qualified_local",
+        "status": "complete_local",
         "evidence": [
           "docs/validation/GRAPHICAL-CACHES-2026-11-10.md",
           "docs/validation/chrome-cache-qualification-2026-11-10.json"
         ],
-        "nextAction": "Final integrated-source native repeat and new-candidate UI/packaging; keep unsupported caches as visible exceptions.",
+        "nextAction": "External platform/physical-device/human gates; actual personal selection remains unexecuted.",
         "implementationCommits": [
           "3f22f5481244e099b457ed5a0d8b847f56e0f130",
           "d973726452ca27d0541acb03ace740d54e5b1594"
@@ -812,9 +812,13 @@
           "Sources/CacheSSDCore/Volumes.swift",
           "Sources/CacheSSDCore/VolumeScanTarget.swift"
         ],
-        "status": "implemented_isolated_passed_review_and_scale_pending",
-        "evidence": [],
-        "nextAction": "Independent storage review; repeat >1M on final bound factory once graphical qualification releases native lane.",
+        "status": "complete_local_with_measured_performance_limit",
+        "evidence": [
+          "docs/validation/VOLUME-SCALE-2026-11-10.md",
+          "docs/validation/volume-scale-2026-11-10.json",
+          "docs/validation/volume-search-replay-2026-11-10.json"
+        ],
+        "nextAction": "Record final CI/main integration; large-volume scan/global-search latency remains an explicit limitation, not false completion or storage savings.",
         "implementationCommits": [
           "fe4364ba8a6d75ec8cec320366acb7a42724c0a4",
           "5f68cf612907e8952e11eb84309b98944dccb7eb",
@@ -822,7 +826,7 @@
           "4bdf0eb5ef769ae009bc3b522b28ea0c0394802e",
           "4043c0c9bdd315786cb80e78af36c33d4d8dc0b6"
         ],
-        "validation": "57 isolated targeted cases passed, including default temporary spelling, source/root bindings, read-only lookup and explicit close. First >1M attempt aborted for performance and fixture removed; hotpath optimized, final benchmark pending. Final constructor preflight66e84e0 independently approved;15 storage cases independently repeated. Final >1M bound-factory benchmark is running."
+        "validation": "Original1M:1test/0fail/0skip;1,002,003entries;peakRSS94,814,208bytes;4193.035s including own cleanup. Separate corrected-query readonly replay passed, original duration retained. Engine/queries/storage independently reviewed."
       },
       {
         "id": "UX-TRASH-01",
@@ -838,9 +842,11 @@
           "Sources/CacheSSDCore/OperationSafety.swift",
           "Sources/CacheSSDCore/VolumeTrashScope.swift"
         ],
-        "status": "implemented_independently_reviewed_native_fixtures_passed",
-        "evidence": [],
-        "nextAction": "Repeat against final integrated candidate source; preserve physical cable and human gates.",
+        "status": "complete_local",
+        "evidence": [
+          "docs/validation/volume-trash-filesystems-2026-11-10.json"
+        ],
+        "nextAction": "Physical cable and human gates remain separate; no permanent delete.",
         "implementationCommit": "d67bb0e21a5bbd4a86a3c1b5baf8657a9743bff1",
         "reviewer": "coordinator",
         "validation": "93 affected tests independently repeated. Native APFS Finder Trash, volume rename/detach/remount, conflict preservation and exclusive-rename recovery passed; native ExFAT Trash refusal passed. No existing disk was renamed/detached. HFS+ native Finder Trash/remount/conflict/recovery also passed (7.04s)."
@@ -859,34 +865,39 @@
           "Sources/CacheSSDCore/Treemap.swift",
           "Sources/CacheSSDCore/Resources/en.json"
         ],
-        "status": "implemented_independently_reviewed_native_UI_pending",
-        "evidence": [],
-        "nextAction": "Independent review of final fixes, integrate close/open APIs; full suite and PT/EN native sample checks; build separately identified candidate >8.",
+        "status": "complete_local_developer_observed",
+        "evidence": [
+          "docs/validation/CACHE-VOLUME-UI-2026-11-10.md",
+          "docs/validation/CACHE-VOLUME-REVIEW-2026-11-10.md"
+        ],
+        "nextAction": "Human keyboard/VoiceOver acceptance remains external; auxiliary percentage clipping is P3 and main tree actions remain available.",
         "validation": "44 app/localization/treemap/storage cases passed with generated SSD fixtures. Explicit source/index absence, close/eject/cancel/reconnect, read-only queue discovery after relaunch, fresh-versus-resume, nested selection and bounded outstanding tree reads covered. Default temporary graphical fixture alias awaits cache fixup; final native PT/EN pass remains pending.",
         "reviewedCommits": [
           "89e2494",
           "461e15482a5ad4d3ccc40f6bc75f1383dc048671",
-          "9df022bdb07f2f2bb8d56f3707616bd9ba15fae3"
+          "9df022bdb07f2f2bb8d56f3707616bd9ba15fae3",
+          "b34659d",
+          "ec65e6ec9381c671035aea2c5bc945fd08b38001"
         ],
         "reviewEvidence": "docs/validation/CACHE-VOLUME-REVIEW-2026-11-10.md"
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876868358",
-    "lastIntegratedCommit": "9676655",
-    "nextAction": "Finish graphical native acceptance and final volume benchmark, independent reviews, PT/EN native samples, exact new candidate and CI/PR. Preserve installed build8 and backups; no personal migrations.",
+    "lastIntegratedCommit": "b113919",
+    "nextAction": "Final source/privacy review and exact-head CI; promote and merge PR24, verify main. Preserve installed8/backups; no personal migration. Public signing/physical-Mac/human gates remain pending.",
     "lastVerifiedMainCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "integrationBranch": "codex/cache-volume-ux",
-    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/22",
-    "lastVerifiedCodeCommit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
+    "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/24",
+    "lastVerifiedCodeCommit": "2380b1a6048e1cb82d280e498f72fdb560b06fca",
     "mainCIVerification": "success",
-    "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42876303951",
+    "exactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42943021657",
     "candidate": {
-      "archiveSHA256": "b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7",
-      "buildNumber": "8",
-      "commit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
+      "archiveSHA256": "79b3658490c84cf08f276a193a4766dc3fb765360cd325a07b5ceb4a3d5d8149",
+      "buildNumber": "11",
+      "commit": "2380b1a6048e1cb82d280e498f72fdb560b06fca",
       "version": "1.0.0"
     },
-    "candidateEvidence": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
+    "candidateEvidence": "docs/validation/CACHE-VOLUME-BUILD11-2026-11-10.md",
     "implementationMerge": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
     "sessionContext": "docs/validation/EXPANDED-FLOWS-2026-11-10.md",
     "localInstallation": {
@@ -914,16 +925,14 @@
       "commit": "4db260076b602c309c3493f9b06548b0751f7356",
       "version": "1.0.0"
     },
-    "candidateStatus": "local_qualified_integrated",
+    "candidateStatus": "local_qualified_separate_uninstalled_ad_hoc",
     "combinedLocalRegression": {
-      "codeCommit": "07a0aa5",
-      "discovered": 244,
-      "executed": 219,
-      "skipped": 25,
+      "discovered": 389,
+      "executed": 358,
+      "explicitSkips": 31,
       "failures": 0,
-      "npmQualificationBindingTargetedCases": 18,
-      "bindingExplicitSkips": 1,
-      "bindingFailures": 0
+      "packagingPassed": 51,
+      "note": "Final integrated default suite, including query-plan regressions and explicit opt-in replay skip. Native/scale/replay reports remain separate."
     },
     "supersededCandidates": [
       {
@@ -934,10 +943,11 @@
       }
     ],
     "sampleVisualQA": {
-      "build": "0.3.0-dev/8 acceptance-only",
-      "status": "developer_observed_pass",
-      "scope": "PT/EN minimum1050x690, reviewed Trash/cancel/confirm/rescan, missing-cache preparation, fixture integration, Yarn/Go retention, ccache refusal and basic keyboard; not human VoiceOver/beta acceptance",
-      "normalInstallationChanged": false
+      "status": "developer_PT_EN_sample_journeys_and_package_recheck_passed",
+      "minimumContentSize": "1050x690",
+      "evidence": "docs/validation/CACHE-VOLUME-UI-2026-11-10.md",
+      "humanAcceptance": false,
+      "auxiliaryPercentageColumnClippedAtMinimum": true
     },
     "previousEngineeringHandoff": {
       "implementationPR": "https://github.com/Gabriellimmaa/DiskWing/pull/19",
@@ -946,9 +956,9 @@
       "handoffExactHeadCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42782855254",
       "sessionContext": "docs/context/SESSION-2026-11-10.md"
     },
-    "lastIntegratedCodeCommit": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "lastIntegratedCodeCommit": "f8a1f01",
     "handoffBranch": "codex/expanded-handoff",
-    "candidateRuntimeSourceMatchesMain": "e3ab12e1c201273882b1a2e2616f0e7c9930362f",
+    "candidateRuntimeSourceMatchesMain": false,
     "previousLocalInstallation": {
       "date": "2026-11-10",
       "status": "installed_and_launched",
@@ -981,6 +991,14 @@
       "personalMigrationsInitiatedByAssistant": false,
       "evidence": "docs/validation/LOCAL-INSTALLATION-2026-11-10.md"
     },
-    "newExperiencePlan": "docs/plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md"
+    "newExperiencePlan": "docs/plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md",
+    "preservedInstalledCandidate": {
+      "archiveSHA256": "b677e087e7e87cdddb607aa5224baa16d9d30ca77e2dd4c63f7c3a8863800ed7",
+      "buildNumber": "8",
+      "commit": "9be84dd484a20a584251c93f8138e88ddbbe2691",
+      "version": "1.0.0"
+    },
+    "scaleEvidence": "docs/validation/volume-scale-2026-11-10.json",
+    "queryReplayEvidence": "docs/validation/volume-search-replay-2026-11-10.json"
   }
 }
