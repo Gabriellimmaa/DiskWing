@@ -51,6 +51,35 @@ public enum GraphicalProcessFiles {
     }
     public static func isCurrent(_ process: GraphicalProcessIdentity) -> Bool { processIdentity(pid: process.pid) == process }
 
+    /// Kernel executable metadata, rather than argv/comm supplied by the app.
+    /// The caller must still validate code signing and the process birth token.
+    public static func executablePath(pid: Int) -> String? {
+        guard let process = processIdentity(pid: pid) else { return nil }
+        // PROC_PIDPATHINFO_MAXSIZE is (4 * MAXPATHLEN); Swift cannot import
+        // this expression macro from the public proc_info.h header.
+        var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let received = buffer.withUnsafeMutableBytes { proc_pidpath(Int32(pid), $0.baseAddress, UInt32($0.count)) }
+        guard received > 0, received < buffer.count, let end = buffer.firstIndex(of: 0), end > 0,
+              let path = String(bytes: buffer[..<end], encoding: .utf8), path.hasPrefix("/"), isCurrent(process) else { return nil }
+        return path
+    }
+
+    /// A bounded PID list contains no process names, arguments or file paths.
+    /// Refuse a full buffer rather than silently omitting possible helpers.
+    public static func processIDs(cancellation: CancellationFlag = CancellationFlag(), maximum: Int = 4096) throws -> [Int] {
+        if cancellation.isCancelled { throw cancelled() }
+        let capacity = max(0, min(65_536, maximum))
+        guard capacity > 0 else { return [] }
+        var buffer = [Int32](repeating: 0, count: capacity)
+        let received = buffer.withUnsafeMutableBytes { proc_listpids(UInt32(PROC_ALL_PIDS), 0, $0.baseAddress, Int32($0.count)) }
+        if cancellation.isCancelled { throw cancelled() }
+        guard received >= 0, received % Int32(MemoryLayout<Int32>.stride) == 0 else { throw unavailable() }
+        guard Int(received) < capacity * MemoryLayout<Int32>.stride else {
+            throw CacheSSDError.message("A lista de processos excedeu o limite de observação; origem preservada.")
+        }
+        return Array(Set(buffer.prefix(Int(received) / MemoryLayout<Int32>.stride).filter { $0 > 0 }.map(Int.init))).sorted()
+    }
+
     public static func snapshot(pids: Set<Int>, destination: URL, managedSource: URL? = nil,
                                 cancellation: CancellationFlag = CancellationFlag(), limits: Limits = Limits()) throws -> GraphicalProcessFileSnapshot {
         if cancellation.isCancelled { throw cancelled() }

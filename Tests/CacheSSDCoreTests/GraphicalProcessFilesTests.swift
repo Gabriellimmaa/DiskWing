@@ -105,4 +105,28 @@ final class GraphicalProcessFilesTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: destination)
         XCTAssertThrowsError(try GraphicalProcessFiles.snapshot(pids: [selfPID], destination: alias))
     }
+
+    func testKernelProcessDiscoveryIncludesThisPIDAndItsStableExecutablePath() throws {
+        let processes = try GraphicalProcessFiles.processIDs()
+        XCTAssertTrue(processes.contains(selfPID))
+        XCTAssertEqual(processes, Array(Set(processes)).sorted())
+        XCTAssertTrue(processes.allSatisfy { $0 > 0 })
+        let birth = try XCTUnwrap(GraphicalProcessFiles.processIdentity(pid: selfPID))
+        let path = try XCTUnwrap(GraphicalProcessFiles.executablePath(pid: selfPID))
+        XCTAssertTrue(path.hasPrefix("/"))
+        let executable = try FileIdentity(URL(fileURLWithPath: path))
+        XCTAssertGreaterThan(executable.inode, 0)
+        XCTAssertEqual(GraphicalProcessFiles.executablePath(pid: selfPID), path)
+        XCTAssertTrue(GraphicalProcessFiles.isCurrent(birth))
+    }
+
+    func testKernelProcessDiscoveryHonorsLimitsCancellationAndInvalidPIDs() throws {
+        XCTAssertTrue(try GraphicalProcessFiles.processIDs(maximum: 0).isEmpty)
+        XCTAssertThrowsError(try GraphicalProcessFiles.processIDs(maximum: 1))
+        let flag = CancellationFlag(); flag.cancel()
+        XCTAssertThrowsError(try GraphicalProcessFiles.processIDs(cancellation: flag))
+        XCTAssertNil(GraphicalProcessFiles.executablePath(pid: -1))
+        XCTAssertNil(GraphicalProcessFiles.executablePath(pid: 0))
+        XCTAssertNil(GraphicalProcessFiles.executablePath(pid: Int.max))
+    }
 }
