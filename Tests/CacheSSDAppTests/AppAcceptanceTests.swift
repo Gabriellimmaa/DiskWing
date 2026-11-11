@@ -278,7 +278,14 @@ import CacheSSDCore
             try await wait(until: { !model.busy && !model.cacheAnalyzing })
             XCTAssertFalse(try XCTUnwrap(context.graphicalEngine().registrations().first).sourceReleased)
             XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(registry.sourceQuarantine).path))
+            try await wait(until: { !model.volumeTargets.isEmpty })
+            let inspectedVolume = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+            model.scanVolume(inspectedVolume)
+            try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+            XCTAssertFalse(model.analysisNeedsRefresh); model.section = .caches
             model.verifyCacheWorkflowUsage(); try await wait(until: { !model.busy && !model.cacheAnalyzing })
+            XCTAssertTrue(model.analysisNeedsRefresh, "Verified source release must invalidate a snapshot refreshed after preparation")
+            XCTAssertFalse(model.isScanning); XCTAssertEqual(model.section, .caches)
             XCTAssertEqual(model.cacheTransferResults.first { $0.id == chrome }?.state, .ssdVerified)
             XCTAssertTrue(try XCTUnwrap(model.cacheTransferResults.first { $0.id == chrome }).sourceReleased)
             XCTAssertEqual(try context.graphicalEngine().registrations().first?.evidence?.isSimulated, true, "Generated sample evidence must remain visibly simulated in durable records")
@@ -498,6 +505,21 @@ import CacheSSDCore
         XCTAssertEqual(try Data(contentsOf: rc), rcBefore)
         XCTAssertEqual(try Data(contentsOf: context.store.base.appendingPathComponent("settings.json")), settingsBefore)
         XCTAssertEqual(try FileTree.digest(npm.source), cacheBefore)
+    }
+
+    func testCancelledVolumeTrashKeepsSourceAndDoesNotMarkTheRowAsRemoved() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context)
+        try await wait(until: { !model.volumeTargets.isEmpty })
+        let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+        model.scanVolume(target); try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        model.search = "sample-003.txt"; try await wait(until: { !model.indexLoading })
+        let item = try XCTUnwrap(model.visibleItems.first)
+        model.reviewTrash(item); let action = try XCTUnwrap(model.review)
+        model.execute(action); model.cancel(); try await wait(until: { !model.busy })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: item.path))
+        XCTAssertFalse(model.isKnownTrashed(item)); XCTAssertNotNil(model.errorMessage)
+        XCTAssertNil(model.trashPolicyReason(item), "A preserved item must stay eligible for a fresh reviewed retry")
     }
 
     func testVolumeJourneyKeepsSelectedVolumeAndTrashesThroughReviewedScope() async throws {

@@ -74,6 +74,7 @@
   "A leitura saiu do escopo selecionado.": "The scan left the selected scope.",
   "A liberação ficou incompleta. A cópia no SSD e a recuperação foram preservadas para revisão.": "Release was incomplete. The SSD copy and recovery data were preserved for review.",
   "A lista de arquivos em uso está incompleta. A operação foi adiada.": "The list of open files is incomplete. The operation was postponed.",
+  "A lista de processos excedeu o limite de observação; origem preservada.": "The process list exceeded the observation limit; original preserved.",
   "A medição deste cache está incompleta; ele será preservado.": "This cache measurement is incomplete; it will be preserved.",
   "A medição ficou incompleta. A origem será preservada.": "The measurement is incomplete. The original will be preserved.",
   "A operação deste cache precisa de recuperação. Nenhuma nova liberação será feita.": "This cache operation needs recovery. No further original data will be released.",

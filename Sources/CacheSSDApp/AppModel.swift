@@ -348,6 +348,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         Task {
             defer {
                 operationMessage = nil; cancellation = nil; cacheAnalyzing = false
+                markExplorerStale()
                 reloadRecords(); refreshVolumes()
             }
             for candidate in candidates where cacheRegisteredIDs.contains(candidate.id) {
@@ -780,13 +781,19 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         }
         return PersonalActionPolicy.trashWarning(context.actionURL(item.url), home: home).map { L10n.message($0) }
     }
-    private func refreshAnalysisAfterMutation(_ action: ReviewAction) {
+    private func markExplorerStale() {
+        guard report != nil else { return }
+        analysisNeedsRefresh = true; selectedPath = nil; inspectedItem = nil
+        pageTask?.cancel(); treemapTask?.cancel(); pageRequest = UUID(); indexLoading = false
+    }
+    private func refreshAnalysisAfterMutation(_ action: ReviewAction, confirmed: Bool = true) {
         switch action {
         case .graphicalRestore, .graphicalResume, .graphicalRecover, .volumeTrash, .cacheTransfer, .trash, .move, .migration, .prepareCache, .restore, .recover:
             guard let root = report?.root.url else { return }
-            analysisNeedsRefresh = true; selectedPath = nil; inspectedItem = nil; pageRequest = UUID(); indexLoading = false
+            markExplorerStale()
             if case .volumeTrash(let item, _) = action {
-                trashedExplorerPaths.insert(item.path); explorerActionRevision = UUID(); return
+                if confirmed { trashedExplorerPaths.insert(item.path); explorerActionRevision = UUID() }
+                return
             }
             guard section == .explorer else { return }
             if let target = explorerTarget { scanVolume(target, focus: false) }
@@ -973,7 +980,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 reloadRecords(); refreshVolumes(); operationMessage = nil; activeAction = nil; cancellation = nil
                 switch action { case .migration, .prepareCache, .restore, .trash, .volumeTrash, .move, .recover: refreshInventory(); default: break }
                 refreshAnalysisAfterMutation(action)
-            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; reloadRecords(); refreshVolumes(); errorMessage = error.localizedDescription; refreshAnalysisAfterMutation(action) }
+            } catch { operationMessage = nil; activeAction = nil; cancellation = nil; reloadRecords(); refreshVolumes(); errorMessage = error.localizedDescription; refreshAnalysisAfterMutation(action, confirmed: false) }
         }
     }
     func reloadRecords() {
