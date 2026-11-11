@@ -9,6 +9,7 @@ final class VolumeScanScaleTests: XCTestCase {
         guard Volumes.free(at: parent) >= 8_589_934_592 else { throw CacheSSDError.message("The generated volume qualification requires at least 8 GiB free fixture space") }
         let fixture = parent.appendingPathComponent("DiskWing-volume-scale-\(UUID().uuidString)")
         let tree = fixture.appendingPathComponent("tree")
+        let fixtureStarted = Date()
         try FileManager.default.createDirectory(at: tree, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixture) }
         for folder in 0..<1001 {
@@ -41,14 +42,16 @@ final class VolumeScanScaleTests: XCTestCase {
         XCTAssertGreaterThan(report.examinedEntries, 1_000_000)
         XCTAssertEqual(report.root.fileCount, 1_001_001)
         XCTAssertEqual(report.root.logicalBytes, 52)
-        XCTAssertEqual(try index.page(sessionID: report.id, search: "group1000/file0999").total, 1)
-        XCTAssertEqual(try index.page(sessionID: report.id, search: "post-pause-added").total, 1)
+        let searchMatches = try index.page(sessionID: report.id, search: "group1000/file0999").total
+        let changedDirectoryMatches = try index.page(sessionID: report.id, search: "post-pause-added").total
+        XCTAssertEqual(searchMatches, 1)
+        XCTAssertEqual(changedDirectoryMatches, 1)
         let last = try index.page(sessionID: report.id, parent: tree.appendingPathComponent("group1000").path, allocatedOrder: true, offset: 999, limit: 128)
         XCTAssertEqual(last.total, 1000); XCTAssertEqual(last.items.count, 1); XCTAssertFalse(last.hasNext)
         var usage = rusage(); getrusage(RUSAGE_SELF, &usage)
         XCTAssertLessThan(usage.ru_maxrss, 536_870_912)
         if let output = ProcessInfo.processInfo.environment["DISKWING_VOLUME_SCALE_REPORT"] {
-            let value: [String: Any] = ["scanner": "VolumeScanner", "entries": report.examinedEntries, "files": report.root.fileCount, "logicalBytes": report.root.logicalBytes, "partial": report.isPartial, "resumedChangedDirectory": true, "seconds": Date().timeIntervalSince(started), "indexBytes": index.byteSize(), "peakResidentBytes": usage.ru_maxrss]
+            let value: [String: Any] = ["scanner": "VolumeScanner", "storage": "bound-openIndex-externalSSD", "entries": report.examinedEntries, "files": report.root.fileCount, "logicalBytes": report.root.logicalBytes, "allocatedBytes": report.root.allocatedBytes, "partial": report.isPartial, "pausedEntries": paused.examinedEntries, "resumedChangedDirectory": true, "globalSearchMatches": searchMatches, "changedDirectorySearchMatches": changedDirectoryMatches, "lastPageTotal": last.total, "lastPageItems": last.items.count, "lastPageHasNext": last.hasNext, "seconds": Date().timeIntervalSince(started), "fixtureAndScanSeconds": Date().timeIntervalSince(fixtureStarted), "indexBytes": index.byteSize(), "peakResidentBytes": usage.ru_maxrss]
             try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output), options: .withoutOverwriting)
         }
     }

@@ -315,7 +315,8 @@ public final class VolumeScanner {
                 try index.execute("COMMIT")
             } catch { index.abandon(id: session); throw error }
         }
-        func resourcesAllowed() -> Bool { index.storageIsAvailable() && (policy.maximumBytes.map { index.physicalDatabaseBytes() < $0 } ?? true) && freeBytes(index.url.deletingLastPathComponent()) >= policy.minimumFreeBytes }
+        // ScanIndex binds storage validation to the same bounded work checks.
+        func resourcesAllowed() -> Bool { (policy.maximumBytes.map { index.physicalDatabaseBytes() < $0 } ?? true) && freeBytes(index.url.deletingLastPathComponent()) >= policy.minimumFreeBytes }
         do {
           return try index.withVolumeWorkChecks(cancellation: cancellation, allowed: resourcesAllowed) {
             try pruneOlderSessions(session: session, root: target.displayRoot, index: index)

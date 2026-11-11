@@ -118,6 +118,86 @@ final class VolumeScanStorageTests: XCTestCase {
         try index.close()
         XCTAssertTrue(FileManager.default.fileExists(atPath: selected.url.path))
     }
+    func testScanProofCacheExpiresAtTenMillisecondsAndSQLBoundariesAlwaysForceIt() throws {
+        let selected = try location(), uuid = selected.storageRoot.volumeUUID
+        var checks = 0, instant: UInt64 = 1
+        let index = try selected.openIndex(volumeIdentifier: { _ in checks += 1; return uuid })
+        defer { try? index.close() }
+        try index.withVolumeWorkChecks(cancellation: CancellationFlag(), allowed: { true }, now: { instant }) {
+            try index.execute("SELECT 1")
+            let first = checks
+            for _ in 0..<100 { try index.execute("SELECT 1") }
+            XCTAssertEqual(checks, first, "Short owner-thread statements share only the bounded scan proof")
+            instant += 9_999_999
+            try index.execute("SELECT 1"); XCTAssertEqual(checks, first)
+            instant += 1
+            try index.execute("SELECT 1"); XCTAssertGreaterThan(checks, first)
+            for statement in ["BEGIN IMMEDIATE", "SAVEPOINT generated", "RELEASE generated", "COMMIT"] {
+                let previous = checks
+                try index.execute(statement)
+                XCTAssertGreaterThan(checks, previous, "Transaction publication/boundaries cannot use a cached proof")
+            }
+            let previous = checks
+            try index.checkVolumeWork()
+            XCTAssertGreaterThan(checks, previous, "Directory/revalidation/finalization batches force proof")
+        }
+        let outside = checks
+        try index.execute("SELECT 1"); XCTAssertGreaterThan(checks, outside)
+    }
+    func testAnotherThreadsQueryCannotUseAnActiveScansCachedUUIDProof() throws {
+        let selected = try location(), uuid = selected.storageRoot.volumeUUID
+        var available = true
+        let index = try selected.openIndex(volumeIdentifier: { _ in available ? uuid : "changed-uuid" })
+        defer { try? index.close() }
+        try index.withVolumeWorkChecks(cancellation: CancellationFlag(), allowed: { true }, now: { 1 }) {
+            try index.execute("SELECT 1")
+            available = false
+            let finished = expectation(description: "A different query thread checks storage immediately")
+            DispatchQueue.global().async {
+                do { _ = try index.sessions(); XCTFail("A different thread must validate the changed storage immediately") }
+                catch { }
+                finished.fulfill()
+            }
+            wait(for: [finished], timeout: 2)
+        }
+        XCTAssertThrowsError(try index.sessions(), "The same owner also stops sharing proof after leaving scan work")
+        available = true
+    }
+    func testExpiredScanProofRejectsReplacementStorageWithoutCreatingASubstitute() throws {
+        let selected = try location(), index = try selected.openIndex()
+        var instant: UInt64 = 1
+        defer { try? index.close() }
+        try index.withVolumeWorkChecks(cancellation: CancellationFlag(), allowed: { true }, now: { instant }) {
+            try index.execute("SELECT 1")
+            try FileManager.default.moveItem(at: disk, to: root.appendingPathComponent("retained-disk"))
+            try FileManager.default.createDirectory(at: disk, withIntermediateDirectories: true)
+            instant += 10_000_000
+            XCTAssertThrowsError(try index.execute("SELECT 1")) { error in
+                guard case VolumeScanStop.storage = error else { return XCTFail("Storage loss must pause volume work") }
+            }
+        }
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: disk.path).isEmpty)
+    }
+    func testLongSQLProgressForcesUUIDProofAndObservesCancellationWithinTheCacheWindow() throws {
+        let selected = try location(), uuid = selected.storageRoot.volumeUUID
+        var available = true
+        let index = try selected.openIndex(volumeIdentifier: { _ in available ? uuid : "changed-uuid" })
+        defer { try? index.close() }
+        let query = "WITH RECURSIVE generated(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM generated WHERE n<1000000) SELECT sum(n) FROM generated"
+        try index.withVolumeWorkChecks(cancellation: CancellationFlag(), allowed: { available = false; return true }, now: { 1 }) {
+            XCTAssertThrowsError(try index.execute(query)) { error in
+                guard case VolumeScanStop.storage = error else { return XCTFail("Long SQL must force proof without waiting for the cache clock") }
+            }
+        }
+        available = true
+        let flag = CancellationFlag()
+        try index.withVolumeWorkChecks(cancellation: flag, allowed: { flag.cancel(); return true }, now: { 1 }) {
+            XCTAssertThrowsError(try index.execute(query)) { error in
+                guard case VolumeScanStop.cancelled = error else { return XCTFail("SQL progress must observe cancellation") }
+            }
+        }
+        XCTAssertFalse(try index.execute("SELECT 1").isEmpty)
+    }
     func testInternalExistingLookupDoesNotCreateTheMissingStore() throws {
         let missing = root.appendingPathComponent("not-created/store")
         let selected = try IndexStoragePolicy.location(internalDirectory: missing, installationID: "generated", targetID: "test")

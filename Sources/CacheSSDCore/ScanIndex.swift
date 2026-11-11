@@ -8,23 +8,24 @@ enum VolumeScanStop: Error { case cancelled, storage }
 private final class VolumeSQLControl {
     let cancellation: CancellationFlag
     let allowed: () -> Bool
+    let now: () -> UInt64
     let owner: UInt64
     var stopped: VolumeScanStop?
     private var lastResources: UInt64 = 0
-    init(cancellation: CancellationFlag, allowed: @escaping () -> Bool) {
-        self.cancellation = cancellation; self.allowed = allowed
+    init(cancellation: CancellationFlag, allowed: @escaping () -> Bool, now: @escaping () -> UInt64) {
+        self.cancellation = cancellation; self.allowed = allowed; self.now = now
         var thread: UInt64 = 0; pthread_threadid_np(nil, &thread); owner = thread
     }
     func check(forceResources: Bool = false) -> VolumeScanStop? {
         if let stopped { return stopped }
         if cancellation.isCancelled { stopped = .cancelled }
         else {
-            let now = DispatchTime.now().uptimeNanoseconds
+            let instant = now()
             // Short entry statements reuse a recent resource observation.
             // Transaction boundaries, directory batches and long SQL VM work
             // force checks; cancellation itself is never throttled.
-            if forceResources || lastResources == 0 || now &- lastResources >= 10_000_000 {
-                lastResources = now
+            if forceResources || lastResources == 0 || instant &- lastResources >= 10_000_000 {
+                lastResources = instant
                 if !allowed() { stopped = .storage }
             }
         }
@@ -172,10 +173,10 @@ public final class ScanIndex: @unchecked Sendable {
         let prefix = String(decoding: sql.utf8.drop(while: { $0 == 32 || $0 == 9 || $0 == 10 || $0 == 13 }).prefix(12), as: UTF8.self).uppercased()
         let cleanup = prefix.hasPrefix("ROLLBACK")
         let boundary = prefix.hasPrefix("BEGIN") || prefix.hasPrefix("COMMIT") || prefix.hasPrefix("SAVEPOINT") || prefix.hasPrefix("RELEASE")
-        if !cleanup {
-            do { try storageValidation?(boundary) }
-            catch { if control != nil { throw VolumeScanStop.storage }; throw error }
-        }
+        // Only the owner thread's bounded scan scope shares its <=10ms
+        // storage/resource observation. Independent UI queries always prove
+        // the current binding; boundaries and SQL progress force scan checks.
+        if !cleanup, control == nil { try storageValidation?(true) }
         if !cleanup, let stopped = control?.check(forceResources: boundary) { throw stopped }
         if let control, !cleanup {
             sqlite3_progress_handler(db, 4096, { context in
@@ -216,11 +217,15 @@ public final class ScanIndex: @unchecked Sendable {
         }
         return rows
     }
-    func withVolumeWorkChecks<T>(cancellation: CancellationFlag, allowed: @escaping () -> Bool, body: () throws -> T) throws -> T {
+    func withVolumeWorkChecks<T>(cancellation: CancellationFlag, allowed: @escaping () -> Bool,
+                                 now: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }, body: () throws -> T) throws -> T {
         lock.lock()
         guard !closed else { lock.unlock(); throw CacheSSDError.message("O índice desta análise foi fechado.") }
         guard volumeSQLControl == nil else { lock.unlock(); throw CacheSSDError.message("Outra análise já está usando este índice.") }
-        volumeSQLControl = VolumeSQLControl(cancellation: cancellation, allowed: allowed)
+        volumeSQLControl = VolumeSQLControl(cancellation: cancellation, allowed: { [weak self] in
+            guard let self, self.storageIsAvailable() else { return false }
+            return allowed()
+        }, now: now)
         lock.unlock()
         defer { lock.lock(); volumeSQLControl = nil; lock.unlock() }
         return try body()
