@@ -1,6 +1,6 @@
 # Current state
 
-Updated 2026-11-10. The maintainer's [cache/volume experience plan](../plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md) is implemented on `codex/cache-volume-ux` in [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24). All local functional gates now have evidence: real Chrome, native Trash filesystems, complete >1M-entry scan, query replay, PT/EN sample journeys and exact candidate qualification. PR promotion/main verification is recorded in the live ledger. Apple Silicon, macOS 14+, Lift, MIT and PT/EN remain the app scope; provider qualification has narrower explicit limits.
+Updated 2026-11-10. The maintainer's [cache/volume experience plan](../plans/CACHE-VOLUME-EXPERIENCE-2026-11-10.md) was merged in [PR #24](https://github.com/Gabriellimmaa/DiskWing/pull/24) at `d4b9337`. All local functional gates now have evidence: real Chrome, native Trash filesystems, complete >1M-entry scan, query replay, PT/EN sample journeys and exact candidate qualification. Exact PR-head and [post-merge main CI](https://github.com/Gabriellimmaa/DiskWing/actions/runs/42945444516) passed on macOS 15/26, including optional updater compilation. The final bookkeeping commit changes documentation only; tested runtime source matches the candidate. Apple Silicon, macOS 14+, Lift, MIT and PT/EN remain the app scope; provider qualification has narrower explicit limits.
 
 ## Two primary flows
 
@@ -29,7 +29,7 @@ Intermediate local builds 9 and 10 are preserved separately and were not install
 ## Remaining gates
 
 1. Preserve the final artifact and installed build 8/backups. The read-only query replay passed: rare searches took 45.340s and 69.170s, parent last-page lookup 0.01445s. This is correctness/plan evidence, not an instant-search claim; large-volume Debug scanning/search remains a measured performance limitation.
-2. Finish PR/main exact-head CI and integration bookkeeping. The candidate/package and native sample checks have passed; another new installation or actual personal-cache transfer still requires its real reviewed selection.
+2. Collect maintainer feedback on the separate candidate. PR/main CI, candidate/package and native sample checks have passed; a new normal installation or actual personal-cache transfer still requires its real reviewed selection.
 3. With actual resources: Developer ID/notarization and signed-update exercise; another physical Apple Silicon Mac/macOS 14; a disposable physical-fault device; hands-on PT/EN keyboard/VoiceOver and five general plus five developer participants with seven real days. Agent/CI evidence never substitutes for these gates.
 
 `publicV1Ready` remains false. The [roadmap](../ROADMAP.md), [ledger](../TRACEABILITY.json), [earlier expanded-flow record](../validation/EXPANDED-FLOWS-2026-11-10.md) and [historical session](SESSION-2026-11-10.md) retain their own source/artifact boundaries. Further ccache/pnpm/store breadth, duplicate detection, assisted uninstall and Intel support remain outside the currently qualified set. No background agent service is assumed after the active session.
