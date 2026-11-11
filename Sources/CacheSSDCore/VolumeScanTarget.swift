@@ -141,7 +141,6 @@ public struct VolumeIndexLocation: Sendable {
         var fileMetadata = stat(), parentMetadata = stat()
         guard fileFD >= 0, fstat(fileFD, &fileMetadata) == 0, fileMetadata.st_mode & S_IFMT == S_IFREG, fileMetadata.st_nlink == 1,
               Int64(fileMetadata.st_dev) == storageRoot.identity.device, fstat(parentFD, &parentMetadata) == 0 else { throw CacheSSDError.message("O índice está ausente, foi redirecionado ou não é um arquivo privado regular.") }
-        if createIfMissing { guard fchmod(fileFD, 0o600) == 0 else { throw CacheSSDError.message("Não foi possível proteger o índice privado.") } }
         var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
         guard fcntl(fileFD, F_GETPATH, &path) == 0 else { throw CacheSSDError.message("Não foi possível confirmar o arquivo do índice.") }
         let openingURL = URL(fileURLWithPath: String(cString: path))
@@ -152,7 +151,14 @@ public struct VolumeIndexLocation: Sendable {
         directoryProofs = []
         try anchor.validate(forceIdentity: true)
         let index = try ScanIndex(url: url, openingURL: openingURL, expectedDatabase: anchor.fileIdentity, storageValidation: { force in try anchor.validate(forceIdentity: force) }, prepareParent: false, metadataLookupOnly: !createIfMissing)
-        do { if createIfMissing { try index.prepareVolumeTables() }; return index }
+        do {
+            if createIfMissing {
+                try index.prepareVolumeTables()
+                try anchor.validate(forceIdentity: true)
+                guard fchmod(anchor.fileFD, 0o600) == 0 else { throw CacheSSDError.message("Não foi possível proteger o índice privado.") }
+            }
+            return index
+        }
         catch { try? index.close(); throw error }
     }
 }

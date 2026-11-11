@@ -89,6 +89,8 @@ public final class ScanIndex: @unchecked Sendable {
         if hasVolumeFormat {
             let versions = try execute("SELECT version FROM volume_format")
             guard versions.count == 1, Self.integer(versions[0], "version") == 1 else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
+        } else {
+            guard try execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('volume_targets','volume_queue','volume_sources','volume_hardlinks','volume_ownership','volume_phase') LIMIT 1").isEmpty else { throw CacheSSDError.message("O formato do índice de volumes é desconhecido e foi preservado.") }
         }
         if metadataLookupOnly {
             let tables = try execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sessions','entries','snapshots','folder_samples','volume_format','volume_targets','volume_queue','volume_sources','volume_hardlinks','volume_ownership','volume_phase')")

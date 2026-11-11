@@ -160,4 +160,45 @@ final class VolumeScanStorageTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: directory, withDestinationURL: retained)
         XCTAssertThrowsError(try selected.openIndex(createIfMissing: false), "A real custom symlink remains forbidden even when the target identity matches")
     }
+    func testClosedUnmarkedVolumeFilesAreRefusedBeforeConstructorMigration() throws {
+        for version in [2, 3] {
+            let volume = VolumeInfo(uuid: IndexStoragePolicy.volumeIdentifier(disk), name: "Generated disk", path: disk.path, totalBytes: 10_000_000_000, freeBytes: 9_000_000_000, isInternal: false, isWritable: true)
+            let selected = try IndexStoragePolicy.location(internalDirectory: root, externalVolume: volume, installationID: "generated", targetID: "unmarked-\(version)", filesystemType: { _ in "apfs" }, freeBytes: { _ in Int64.max })
+            let writer = try selected.openIndex()
+            try writer.execute("DROP TABLE volume_format")
+            try writer.execute("PRAGMA user_version=\(version)")
+            try writer.close()
+            try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: selected.url.path)
+            let attribute = Data("preserve-unknown-format".utf8)
+            XCTAssertEqual(attribute.withUnsafeBytes { setxattr(selected.url.path, "com.diskwing.generated", $0.baseAddress, attribute.count, 0, XATTR_NOFOLLOW) }, 0)
+            func bytes() throws -> [String: Data] {
+                var result: [String: Data] = [:]
+                // DB and WAL hold durable state. SQLite readers can update
+                // readmarks in the mmap-backed volatile wal-index (-shm).
+                // Never copy/repair that synchronization state for equality.
+                // https://sqlite.org/wal.html (WAL-index and read-only databases)
+                for suffix in ["", "-wal"] {
+                    let file = URL(fileURLWithPath: selected.url.path + suffix)
+                    if FileManager.default.fileExists(atPath: file.path) { result[suffix] = try Data(contentsOf: file) }
+                }
+                let permissions = try FileManager.default.attributesOfItem(atPath: selected.url.path)[.posixPermissions] as? NSNumber
+                result["mode"] = Data(String(permissions?.intValue ?? -1).utf8)
+                var copiedAttribute = [UInt8](repeating: 0, count: attribute.count)
+                XCTAssertEqual(getxattr(selected.url.path, "com.diskwing.generated", &copiedAttribute, copiedAttribute.count, 0, XATTR_NOFOLLOW), attribute.count)
+                result["attribute"] = Data(copiedAttribute)
+                return result
+            }
+            let before = try bytes()
+            func assertPreserved() throws {
+                let after = try bytes()
+                for key in Set(before.keys).union(after.keys).sorted() { XCTAssertEqual(after[key], before[key], "Unknown format must preserve \(key.isEmpty ? "main database" : key)") }
+            }
+            XCTAssertThrowsError(try ScanIndex(url: selected.url))
+            try assertPreserved()
+            XCTAssertThrowsError(try selected.openIndex())
+            try assertPreserved()
+            XCTAssertThrowsError(try selected.openIndex(createIfMissing: false))
+            try assertPreserved()
+        }
+    }
 }
