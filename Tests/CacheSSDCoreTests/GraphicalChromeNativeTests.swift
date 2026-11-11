@@ -178,6 +178,7 @@ private final class ChromeFixtureHarness {
             guard XCTWaiter.wait(for: [completed], timeout: 25) == .completed else { throw CacheSSDError.message("Generated Chrome LaunchServices timed out") }
             if let launchError { throw launchError }
             let connected = try command("connect")
+            guard connected["runtimeVersion"] as? String == "Chrome/157.0.8103.39" else { throw CacheSSDError.message("Generated Chrome runtime version did not match the qualified distribution") }
             chromeRunning = true
             return connected
         }
@@ -275,6 +276,8 @@ def connect():
   if portfile.exists():break
   time.sleep(.1)
  port,endpoint=portfile.read_text().splitlines();browser=WS('ws://127.0.0.1:'+port+endpoint)
+ runtime_version=browser.call('Browser.getVersion').get('product')
+ if runtime_version!='Chrome/157.0.8103.39':raise RuntimeError('Generated Chrome runtime version mismatch')
  for _ in range(100):
   targets=json.load(urllib.request.urlopen('http://127.0.0.1:'+port+'/json/list'));target=next((t for t in targets if t.get('type')=='page' and t.get('url','').startswith(base)),None)
   if target:break
@@ -283,7 +286,7 @@ def connect():
  page=WS(target['webSocketDebuggerUrl']);page.call('Network.enable');page.call('Runtime.enable')
  for _ in range(100):
   try:
-   if evaluate("document.readyState === 'complete' && location.origin === '"+base+"'"):return {'running':True}
+   if evaluate("document.readyState === 'complete' && location.origin === '"+base+"'"):return {'running':True,'runtimeVersion':runtime_version}
   except Exception:pass
   time.sleep(.1)
  raise RuntimeError('Generated page did not finish loading')

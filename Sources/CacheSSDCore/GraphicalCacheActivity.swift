@@ -54,15 +54,10 @@ public enum GraphicalCacheActivity {
         while DispatchTime.now().uptimeNanoseconds < deadline {
             guard !cancellation.isCancelled else { throw CacheSSDError.message("Operação cancelada; origem preservada.") }
             if DispatchTime.now().uptimeNanoseconds >= nextRefresh {
-                let processes = try CommandRunner.run(URL(fileURLWithPath: "/bin/ps"), ["-ww", "-axo", "pid=,comm="], timeout: 3, maxOutputBytes: 8_388_608)
-                guard processes.status == 0, !processes.truncated else { return nil }
-                for line in processes.output.split(separator: "\n") {
-                    let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-                    if parts.count == 2, let pid = Int(parts[0]), pid > 0, pid != getpid(), String(parts[1]).hasPrefix(applicationPath) { selected.insert(pid) }
-                }
-                for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier == candidate.applicationID && !app.isTerminated {
-                    if app.bundleURL?.resolvingSymlinksInPath().path == application.resolvingSymlinksInPath().path { selected.insert(Int(app.processIdentifier)) }
-                }
+                let pids = try GraphicalProcessFiles.processIDs(cancellation: cancellation)
+                selected = Set(pids.filter { pid in
+                    pid != getpid() && GraphicalProcessFiles.executablePath(pid: pid)?.hasPrefix(applicationPath) == true
+                })
                 nextRefresh = DispatchTime.now().uptimeNanoseconds + 500_000_000
             }
             let sample = try GraphicalProcessFiles.snapshot(pids: selected, destination: destination, managedSource: candidate.sourceURL, cancellation: cancellation)
@@ -81,7 +76,7 @@ public enum GraphicalCacheActivity {
         let validWriters = Set(writers.filter(valid).keys)
         guard !validReaders.isEmpty, !validWriters.isEmpty,
               let current = try? fingerprint(destination, cancellation: cancellation), current != baseline else {
-            if ProcessInfo.processInfo.environment["DISKWING_RUN_GRAPHICAL_NATIVE_TESTS"] == "1" { print("Generated process observation: readers=\(readers.count), writers=\(writers.count), qualifiedReaders=\(validReaders.count), qualifiedWriters=\(validWriters.count)") }
+            if ProcessInfo.processInfo.environment["DISKWING_RUN_GRAPHICAL_NATIVE_TESTS"] == "1" { print("Generated process observation: selected=\(selected.count), readers=\(readers.count), writers=\(writers.count), qualifiedReaders=\(validReaders.count), qualifiedWriters=\(validWriters.count)") }
             return nil
         }
         return GraphicalCacheUsageEvidence(applicationVersion: version, processIDs: validReaders.union(validWriters).sorted(),
