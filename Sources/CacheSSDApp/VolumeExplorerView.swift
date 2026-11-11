@@ -91,6 +91,7 @@ struct VolumeExplorerContent: View {
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L10n.text("Blocos podem ser compartilhados. O mapa não representa uma promessa de espaço recuperável. Links e outros volumes não são percorridos."))
+                        if model.analysisNeedsRefresh { Text(L10n.text("Exclusões recentes ficam marcadas na árvore. Os tamanhos são da última análise; atualize para recalcular. Cada nova exclusão confere o arquivo novamente.")).foregroundStyle(Palette.orange) }
                         if report.isPartial { Text(L10n.text("Há áreas sem acesso, ainda não lidas ou interrompidas. Os totais são parciais.")).foregroundStyle(Palette.orange) }
                         Text(model.indexOnSSD ? L10n.text("Índice desta análise guardado no SSD.") : L10n.text("Índice desta análise guardado no Mac, com limite de espaço."))
                     }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(14)

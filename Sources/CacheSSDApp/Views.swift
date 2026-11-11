@@ -321,7 +321,7 @@ struct PreferencesView: View {
                 UpdateSettings(updates: model.updates).id(model.preferences.language)
                 GroupBox(L10n.text("Acompanhamento opcional")) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(L10n.text("Selecione Acompanhar pasta no explorador para registrar mudanças. Nenhuma pasta é acompanhada por padrão."))
+                        Text(L10n.text("Pastas acompanhadas anteriormente continuam disponíveis no histórico. Para um volume, use Atualizar análise. Nenhuma pasta é acompanhada por padrão."))
                         Toggle(L10n.text("Atualizar análises em segundo plano"), isOn: Binding(get: { model.preferences.backgroundRescans }, set: { model.preferences.backgroundRescans = $0; model.savePreferences() }))
                         Toggle(L10n.text("Alertar quando uma pasta crescer mais de 1 GiB"), isOn: Binding(get: { model.preferences.growthAlerts }, set: { model.setGrowthAlerts($0) }))
                         Text(L10n.text("As análises automáticas respeitam um intervalo mínimo de 15 minutos e pausam no modo de pouca energia. Os alertas são limitados a um por pasta por dia.")).font(.caption).foregroundStyle(.secondary)
@@ -420,12 +420,12 @@ struct ReviewSheet: View {
             case .volumeTrash(let item, let scope):
                 fact(L10n.text("Volume"), model.context.operationVolumeProvider()(scope.volumeUUID)?.name ?? L10n.text("Volume indisponível"))
                 fact(L10n.text("Item"), (try? scope.resolve(volumeProvider: model.context.operationVolumeProvider()))?.path ?? scope.reviewedPath)
-                fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
+                fact(L10n.text("Tamanho lógico"), model.sizeText(item))
                 if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
                 Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)
             case .trash(let item):
-                fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho encontrado"), model.sizeText(item))
+                fact(L10n.text("Item"), item.path); fact(L10n.text("Tamanho lógico"), model.sizeText(item))
                 if let warning = model.trashWarning(item) { Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Palette.orange) }
                 Text(L10n.text("Links, conteúdo da nuvem não baixado e dados protegidos não serão excluídos por este fluxo.")).font(.caption).foregroundStyle(.secondary)
                 Text(L10n.text("A Lixeira não será esvaziada pelo aplicativo. O espaço continua ocupado até você esvaziá-la no Finder.")).font(.caption).foregroundStyle(.secondary)

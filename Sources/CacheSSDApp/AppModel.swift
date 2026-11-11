@@ -56,6 +56,8 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     private var pendingVolumeScans: [String: PendingVolumeScan] = [:]
     @Published var indexOnSSD = false
     @Published var explorerRevision = UUID()
+    @Published var explorerActionRevision = UUID()
+    private var trashedExplorerPaths = Set<String>()
     @Published var indexSuspended = false
     private var suspendedVolumeSessionID: UUID?
     @Published private(set) var analysisNeedsRefresh = false
@@ -460,7 +462,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         return result
     }
     func chooseVolume() { guard !busy, !isScanning else { return }; refreshVolumeTargets(); section = .explorer; choosingVolume = true }
-    func scanVolume(_ requestedTarget: VolumeScanTarget, resume: Bool = false) {
+    func scanVolume(_ requestedTarget: VolumeScanTarget, resume: Bool = false, focus: Bool = true) {
         let target: VolumeScanTarget
         do {
             guard requestedTarget.schemaVersion == 1 else { throw CacheSSDError.message(L10n.text("A seleção de volumes é inválida ou pertence a uma versão mais recente.")) }
@@ -507,7 +509,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         let previous = previousSession ?? discovered?.sessionID, scanHome = home, scanStore = store, excluded = [store.base], token = CancellationFlag()
         let progressMailbox = ScanProgressMailbox(), previousIndex = index
         index = nil; explorerRevision = UUID()
-        cancellation = token; explorerTarget = target; choosingVolume = false; section = .explorer
+        cancellation = token; explorerTarget = target; choosingVolume = false; if focus { section = .explorer }
         isScanning = true; scanProgress = nil; scanningRoot = target.displayRoot; indexOnSSD = location.storageVolumeUUID != nil; indexSuspended = false
         indexStorageVolumeUUID = location.storageVolumeUUID
         pageRequest = UUID(); indexedItems = []; indexOffset = 0; selectedPath = nil; inspectedItem = nil
@@ -533,6 +535,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
                 }.value
                 explorerTarget = pair.2
                 index = pair.0; report = pair.1; indexedSessionID = pair.1.id; suspendedVolumeSessionID = nil; indexSuspended = false
+                trashedExplorerPaths.removeAll(); explorerActionRevision = UUID()
                 breadcrumbs = [pair.1.root]; analysisNeedsRefresh = false; explorerRevision = UUID()
                 isScanning = false; cancellation = nil; scanningRoot = nil; reloadIndex()
                 if pair.1.isPartial { notice = L10n.text("Análise parcial. Você pode continuar após restabelecer acesso ou espaço.") }
@@ -672,6 +675,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         if target.roots.count == 1, target.roots[0].role == .data, target.name == "Dados do armazenamento interno" { return L10n.text("Dados do armazenamento interno") }
         return target.name
     }
+    func isKnownTrashed(_ item: ScanItem) -> Bool { trashedExplorerPaths.contains { item.path == $0 || item.path.hasPrefix($0 + "/") } }
     func explorerName(_ item: ScanItem) -> String {
         guard let target = explorerTarget, target.isSystemGroup,
               item.path == target.displayRoot.appendingPathComponent(target.dataNamespace).path else { return item.name }
@@ -709,6 +713,7 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     func cancel() { cancellation?.cancel() }
     func openFolder(_ item: ScanItem) {
         do { try context.require([item.url]) } catch { errorMessage = error.localizedDescription; return }
+        guard !isKnownTrashed(item) else { notice = L10n.text("Este item já foi enviado à Lixeira. Atualize a análise para recalcular a lista."); return }
         guard item.isDirectory else { showInFinder(item); return }
         breadcrumbs.append(item); selectedPath = nil; search = ""; showLargest = false; indexOffset = 0; reloadIndex()
     }
@@ -756,8 +761,9 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
     }
     func trashPolicyReason(_ item: ScanItem) -> String? {
         guard context.allows(item.url) else { return L10n.text("O modo de amostras só permite os arquivos gerados para este teste.") }
+        guard !isKnownTrashed(item) else { return L10n.text("Este item já foi enviado à Lixeira. Atualize a análise para recalcular a lista.") }
         guard !cacheStateUnknown, !context.graphicalEngine().hasUnsafeRecoveryRecords() else { return L10n.text("Os registros dos caches precisam de revisão antes de alterar arquivos.") }
-        guard !analysisNeedsRefresh else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
+        guard !analysisNeedsRefresh || explorerTarget != nil else { return L10n.text("Atualize a análise antes de revisar outra alteração.") }
         guard explorerTarget == nil || currentScopeAvailable else { return L10n.text("O volume analisado está indisponível. Reconecte-o e atualize a análise.") }
         if explorerTarget != nil {
             do {
@@ -778,8 +784,12 @@ struct ToolSize { var logical: Int64; var allocated: Int64; var complete = true;
         switch action {
         case .graphicalRestore, .graphicalResume, .graphicalRecover, .volumeTrash, .cacheTransfer, .trash, .move, .migration, .prepareCache, .restore, .recover:
             guard let root = report?.root.url else { return }
-            analysisNeedsRefresh = true; selectedPath = nil; pageRequest = UUID(); indexLoading = false
-            if let target = explorerTarget { scanVolume(target) }
+            analysisNeedsRefresh = true; selectedPath = nil; inspectedItem = nil; pageRequest = UUID(); indexLoading = false
+            if case .volumeTrash(let item, _) = action {
+                trashedExplorerPaths.insert(item.path); explorerActionRevision = UUID(); return
+            }
+            guard section == .explorer else { return }
+            if let target = explorerTarget { scanVolume(target, focus: false) }
             else if context.scopeAvailable(root) { scan(root, focus: false) }
         default: break
         }

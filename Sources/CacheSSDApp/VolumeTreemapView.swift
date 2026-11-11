@@ -26,7 +26,7 @@ struct VolumeTreemapView: View {
                                 }
                             } else if let ordinal = model.treemapItems.firstIndex(where: { $0.path == tile.id }) {
                                 let item = model.treemapItems[ordinal]
-                                tileView(tile, name: model.explorerName(item), bytes: model.allocatedOrder ? item.allocatedBytes : item.logicalBytes, folder: item.isDirectory, selected: model.treemapContainsSelection(item)) {
+                                tileView(tile, name: model.explorerName(item) + (model.isKnownTrashed(item) ? " · " + L10n.text("Na Lixeira") : ""), bytes: model.allocatedOrder ? item.allocatedBytes : item.logicalBytes, folder: item.isDirectory, selected: model.treemapContainsSelection(item)) {
                                     model.selectExplorerItem(item, ordinal: ordinal)
                                 }
                                 .onTapGesture(count: 2) { if item.isDirectory { model.openFolder(item) } }

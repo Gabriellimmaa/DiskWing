@@ -224,6 +224,24 @@ import CacheSSDCore
             XCTAssertEqual(try FileTree.digest(destination, workspace: context.store.base), expected)
         }
     }
+    func testCacheTransferKeepsResultsVisibleWithoutStartingHiddenVolumeScan() async throws {
+        let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
+        let model = AppModel(context: context)
+        try await wait(until: { !model.volumeTargets.isEmpty })
+        let target = try XCTUnwrap(model.volumeTargets.first { $0.roots.contains { $0.isInternal } })
+        model.scanVolume(target)
+        try await wait(until: { model.report != nil && !model.isScanning && !model.indexLoading })
+        let previous = model.report?.id
+        model.section = .caches; model.analyzeCacheWorkflow()
+        try await wait(until: { !model.cacheAnalyzing && !model.cacheEntries.isEmpty })
+        model.cacheSelectedIDs = ["npm"]; model.reviewCacheTransfer()
+        try await reviewed(XCTUnwrap(model.review), on: model)
+        try await wait(until: { !model.isScanning && !model.indexLoading })
+        XCTAssertEqual(model.section, .caches, "Refreshing a previous volume must not hide transfer results")
+        XCTAssertEqual(model.cacheTransferResults.first { $0.id == "npm" }?.state, .configuredNeedsReopen)
+        XCTAssertEqual(model.report?.id, previous); XCTAssertTrue(model.analysisNeedsRefresh); XCTAssertFalse(model.isScanning); XCTAssertEqual(model.explorerTarget?.id, target.id)
+    }
+
     func testFlagsWithoutDestinationsDoNotClaimCacheTransfer() throws {
         let (root, context) = try fixture(); defer { try? FileManager.default.removeItem(at: root); L10n.preference = "system" }
         var settings = context.store.settings(); settings.useExternal = true; settings.shellIntegrationEnabled = true; settings.locations = [:]
@@ -511,6 +529,11 @@ import CacheSSDCore
             try await reviewed(action, on: model)
             try await wait(until: { !model.isScanning && !model.indexLoading })
             XCTAssertFalse(FileManager.default.fileExists(atPath: item.path))
+            XCTAssertTrue(model.analysisNeedsRefresh); XCTAssertTrue(model.isKnownTrashed(item)); XCTAssertFalse(model.isScanning)
+            let next = try XCTUnwrap(items.items.first { !$0.isDirectory && $0.path != item.path })
+            XCTAssertNil(model.trashPolicyReason(next), "A second unchanged item must not require a whole-volume rescan")
+            model.reviewTrash(next); try await reviewed(XCTUnwrap(model.review), on: model)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: next.path)); XCTAssertTrue(model.isKnownTrashed(next))
             let journal = try XCTUnwrap(context.store.operations().first { $0.kind == "volumeTrash" })
             XCTAssertNotNil(journal.volumeTrashScope); XCTAssertNotNil(journal.trashRelativePath)
             XCTAssertEqual(model.explorerTarget?.id, target.id)

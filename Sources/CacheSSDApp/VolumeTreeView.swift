@@ -10,6 +10,7 @@ struct VolumeTreeView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = TreeScrollView(); scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         let table = KeyTable(); table.headerView = NSTableHeaderView(); table.rowHeight = 30
+        table.intercellSpacing = NSSize(width: 0, height: 0)
         table.usesAlternatingRowBackgroundColors = true; table.allowsMultipleSelection = false
         table.setAccessibilityIdentifier("volume-tree"); table.setAccessibilityLabel(L10n.text("Árvore do volume"))
         for (id, title, width) in [("name", L10n.text("Nome"), 320.0), ("size", L10n.text("Espaço em disco"), 120.0), ("share", "%", 60.0)] {
@@ -52,6 +53,7 @@ struct VolumeTreeView: NSViewRepresentable {
         var readTasks: [UUID: Task<Void, Never>] = [:]
         var activeReads = 0, rootLoaded = false
         var deferredExpansion: (parent: String, ordinal: Int, child: String)?
+        var lastActionRevision: UUID?
         var lastScrollRequest: UUID?
         var selectedReference: VirtualTreeReference?
         private var synchronizingSelection = false, active = true
@@ -67,6 +69,7 @@ struct VolumeTreeView: NSViewRepresentable {
                 table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
                 reloadWithoutSelectionNotification()
             }
+            if lastActionRevision != model.explorerActionRevision { lastActionRevision = model.explorerActionRevision; reloadWithoutSelectionNotification() }
             let next = [model.explorerRevision.uuidString, model.indexedSessionID?.uuidString ?? "", model.currentFolder?.path ?? "", model.search, String(model.allocatedOrder), String(model.showLargest), model.minimumMiB].joined(separator: "\u{1f}")
             table?.tableColumns.first(where: { $0.identifier.rawValue == "size" })?.title = model.allocatedOrder ? L10n.text("Espaço em disco") : L10n.text("Tamanho lógico")
             if signature != next {
@@ -144,9 +147,12 @@ struct VolumeTreeView: NSViewRepresentable {
                 cell.disclosure.setAccessibilityValue(expanded ? 1 : 0)
                 cell.disclosure.isHidden = !item.isDirectory || !model.search.isEmpty || model.showLargest
                 cell.action = { [weak self] in self?.toggle(item, ref: ref) }
-                cell.name.stringValue = model.explorerName(item); cell.icon.image = NSImage(systemSymbolName: item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc", accessibilityDescription: nil)
+                let trashed = model.isKnownTrashed(item)
+                cell.name.stringValue = model.explorerName(item) + (trashed ? " · " + L10n.text("Na Lixeira") : "")
+                cell.name.textColor = trashed ? .secondaryLabelColor : .labelColor
+                cell.icon.image = NSImage(systemSymbolName: trashed ? "trash" : item.isSymbolicLink ? "link" : item.isDirectory ? "folder.fill" : "doc", accessibilityDescription: nil)
                 cell.icon.contentTintColor = item.isDirectory ? .systemBlue : .secondaryLabelColor
-                cell.setAccessibilityLabel(model.explorerName(item) + ", " + model.sizeText(item, allocated: model.allocatedOrder))
+                cell.setAccessibilityLabel(cell.name.stringValue + ", " + model.sizeText(item, allocated: model.allocatedOrder))
                 cell.name.toolTip = item.path; return cell
             }
             if column == "size" { return label(model.sizeText(item, allocated: model.allocatedOrder), identifier: column) }
