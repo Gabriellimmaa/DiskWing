@@ -276,7 +276,7 @@
       "milestoneURL": "https://github.com/Gabriellimmaa/DiskWing/milestone/9"
     }
   ],
-  "updatedAt": "2026-11-10",
+  "updatedAt": "2026-11-11",
   "publicV1Ready": false,
   "execution": {
     "schemaVersion": 1,
@@ -897,6 +897,35 @@
           "docs/validation/LOCAL-INSTALLATION-BUILD11-2026-11-10.md"
         ],
         "nextAction": "Maintainer feedback; no personal cache transfer without actual selected review."
+      },
+      {
+        "id": "UX-HISTORY-01",
+        "requirement": "M6",
+        "priority": "high",
+        "classification": "confirmed_defect",
+        "title": "Keep History and pending recovery inside the window with one scroll viewport",
+        "owner": "coordinator",
+        "reviewer": "history_review",
+        "branch": "codex/history-layout-fix",
+        "baseSHA": "5f6aa20",
+        "writableFiles": [
+          "Sources/CacheSSDApp/Views.swift",
+          "Tests/CacheSSDAppTests/HistoryLayoutTests.swift",
+          "docs/context/CURRENT_STATE.md",
+          "docs/TRACEABILITY.json",
+          "docs/validation/HISTORY-LAYOUT-2026-11-11.md"
+        ],
+        "dependsOn": [],
+        "status": "implemented_reviewed_local_validation_in_progress",
+        "acceptance": "Opening History with many recovery cards and zero or 150 operations preserves the sidebar/header at minimum size; all records and the footer remain reachable by one scroll area in PT/EN.",
+        "evidence": [
+          "Native installed build 11: History clips the header and sidebar; switching to Explore restores layout. No recovery or personal-data action initiated.",
+          "Tests/CacheSSDAppTests/HistoryLayoutTests.swift",
+          "docs/validation/HISTORY-LAYOUT-2026-11-11.md"
+        ],
+        "nextAction": "Finish full local checks and generated sample GUI observation, then qualify a new candidate. Preserve installed build 11 and its ongoing scan.",
+        "validation": "Regression fails on the original layout (PT 2309px / EN 2249px minimum height) and passes after correction at 1050x690, with 12 pending recoveries and zero/150 operations; independent source review found no blockers.",
+        "reviewEvidence": "docs/validation/HISTORY-LAYOUT-2026-11-11.md"
       }
     ],
     "mainCI": "https://github.com/Gabriellimmaa/DiskWing/actions/runs/42945444516",
